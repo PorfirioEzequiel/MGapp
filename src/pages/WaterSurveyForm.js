@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import supabase from '../supabase/client';
 import { useLocation, useParams } from "react-router-dom";
-
+import localidadesData from "../codigospostales.json";
 
 const WaterSurveyForm = () => {
   const { state } = useLocation();
@@ -12,7 +12,27 @@ const WaterSurveyForm = () => {
   const [quality, setQuality] = useState("");
   const [abundance, setAbundance] = useState("");
   const [message, setMessage] = useState("");
+  const [rep_calle, setcalle] = useState("");
+  const [codigoPostal, setCodigoPostal] = useState("");
+  const [localidades, setLocalidades] = useState([]);
+  const [localidad, setLocalidad] = useState("");
 
+  const handleCodigoPostalChange = (e) => {
+    const inputCodigoPostal = e.target.value;
+    setCodigoPostal(inputCodigoPostal);
+
+    // Filtrar las localidades según el código postal
+    const localidadesFiltradas = localidadesData.filter(
+      (localidad) => localidad.d_codigo.toString() === inputCodigoPostal
+    );
+
+    // Extraer solo los nombres de las localidades
+    const nombresLocalidades = localidadesFiltradas.map(
+      (localidad) => localidad.d_asenta
+    );
+
+    setLocalidades(nombresLocalidades);
+  };
 
   const getLocation = () => {
     if (navigator.geolocation) {
@@ -69,6 +89,9 @@ const WaterSurveyForm = () => {
       // ubicacion: `POINT(${location.longitude} ${location.latitude})`, // Formato para columna de tipo `geography`
       calidad_agua: quality,
       abundancia_agua: abundance,
+      calle: rep_calle,
+      c_postal:codigoPostal,
+      localidad:localidad,
     };
 
     try {
@@ -81,6 +104,9 @@ const WaterSurveyForm = () => {
       }
 
       setMessage("¡Reporte enviado correctamente!");
+      setcalle("");
+      setCodigoPostal("");
+      setLocalidades([]);
       setQuality("");
       setAbundance("");
       setLocation(null);
@@ -120,6 +146,49 @@ const WaterSurveyForm = () => {
             </p>
           )}
        
+        <div class="mb-4">
+        <label for="calle" class="block text-gray-700 font-bold mb-2"></label>
+        </div>
+
+        <div class="mb-4">
+          <label for="calle" class="block text-gray-700 font-bold mb-2">Calle:</label>
+          <input
+            class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"
+            type="text"
+            value={rep_calle}
+            onChange={(e) => setcalle(e.target.value.toUpperCase())}
+            placeholder="Ingrese calle o avenida"
+            required
+          />
+        </div>
+
+        <div class="mb-4">
+          <label for="cp" class="block text-gray-700 font-bold mb-2">Código Postal:</label>
+          <input
+            class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"
+            type="text"
+            value={codigoPostal}
+            onChange={handleCodigoPostalChange}
+            placeholder="Ingrese el código postal"
+            required
+          />
+        </div>
+
+        <div class="mb-4">
+          <label for="localidad" class="block text-gray-700 font-bold mb-2">Localidad:</label>
+          <select value={localidad} onChange={(e) => setLocalidad(e.target.value.toUpperCase())}  
+          class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline" required>
+            {localidades.length > 0 ? (
+              localidades.map((localidad, index) => (
+                <option key={index} value={localidad}>
+                  {localidad}
+                </option>
+              ))
+            ) : (
+              <option value="">Seleccione una localidad</option>
+            )}
+          </select>
+        </div>
 
        <div class="mb-4">
           <label for="quality" class="block text-gray-700 font-bold mb-2">Calidad del Agua:</label>
