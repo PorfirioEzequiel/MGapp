@@ -89,9 +89,9 @@ const WaterSurveyForm = () => {
       // ubicacion: `POINT(${location.longitude} ${location.latitude})`, // Formato para columna de tipo `geography`
       calidad_agua: quality,
       abundancia_agua: abundance,
-      calle: rep_calle,
+      calle: rep_calle.toUpperCase(),
       c_postal:codigoPostal,
-      localidad:localidad,
+      localidad:localidad.toUpperCase(),
     };
 
     try {
@@ -156,7 +156,7 @@ const WaterSurveyForm = () => {
             class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"
             type="text"
             value={rep_calle}
-            onChange={(e) => setcalle(e.target.value.toUpperCase())}
+            onChange={(e) => setcalle(e.target.value)}
             placeholder="Ingrese calle o avenida"
             required
           />
@@ -176,7 +176,7 @@ const WaterSurveyForm = () => {
 
         <div class="mb-4">
           <label for="localidad" class="block text-gray-700 font-bold mb-2">Localidad:</label>
-          <select value={localidad} onChange={(e) => setLocalidad(e.target.value.toUpperCase())}  
+          <select value={localidad} onChange={(e) => setLocalidad(e.target.value)}  
           class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline" required>
             {localidades.length > 0 ? (
               localidades.map((localidad, index) => (
