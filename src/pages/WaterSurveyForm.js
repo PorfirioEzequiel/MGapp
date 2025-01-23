@@ -204,7 +204,7 @@ const WaterSurveyForm = () => {
           
           
         <div class="mb-4">
-          <label class="block text-gray-700 font-bold mb-2">Abundancia del Agua:</label>
+          <label class="block text-gray-700 font-bold mb-2">Presión del Agua:</label>
           <select value={abundance} onChange={(e) => setAbundance(e.target.value)}
           class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline" required>
             <option value="">Seleccionar</option>

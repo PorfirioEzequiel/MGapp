@@ -59,11 +59,14 @@ const Filtro = () => {
   return (
     <div>
       
-      <div>
+      <div class="flex flex-wrap">
         {/* Selector para Polígono */}
-        <label>
+        <label  class="block mb-2 text-sm font-medium text-gray-900">
           Polígono:
-          <select value={poligono} onChange={(e) => setPoligono(e.target.value)}>
+          <select 
+          value={poligono} 
+          onChange={(e) => setPoligono(e.target.value)}
+          class="bg-gray-50 border border-gray-300 text-gray-900 text-sm">
             <option value="">Todos</option>
             {opciones.poligonos.map((poli) => (
               <option key={poli} value={poli}>
