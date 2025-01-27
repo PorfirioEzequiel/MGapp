@@ -39,22 +39,13 @@ const MapComponent = (props) => {
   const { isLoaded } = useJsApiLoader({
     googleMapsApiKey: 'AIzaSyD0ZPIg4fiV9cQTESVzIrPXYEaXNpw7G3Q'
   });
-  // const [path, setPath] = useState([
-  //   { lat: -3.745, lng: -38.523 },
-  //   { lat: -3.745, lng: -38.533 },
-  //   { lat: -3.745, lng: -38.55 },
-  //   { lat: -3.755, lng: -38.533 }
-  // ]);
-
-    const path=parseMultipolygon(props.mapa);
-    
-
+ const path=parseMultipolygon(props.mapa);
   
   return isLoaded ? (
     <GoogleMap
       mapContainerStyle={containerStyle}
       center={center}
-      zoom={10}
+      zoom={15}
     >
       <Polygon
         paths={path}

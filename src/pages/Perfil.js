@@ -82,8 +82,8 @@ const Perfil = () => {
         ) : (
           <p>No se encontraron resultados.</p>
         )}
-      <MapComponent mapa={section.geometry}/>
-      {/* <MapComponent2/> */}
+      {/* <MapComponent mapa={section.geometry}/> */}
+      <MapComponent2/>
     </div>
   );
 };

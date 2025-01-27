@@ -16,6 +16,8 @@ const WaterSurveyForm = () => {
   const [codigoPostal, setCodigoPostal] = useState("");
   const [localidades, setLocalidades] = useState([]);
   const [localidad, setLocalidad] = useState("");
+  const [servicio, setservicio] = useState("");
+  const [agua, setAgua] = useState("");
 
   const handleCodigoPostalChange = (e) => {
     const inputCodigoPostal = e.target.value;
@@ -77,13 +79,13 @@ const WaterSurveyForm = () => {
       return;
     }
 
-    
+    const date = new Date();
     const reportData = {
       poligono: user.poligono,
       seccion: user.seccion,
       ubt: user.ubt,
       pb: user.nombre+" "+user.a_paterno+" "+user.a_materno,
-      fecha_reporte: new Date(),
+      fecha_reporte: date.getFullYear() + '-' +  (date.getMonth() + 1).toString().padStart(2, '0') + '-' + date.getDate().toString().padStart(2, '0')+" "+date.getHours().toString().padStart(2, '0')+":"+date.getMinutes().toString().padStart(2, '0')+":"+date.getSeconds().toString().padStart(2, '0'),
       latitud_reporte: location.latitude,
       longitud_reporte: location.longitude,
       // ubicacion: `POINT(${location.longitude} ${location.latitude})`, // Formato para columna de tipo `geography`
@@ -92,6 +94,8 @@ const WaterSurveyForm = () => {
       calle: rep_calle.toUpperCase(),
       c_postal:codigoPostal,
       localidad:localidad.toUpperCase(),
+      servicio: servicio,
+      agua: agua,
     };
 
     try {
@@ -110,6 +114,8 @@ const WaterSurveyForm = () => {
       setQuality("");
       setAbundance("");
       setLocation(null);
+      setservicio("");
+      setAgua("");
     } catch (error) {
       console.error("Error inesperado:", error);
       setMessage("Ocurrió un error al enviar el reporte.");
@@ -196,9 +202,9 @@ const WaterSurveyForm = () => {
           <select value={quality} onChange={(e) => setQuality(e.target.value)} 
           class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline" required>
             <option value="">Seleccionar</option>
-            <option value="Buena">Buena</option>
-            <option value="Regular">Regular</option>
-            <option value="Mala">Mala</option>
+            <option value="Transparente">Transparente</option>
+            <option value="Turbia">Turbia</option>
+            <option value="Turbia">Ninguna</option>
           </select>
         </div>
           
@@ -211,6 +217,29 @@ const WaterSurveyForm = () => {
             <option value="Alta">Alta</option>
             <option value="Media">Media</option>
             <option value="Baja">Baja</option>
+          </select>
+        </div>
+
+
+        <div class="mb-4">
+          <label class="block text-gray-700 font-bold mb-2">Tu tipo de servicio es:</label>
+          <select value={servicio} onChange={(e) => setservicio(e.target.value)}
+          class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline" required>
+            <option value="">Seleccionar</option>
+            <option value="Alta">Constante</option>
+            <option value="Media">Tandeo</option>
+            
+          </select>
+        </div>
+
+        <div class="mb-4">
+          <label class="block text-gray-700 font-bold mb-2">¿En este momento tienes agua?</label>
+          <select value={agua} onChange={(e) => setAgua(e.target.value)}
+          class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline" required>
+            <option value="">Seleccionar</option>
+            <option value="Si">Si</option>
+            <option value="No">No</option>
+            
           </select>
         </div>
         
