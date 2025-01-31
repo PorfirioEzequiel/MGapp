@@ -41,10 +41,10 @@ const center = {
 
 
 
-const MapComponent = () => {
+const MapComponent = (props) => {
     const { state } = useLocation();
 
-    const [section, setSeccion] = useState({});
+    const [section, setSeccion] = useState([]);
     const [error, setError] = useState(null);
   
   
@@ -52,7 +52,7 @@ const MapComponent = () => {
       try {
         const { data, error } = await supabase
           .from('secciones') // Nombre de la tabla
-          .select('geometry').eq("pologono",2);
+          .select('*').eq("pologono",4);
           // .eq('seccion', user.seccion); // Consulta todos los campos
   
         if (error) throw error;
@@ -73,16 +73,15 @@ const MapComponent = () => {
     googleMapsApiKey: 'AIzaSyD0ZPIg4fiV9cQTESVzIrPXYEaXNpw7G3Q'
   });
 
-//   {section.map(index=>{
-//     console.log(parseMultipolygon(index.geometry))})}
-console.log(section)
-  
-for(let i=0; i<section.length; i++){
-    console.log(parseMultipolygon(section[i].geometry))
-}
-    // const path=parseMultipolygon(section.geometry);
-    
+  function  onEdit(){
+    console.log("sec");
+  };
 
+
+  
+
+  
+  
   
   return isLoaded ? (
     <GoogleMap
@@ -91,20 +90,23 @@ for(let i=0; i<section.length; i++){
       zoom={10}
     >
 
-
-      {/* <Polygon
-        paths={parseMultipolygon(section.geometry)}
+    {section.map((seccion)=>(
+      
+      <Polygon
+        paths={parseMultipolygon(seccion.geometry)}
         // editable={true}
         // draggable={true}
-        // onMouseUp={onEdit}
+        onMouseUp={onEdit()}
+        // onClick={onEdit()}
+
         options={{
-            fillOpacity: 0.1,
-            strokeColor: "#ff0000",
-            fillColor: "#FF0000",
+            fillOpacity: 0.2,
+            strokeColor: "#AF272F",
+            fillColor: "#AF272F",
             strokeWeight: 1
           }}
-      /> */}
-
+      />
+    ))}
 
 
     </GoogleMap>

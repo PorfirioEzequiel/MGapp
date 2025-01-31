@@ -83,7 +83,7 @@ const Perfil = () => {
           <p>No se encontraron resultados.</p>
         )}
       {/* <MapComponent mapa={section.geometry}/> */}
-      <MapComponent2/>
+      <MapComponent2 mapa={user.poligono}/>
     </div>
   );
 };

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import supabase from '../supabase/client';
 import ToggleStatusButton from './ToggleStatusButton';
+import {  useNavigate } from 'react-router-dom';
 
 const Filtro = () => {
   const [poligono, setPoligono] = useState('');
@@ -9,7 +10,7 @@ const Filtro = () => {
   const [nombre, setNombre] = useState('');
   const [resultados, setResultados] = useState([]);
   const [opciones, setOpciones] = useState({ poligonos: [], secciones: [], puestos: [] });
-  
+  const navigate = useNavigate();
 
   // Cargar datos iniciales para los selectores
   useEffect(() => {
@@ -25,7 +26,8 @@ const Filtro = () => {
         const poligonos = [...new Set(data.map((item) => item.poligono))];
         const secciones = [...new Set(data.map((item) => item.seccion))];
         const puestos = [...new Set(data.map((item) => item.puesto))];
-
+        const puestos1 = [...new Set(data.map((item) => item.puesto))];
+        // console.log(puestos1);
         setOpciones({ poligonos, secciones, puestos });
       } catch (err) {
         console.error('Error al cargar opciones:', err.message);
@@ -34,7 +36,7 @@ const Filtro = () => {
 
     cargarOpciones();
   }, []);
-
+  
   // Manejar búsqueda en Supabase
   const manejarFiltro = async () => {
     try {
@@ -61,12 +63,12 @@ const Filtro = () => {
       
       <div class="flex flex-wrap">
         {/* Selector para Polígono */}
-        <label  class="block mb-2 text-sm font-medium text-gray-900">
+        <label  >
           Polígono:
           <select 
           value={poligono} 
           onChange={(e) => setPoligono(e.target.value)}
-          class="bg-gray-50 border border-gray-300 text-gray-900 text-sm">
+          className="border p-2 w-full">
             <option value="">Todos</option>
             {opciones.poligonos.map((poli) => (
               <option key={poli} value={poli}>
@@ -78,7 +80,10 @@ const Filtro = () => {
         {/* Selector para Sección */}
         <label>
           Sección:
-          <select value={seccion} onChange={(e) => setSeccion(e.target.value)}>
+          <select 
+          value={seccion} 
+          onChange={(e) => setSeccion(e.target.value)}
+          className="border p-2 w-full">
             <option value="">Todas</option>
             {opciones.secciones.map((sec) => (
               <option key={sec} value={sec}>
@@ -90,7 +95,10 @@ const Filtro = () => {
         {/* Selector para Puesto */}
         <label>
           Puesto:
-          <select value={puesto} onChange={(e) => setPuesto(e.target.value)}>
+          <select 
+          value={puesto} 
+          onChange={(e) => setPuesto(e.target.value)}
+          className="border p-2 w-full">
             <option value="">Todos</option>
             {opciones.puestos.map((pues) => (
               <option key={pues} value={pues}>
@@ -107,31 +115,57 @@ const Filtro = () => {
             placeholder="Buscar por nombre"
             value={nombre}
             onChange={(e) => setNombre(e.target.value)}
+            className="border p-2 w-full"
           />
         </label>
-        <button onClick={manejarFiltro}>Buscar</button>
+        <button className="bg-blue-500 text-white mx-auto my-auto px-4 py-2 rounded"
+         onClick={manejarFiltro}>Buscar</button>
       </div>
 
-      <div>
+      <div className="p-4">
         <h2>Resultados:</h2>
+        <table className="w-full border-collapse border border-gray-300">
+        <thead>
+          <tr className="bg-gray-200">
+            <th className="border p-2">Polígono</th>
+            <th className="border p-2">Sección</th>
+            <th className="border p-2">UBT</th>
+            <th className="border p-2">Nombre</th>
+            <th className="border p-2">Puesto</th>
+            <th className="border p-2">Eliminar</th>
+            <th className="border p-2">Editar</th>
+          </tr>
+        </thead>
         {resultados.length > 0 ? (
             // <h1>{resultados.length}</h1>
-          <ul>
-            <h1>{resultados.length}</h1>
+          <tbody>
+            {/* <h1>{resultados.length}</h1> */}
             {resultados.map((resultado) => (
-              <li key={resultado.id}>
-                {resultado.poligono} - {resultado.seccion} - {resultado.puesto} - {resultado.nombre}  {resultado.a_paterno}  {resultado.a_materno}
+              <tr key={resultado.id}>
+                {/* {resultado.poligono} - {resultado.seccion} -{resultado.ubt} - {resultado.puesto} - {resultado.nombre}  {resultado.a_paterno}  {resultado.a_materno} */}
+                <td className="border p-2">{resultado.poligono}</td>
+                <td className="border p-2">{resultado.seccion}</td>
+                <td className="border p-2">{resultado.ubt}</td>
+                <td className="border p-2">{resultado.nombre} {resultado.a_paterno} {resultado.a_materno}</td>
+                <td className="border p-2">{resultado.puesto}</td>
+                <td className="border p-2">
                 <ToggleStatusButton registroId={resultado.id} initialStatus={resultado.status} />
-                <button /*onClick={activateLasers}*/>
+                </td>
+                <td className="border p-2">
+                <button onClick={() => navigate(`/ciudadano/${resultado.id}`)}
+                  className="bg-blue-500 text-white px-4 py-2 rounded">
                     EDITAR
                 </button>
+                </td>
                 {/* {resultado.status} */}
-              </li>
+              </tr>
             ))}
-          </ul>
+          </tbody>
+          
         ) : (
           <p>No se encontraron resultados.</p>
         )}
+        </table>
       </div>
     </div>
   );
