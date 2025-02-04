@@ -120,10 +120,17 @@ const Filtro = () => {
         </label>
         <button className="bg-blue-500 text-white mx-auto my-auto px-4 py-2 rounded"
          onClick={manejarFiltro}>Buscar</button>
+
+        <button onClick={() => navigate("/agregar")} className="bg-green-500 text-white px-4 py-2 rounded mb-4">
+        Agregar Ciudadano
+        </button>
       </div>
+
 
       <div className="p-4">
         <h2>Resultados:</h2>
+
+
         <table className="w-full border-collapse border border-gray-300">
         <thead>
           <tr className="bg-gray-200">

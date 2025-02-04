@@ -191,7 +191,7 @@ const WaterSurveyForm = () => {
                 </option>
               ))
             ) : (
-              <option value="">Seleccione una localidad</option>
+              <option value={localidad}>Seleccione una localidad</option>
             )}
           </select>
         </div>
