@@ -39,8 +39,8 @@ const Login = () => {
         case 'administrador':
           navigate(`/admin/${data.usuario}`, { state: { user: data } });
           break;
-        case 'coordinador-poligono':
-          navigate(`/poligono/${data.usuario}`, { state: { user: data } });
+        case 'coordinador de poligono':
+          navigate(`/coordinador/${data.usuario}`, { state: { user: data } });
           break;
         case 'seccional':
           navigate(`/perfil/${data.usuario}`, { state: { user: data } });

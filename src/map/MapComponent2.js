@@ -52,7 +52,7 @@ const MapComponent = (props) => {
       try {
         const { data, error } = await supabase
           .from('secciones') // Nombre de la tabla
-          .select('*').eq("pologono",4);
+          .select('*').eq("pologono",props.mapa);
           // .eq('seccion', user.seccion); // Consulta todos los campos
   
         if (error) throw error;

@@ -7,6 +7,7 @@ import WaterSurveyForm from './pages/WaterSurveyForm';
 import Formulario from './componentes/Formulario';
 import FichaCiudadano from './pages/FichaCiudadano';
 import AgregarCiudadano from './pages/AgregarCiudadano';
+import Coordinador from './pages/Coordinador';
 
 
 
@@ -17,6 +18,7 @@ function App() {
         <Route path="/" element={<Login />} />
         <Route path="/admin/:usuario" element={<Admin />} />
         <Route path="/perfil/:usuario" element={<Perfil />} />
+        <Route path="/coordinador/:usuario" element={<Coordinador />} />
         <Route path="/reporte/:usuario" element={<WaterSurveyForm />} />
         <Route path="/ciudadano/:id" element={<FichaCiudadano />} />
         <Route path="/agregar" element={<AgregarCiudadano />} />
