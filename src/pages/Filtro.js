@@ -41,7 +41,7 @@ const Filtro = () => {
   const manejarFiltro = async () => {
     try {
       // Construir filtros dinámicos
-      let query = supabase.from('ciudadania').select('*');
+      let query = supabase.from('ciudadania').select('*').order('poligono', { ascending: true });
 
       if (poligono) query = query.eq('poligono', poligono);
       if (seccion) query = query.eq('seccion', seccion);

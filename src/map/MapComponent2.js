@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { GoogleMap, useJsApiLoader, Polygon } from '@react-google-maps/api';
+import { GoogleMap, useJsApiLoader, Polygon,InfoWindow } from '@react-google-maps/api';
 import { useLocation, useParams } from 'react-router-dom';
 import supabase from '../supabase/client';
 

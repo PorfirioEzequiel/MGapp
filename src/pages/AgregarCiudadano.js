@@ -5,6 +5,7 @@ import supabase from '../supabase/client';
 
 export default function AgregarCiudadano() {
   const navigate = useNavigate();
+  // const [id, setId]= useState(1410);
   const [seccion, setSeccion] = useState("");
   // const [seccion, setSeccion] = useState('');
   const [dfed, setDfed] = useState(0);
@@ -21,8 +22,8 @@ export default function AgregarCiudadano() {
   const [puestos, setPuestos] = useState([]);
   const [puesto, setPuesto] = useState();
   const [nuevoCiudadano, setNuevoCiudadano] = useState({
-    dtto_fed: dfed,
-    dtto_loc: dloc,
+    dtto_fed: 0,
+    dtto_loc: 0,
     municipio: nmunicipio,
     nombre_municipio: municipio,	
     poligono: poligono,
@@ -53,6 +54,9 @@ export default function AgregarCiudadano() {
     cuenta_fb: "",
     cuenta_x: "",
     status: "ACTIVO",
+    url_foto_perfil: "",
+    url_foto_ine1: "",
+    url_foto_ine2: "",
   });
   useEffect(() => {
     const cargarPuestos = async () => {
@@ -60,13 +64,9 @@ export default function AgregarCiudadano() {
         const { data, error } = await supabase
           .from('puestos') // Reemplaza con el nombre de tu tabla
           .select('*');
-
         if (error) throw error;
-
         // Extraer valores únicos para los selectores
-        
         const puestos = data.map((item) => item.puesto);
-        
         // console.log(data.filter(id => id.puesto ==puesto));
         setPuestos(puestos );
       } catch (err) {
@@ -97,8 +97,16 @@ export default function AgregarCiudadano() {
         setDfed(seccionData[0].dtto_fed);
         setDloc(seccionData[0].dtto_loc);
         setNmunicipio(seccionData[0].municipio)
-        
 
+        setNuevoCiudadano((prev) => ({
+          ...prev,
+          seccion,
+          poligono: seccionData[0].poligono,
+          nombre_municipio: seccionData[0].nombre_municipio,
+          dtto_fed: seccionData[0].dtto_fed,
+          dtto_loc: seccionData[0].dtto_loc,
+          municipio: seccionData[0].municipio
+        }));
         // Buscar las UBT correspondientes a la sección
         const { data: ubtData, error: ubtError } = await supabase
           .from('ubt_catalogo') // Cambia por el nombre de tu tabla
@@ -109,12 +117,12 @@ export default function AgregarCiudadano() {
 
         setUbts(ubtData.map((item) => item.ubt));
       } else {
-        // setPoligono(0);
-        // setDfed(0);
-        // setDloc(0);
-        // setNmunicipio(0);
-        // setMunicipio('');
-        // setUbts([]);
+        setPoligono(0);
+        setDfed(0);
+        setDloc(0);
+        setNmunicipio(0);
+        setMunicipio('');
+        setUbts([]);
       }
     } catch (error) {
       console.error('Error al buscar datos:', error);
@@ -123,11 +131,6 @@ export default function AgregarCiudadano() {
     }
   };
 
-  
-
-
-
-  
 
   async function handleAdd() {
     const { error } = await supabase.from('ciudadania').insert([nuevoCiudadano]);
@@ -140,20 +143,76 @@ export default function AgregarCiudadano() {
   }
 
   
+  
+  const CURP_REGEX = /^[A-Z]{1}[AEIOU]{1}[A-Z]{2}\d{2}(0[1-9]|1[0-2])(0[1-9]|[12]\d|3[01])[HM]{1}[A-Z]{2}[B-DF-HJ-NP-TV-Z]{3}[A-Z0-9]{1}\d{1}$/;
+
 
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    setDfed(dfed);
+    const curp = nuevoCiudadano.curp.trim().toUpperCase(); // Aseguramos formato correcto
+
+    if (!CURP_REGEX.test(curp)) {
+      console.log("El CURP no es válido:", curp);
+      alert("El CURP ingresado no es válido. Verifica que tenga el formato correcto.");
+      return;
+    }
     try {
       console.log(nuevoCiudadano)
       const { error } = await supabase.from('ciudadania').insert([nuevoCiudadano]);
       if (error) {
         console.error("Error al guardar los datos:", error);
-        
+        alert("Error al guardar los datos:", error)
         return;
       }
+      alert("Ciudadano agregado correctamente");
 
+    // Limpiar todos los campos
+    setNuevoCiudadano({
+      dtto_fed: 0,
+      dtto_loc: 0,
+      municipio: nmunicipio,
+      nombre_municipio: '',
+      poligono: '',
+      seccion: '',
+      ubt: '',
+      area_adscripcion: '',
+      dependencia: '',
+      puesto: '',
+      id_puesto: 0,
+      tipo: '',
+      ingreso_estructura: '',
+      observaciones: '',
+      usuario: '',
+      password: '',
+      nombre: '',
+      a_paterno: '',
+      a_materno: '',
+      curp: '',
+      calle: '',
+      n_ext_mz: '',
+      n_int_lt: '',
+      n_casa: '',
+      c_p: 0,
+      col_loc: '',
+      telefono_1: '',
+      telefono_2: '',
+      cuenta_inst: '',
+      cuenta_fb: '',
+      cuenta_x: '',
+      status: 'ACTIVO',
+      url_foto_perfil: '',
+      url_foto_ine1: '',
+      url_foto_ine2: '',
+    });
+
+      setSeccion('');
+      setUbts([]);
+      setPoligono('');
+      setMunicipio('');
+      setDfed(0);
+      setDloc(0);
+      setNmunicipio('');
       
     } catch (error) {
       console.error("Error inesperado:", error);
@@ -166,28 +225,46 @@ useEffect(() => {
   if (seccion) {
     buscarDatosSeccion(seccion);
   } else {
-    // setPoligono(0);
-    // setMunicipio('');
-    // setDfed(0);
-    // setDloc(0);
-    // setNmunicipio(0);
-    // setUbts([]);
+    setPoligono(0);
+    setMunicipio('');
+    setDfed(0);
+    setDloc(0);
+    setNmunicipio(0);
+    setUbts([]);
   }
 }, [seccion]);
+async function handleFileUpload(event, fieldName) {
+  const file = event.target.files[0];
+  if (!file) return;
 
+  // const filePath = `ciudadanos/${id}/${fieldName}-${file.name}`;
+  const curp = nuevoCiudadano.curp.trim().toUpperCase();
+  const filePath = `ciudadanos/${fieldName}-`+curp;
+  const { data, error } = await supabase.storage.from("fotos_estructura").upload(filePath, file, { upsert: true });
+
+  if (error) {
+    console.error("Error subiendo imagen:", error);
+    return;
+  }
+
+  const { data: urlData } = supabase.storage.from("fotos_estructura").getPublicUrl(filePath);
+  setNuevoCiudadano((prev) => ({ ...prev, [fieldName]: urlData.publicUrl }));
+}
+
+{/* <label>TIPO: <input type="text" value={nuevoCiudadano.tipo} onChange={(e) => setNuevoCiudadano({ ...nuevoCiudadano, tipo: e.target.value })} className="border p-2 w-full" required/></label> */}
+        
   return (
     <div className="p-4 mx-auto">
       <h1 className="text-xl font-bold mb-4">Agregar Ciudadano</h1>
       <div className="grid gap-4">
 
-      {/* dtto_fed	dtto_loc	municipio	nombre_municipio	poligono	seccion	ubt	area_adscripcion	dependencia	puesto	id_puesto	tipo	ingreso_estructura	observaciones	
-      usuario	password	nombre	a_paterno	a_materno	curp	calle	n_ext_mz	n_int_lt	n_casa	c_p	col_loc	telefono_1	telefono_2	cuenta_inst	cuenta_fb	cuenta_x	status */}
+      {/* dtto_fed	dtto_loc	municipio	nombre_municipio	poligono	seccion	ubt	
+        area_adscripcion	dependencia	puesto	id_puesto	tipo	ingreso_estructura	observaciones	
+      usuario	password	nombre	a_paterno	a_materno	curp	calle	
+      n_ext_mz	n_int_lt	n_casa	c_p	col_loc	telefono_1	telefono_2	
+      cuenta_inst	cuenta_fb	cuenta_x	status */}
+      
       <form onSubmit={handleSubmit} /*class="py-4 px-6"*/>
-        {/* <label>DISTRITO FEDETAL: <input type="number" value={nuevoCiudadano.dtto_fed} onChange={(e) => setNuevoCiudadano({ ...nuevoCiudadano, dtto_fed: e.target.value })} className="border p-2 w-full" required/></label>
-        <label>DISTRITO LOCAL: <input type="number" value={nuevoCiudadano.dtto_loc} onChange={(e) => setNuevoCiudadano({ ...nuevoCiudadano, dtto_loc: e.target.value })} className="border p-2 w-full" required/></label>
-        <label>N° MUNICIPIO: <input type="number" value={nuevoCiudadano.municipio} onChange={(e) => setNuevoCiudadano({ ...nuevoCiudadano, municipio: e.target.value })} className="border p-2 w-full" required/></label>
-        <label>MUNICIPIO: <input type="text" value={nuevoCiudadano.nombre_municipio} onChange={(e) => setNuevoCiudadano({ ...nuevoCiudadano, nombre_municipio: e.target.value })} className="border p-2 w-full" required/></label>
-        <label>POLÍGONO: <input type="number" value={nuevoCiudadano.poligono} onChange={(e) => setNuevoCiudadano({ ...nuevoCiudadano, poligono: e.target.value })} className="border p-2 w-full" required/></label> */}
         {/* <label>SECCIÓN: 
           <input type="text" 
                   value={secciones.seccion} 
@@ -196,9 +273,54 @@ useEffect(() => {
                   required/>
         </label> */}
 
-
-        <div className="border p-2 w-full" >
-      
+                
+        
+    <div className="border p-2 w-full" >
+    <div className="flex flex-wrap justify md:justify-start mb-4">
+        <div>
+          <img src={nuevoCiudadano.url_foto_perfil} alt="Perfil" className="w-auto h-64 object-cover rounded-lg m-auto" />
+          <input type="file" onChange={(e) => handleFileUpload(e, "url_foto_perfil")} class="block w-full text-sm text-gray-500
+        file:me-4 file:py-2 file:px-4
+        file:rounded-lg file:border-0
+        file:text-sm file:font-semibold
+        file:bg-blue-600 file:text-white
+        hover:file:bg-blue-700
+        file:disabled:opacity-50 file:disabled:pointer-events-none
+        dark:text-neutral-500
+        dark:file:bg-blue-500
+        dark:hover:file:bg-blue-400 mt-6"/>
+        </div>
+        <div className="mx-16"></div>
+        <div>
+          <img src={nuevoCiudadano.url_foto_ine1} alt="INE Frente" className="w-auto h-64 object-cover rounded-lg m-auto" />
+          <input type="file" onChange={(e) => handleFileUpload(e, "url_foto_ine1")} class="block w-full text-sm text-gray-500
+        file:me-4 file:py-2 file:px-4
+        file:rounded-lg file:border-0
+        file:text-sm file:font-semibold
+        file:bg-blue-600 file:text-white
+        hover:file:bg-blue-700
+        file:disabled:opacity-50 file:disabled:pointer-events-none
+        dark:text-neutral-500
+        dark:file:bg-blue-500
+        dark:hover:file:bg-blue-400 mt-6" />
+       
+       
+        </div>
+        <div className="mx-16"></div>
+        <div>
+          <img src={nuevoCiudadano.url_foto_ine2} alt="INE Reverso" className="w-auto h-64 object-cover rounded-lg m-auto" />
+          <input type="file" onChange={(e) => handleFileUpload(e, "url_foto_ine2")} class="block w-full text-sm text-gray-500
+        file:me-4 file:py-2 file:px-4
+        file:rounded-lg file:border-0
+        file:text-sm file:font-semibold
+        file:bg-blue-600 file:text-white
+        hover:file:bg-blue-700
+        file:disabled:opacity-50 file:disabled:pointer-events-none
+        dark:text-neutral-500
+        dark:file:bg-blue-500
+        dark:hover:file:bg-blue-400 mt-6" />
+        </div>
+      </div>
       <div className="border p-2 w-full" >
         <label htmlFor="seccion">Sección:</label>
         <input
@@ -206,6 +328,7 @@ useEffect(() => {
           type="text"
           value={seccion}
           onChange={(e) => setSeccion(e.target.value)}
+          // onChange={(e) => setNuevoCiudadano({ ...nuevoCiudadano, ubt: e.target.value })}
           // value={nuevoCiudadano.seccion} 
           // onChange={(e) => setNuevoCiudadano({ ...nuevoCiudadano, seccion: e.target.value }) }
           placeholder="Ingresa la sección"
@@ -250,12 +373,13 @@ useEffect(() => {
       )}
     </div>
         {/* <label>UBT: <input type="text" value={nuevoCiudadano.ubt} onChange={(e) => setNuevoCiudadano({ ...nuevoCiudadano, ubt: e.target.value })} className="border p-2 w-full" required/></label> */}
-        <label>AREA: <input type="text" value={nuevoCiudadano.area_adscripcion} onChange={(e) => setNuevoCiudadano({ ...nuevoCiudadano, area_adscripcion: e.target.value })} className="border p-2 w-full" required/></label>
+        <label>AREA: <input type="text" value={nuevoCiudadano.area_adscripcion} onChange={(e) => setNuevoCiudadano({ ...nuevoCiudadano, area_adscripcion: e.target.value.trim().toUpperCase() })} className="border p-2 w-full" required/></label>
         <label>DEPENDENCIA: 
           <select id="dependen"
           value={nuevoCiudadano.dependencia} 
           onChange={(e) => setNuevoCiudadano({ ...nuevoCiudadano, dependencia: e.target.value })} 
           className="border p-2 w-full" required>
+            <option>Selecionar</option>
             {dependencias.map((dep, index) => (
               <option key={index} value={dep}>
                 {dep}
@@ -269,8 +393,18 @@ useEffect(() => {
           Puesto:
           <select 
           value={nuevoCiudadano.puesto} 
-          onChange={(e) => setNuevoCiudadano({ ...nuevoCiudadano, puesto: e.target.value })}
-          className="border p-2 w-full">
+          // onChange={(e) => setNuevoCiudadano({ ...nuevoCiudadano, puesto: e.target.value })}
+          onChange={(e) => {
+            const selectedPuesto = e.target.value;
+            const puestoData = puestos.find((p) => p.puesto === selectedPuesto);
+            // const puestoDataId = puestos.find((p.id_puesto) => p.puesto === selectedPuesto);
+            setNuevoCiudadano((prev) => ({
+              ...prev,
+              puesto: selectedPuesto,
+              id_puesto: puestoData ? puestoData.id_puesto : 0,
+            }));
+          }}
+          className="border p-2 w-full" required>
             <option value="" >Todos</option>
             {puestos.map((pues, index) => (
               <option key={index} value={pues}>
@@ -283,20 +417,21 @@ useEffect(() => {
         
         
         
-        <label>TIPO: <input type="text" value={nuevoCiudadano.tipo} onChange={(e) => setNuevoCiudadano({ ...nuevoCiudadano, tipo: e.target.value })} className="border p-2 w-full" required/></label>
+        <label>TIPO: <input type="text" value={nuevoCiudadano.tipo} 
+        onChange={(e) => setNuevoCiudadano({ ...nuevoCiudadano, tipo: e.target.value })} className="border p-2 w-full" required/></label>
         <label>INGRESO A LA ESTRUCTURA: <input type="date" value={nuevoCiudadano.ingreso_estructura} onChange={(e) => setNuevoCiudadano({ ...nuevoCiudadano, ingreso_estructura: e.target.value })} className="border p-2 w-full" required/></label>
-        <label>OBSERVACIONES: <input type="text" value={nuevoCiudadano.observaciones} onChange={(e) => setNuevoCiudadano({ ...nuevoCiudadano, observaciones: e.target.value })} className="border p-2 w-full" required/></label>
-        <label>Usuario: <input type="text" value={nuevoCiudadano.usuario} onChange={(e) => setNuevoCiudadano({ ...nuevoCiudadano, usuario: e.target.value })} className="border p-2 w-full" required/></label>
-        <label>Contraseña: <input type="text" value={nuevoCiudadano.password} onChange={(e) => setNuevoCiudadano({ ...nuevoCiudadano, password: e.target.value })} className="border p-2 w-full" required/></label>
-        <label>Nombre: <input type="text" value={nuevoCiudadano.nombre} onChange={(e) => setNuevoCiudadano({ ...nuevoCiudadano, nombre: e.target.value })} className="border p-2 w-full" required/></label>
-        <label>Apellido Paterno: <input type="text" value={nuevoCiudadano.a_paterno} onChange={(e) => setNuevoCiudadano({ ...nuevoCiudadano, a_paterno: e.target.value })} className="border p-2 w-full" required/></label>
-        <label>Apellido Materno: <input type="text" value={nuevoCiudadano.a_materno} onChange={(e) => setNuevoCiudadano({ ...nuevoCiudadano, a_materno: e.target.value })} className="border p-2 w-full" required/></label>
-        <label>CURP: <input type="text" value={nuevoCiudadano.curp} onChange={(e) => setNuevoCiudadano({ ...nuevoCiudadano, curp: e.target.value })} className="border p-2 w-full" required/></label>
-        <label>Calle: <input type="text" value={nuevoCiudadano.calle} onChange={(e) => setNuevoCiudadano({ ...nuevoCiudadano, calle: e.target.value })} className="border p-2 w-full" required/></label>
-        <label>N° Ext (MZ): <input type="text" value={nuevoCiudadano.n_ext_mz} onChange={(e) => setNuevoCiudadano({ ...nuevoCiudadano, n_ext_mz: e.target.value })} className="border p-2 w-full" required/></label>
-        <label>N° Int (LT): <input type="text" value={nuevoCiudadano.n_int_lt} onChange={(e) => setNuevoCiudadano({ ...nuevoCiudadano, n_int_lt: e.target.value })} className="border p-2 w-full" required/></label>
-        <label>N° Casa: <input type="text" value={nuevoCiudadano.n_casa} onChange={(e) => setNuevoCiudadano({ ...nuevoCiudadano, n_casa: e.target.value })} className="border p-2 w-full" required/></label>
-        <label>Código Postal: <input type="number" value={nuevoCiudadano.c_p} onChange={(e) => setNuevoCiudadano({ ...nuevoCiudadano, c_p: e.target.value })} className="border p-2 w-full" required/></label>
+        <label>OBSERVACIONES: <input type="text" value={nuevoCiudadano.observaciones} onChange={(e) => setNuevoCiudadano({ ...nuevoCiudadano, observaciones: e.target.value.trim().toUpperCase() })} className="border p-2 w-full" required/></label>
+        <label>Usuario: <input type="text" value={nuevoCiudadano.usuario} onChange={(e) => setNuevoCiudadano({ ...nuevoCiudadano, usuario: e.target.value.trim()})} className="border p-2 w-full" required/></label>
+        <label>Contraseña: <input type="text" value={nuevoCiudadano.password} onChange={(e) => setNuevoCiudadano({ ...nuevoCiudadano, password: e.target.value.trim() })} className="border p-2 w-full" required/></label>
+        <label>Nombre: <input type="text" value={nuevoCiudadano.nombre} onChange={(e) => setNuevoCiudadano({ ...nuevoCiudadano, nombre: e.target.value.toUpperCase() })} className="border p-2 w-full" required/></label>
+        <label>Apellido Paterno: <input type="text" value={nuevoCiudadano.a_paterno} onChange={(e) => setNuevoCiudadano({ ...nuevoCiudadano, a_paterno: e.target.value.toUpperCase() })} className="border p-2 w-full" required/></label>
+        <label>Apellido Materno: <input type="text" value={nuevoCiudadano.a_materno} onChange={(e) => setNuevoCiudadano({ ...nuevoCiudadano, a_materno: e.target.value.toUpperCase() })} className="border p-2 w-full" required/></label>
+        <label>CURP: <input type="text" value={nuevoCiudadano.curp} onChange={(e) => setNuevoCiudadano({ ...nuevoCiudadano, curp: e.target.value.trim().toUpperCase() })} className="border p-2 w-full" required/></label>
+        <label>Calle: <input type="text" value={nuevoCiudadano.calle} onChange={(e) => setNuevoCiudadano({ ...nuevoCiudadano, calle: e.target.value.toUpperCase() })} className="border p-2 w-full" required/></label>
+        <label>N° Ext (MZ): <input type="text" value={nuevoCiudadano.n_ext_mz} onChange={(e) => setNuevoCiudadano({ ...nuevoCiudadano, n_ext_mz: e.target.value.toUpperCase() })} className="border p-2 w-full" required/></label>
+        <label>N° Int (LT): <input type="text" value={nuevoCiudadano.n_int_lt} onChange={(e) => setNuevoCiudadano({ ...nuevoCiudadano, n_int_lt: e.target.value.toUpperCase() })} className="border p-2 w-full" required/></label>
+        <label>N° Casa: <input type="text" value={nuevoCiudadano.n_casa} onChange={(e) => setNuevoCiudadano({ ...nuevoCiudadano, n_casa: e.target.value.toUpperCase() })} className="border p-2 w-full" required/></label>
+        <label>Código Postal: <input type="number" value={nuevoCiudadano.c_p} onChange={(e) => setNuevoCiudadano({ ...nuevoCiudadano, c_p: e.target.value})} className="border p-2 w-full" required/></label>
         <label>Teléfono 1: <input type="text" value={nuevoCiudadano.telefono_1} onChange={(e) => setNuevoCiudadano({ ...nuevoCiudadano, telefono_1: e.target.value })} className="border p-2 w-full" required/></label>
         <label>Teléfono 2: <input type="text" value={nuevoCiudadano.telefono_2} onChange={(e) => setNuevoCiudadano({ ...nuevoCiudadano, telefono_2: e.target.value })} className="border p-2 w-full" required/></label>
         <label>INSTAGRAM: <input type="text" value={nuevoCiudadano.cuenta_inst} onChange={(e) => setNuevoCiudadano({ ...nuevoCiudadano, cuenta_inst: e.target.value })} className="border p-2 w-full" required/></label>
