@@ -3,10 +3,6 @@ import { GoogleMap, useJsApiLoader, Polygon,InfoWindow } from '@react-google-map
 import { useLocation, useParams } from 'react-router-dom';
 import supabase from '../supabase/client';
 
-
-
-
-
 const parseMultipolygon=(wkt) =>{
     wkt = String(wkt);
   const coordinatesString = wkt
@@ -41,7 +37,7 @@ const center = {
 
 
 
-const MapComponent = (props) => {
+const MapComponent2 = (props) => {
     const { state } = useLocation();
 
     const [section, setSeccion] = useState([]);
@@ -52,7 +48,7 @@ const MapComponent = (props) => {
       try {
         const { data, error } = await supabase
           .from('secciones') // Nombre de la tabla
-          .select('*').eq("pologono",props.mapa);
+          .select('*').in('pologono',[1,2,3,4,5,6,7,8,9]);//.eq("pologono",props.mapa);//
           // .eq('seccion', user.seccion); // Consulta todos los campos
   
         if (error) throw error;
@@ -74,15 +70,9 @@ const MapComponent = (props) => {
   });
 
   function  onEdit(){
-    console.log("sec");
+    // console.log("sec");
   };
 
-
-  
-
-  
-  
-  
   return isLoaded ? (
     <GoogleMap
       mapContainerStyle={containerStyle}
@@ -107,9 +97,12 @@ const MapComponent = (props) => {
           }}
       />
     ))}
+  
+    
+   
 
 
     </GoogleMap>
   ) : <></>;
 };
-export default MapComponent;
+export default MapComponent2;

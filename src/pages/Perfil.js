@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { useLocation, useParams } from 'react-router-dom';
+import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import supabase from '../supabase/client';
 import MapComponent from '../map/MapComponent';
 import MapComponent2 from '../map/MapComponent2';
@@ -12,6 +12,7 @@ const Perfil = () => {
   const [section, setSeccion] = useState({});
   const [error, setError] = useState(null);
   const [promotores, setPromotores] = useState([]);
+  const navigate = useNavigate();
 
   const fetchSecciones = async () => {
     try {
@@ -68,7 +69,10 @@ const Perfil = () => {
       <p className="border p-2"><strong>Puesto:</strong> {user.puesto}</p>
       <p className="border p-2"><strong>Lista nominal:</strong> {section.lista_nominal}</p>
       <p className="border p-2"><strong>Promotor@s del Bienestar:</strong> {promotores.length}</p>
-      
+      <button onClick={() => navigate(`/seccional/agregar/${user.usuario}`, {state: { user: user }})} className="bg-green-500 text-white mx-auto my-auto px-4 py-2 rounded">
+        
+        Agregar Ciudadano
+        </button>
       <table className="w-full border-collapse border border-gray-300">
         <thead>
           <tr className="bg-gray-200">
