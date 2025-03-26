@@ -9,26 +9,26 @@ const Perfil = () => {
   const { user } = state || {};
   const { usuario } = useParams();
 
-  const [section, setSeccion] = useState({});
+  // const [section, setSeccion] = useState({});
   const [error, setError] = useState(null);
   const [promotores, setPromotores] = useState([]);
   const navigate = useNavigate();
 
-  const fetchSecciones = async () => {
-    try {
-      const { data, error } = await supabase
-        .from('secciones') // Nombre de la tabla
-        .select('*').eq("seccion",user.seccion).single();
-        // .eq('seccion', user.seccion); // Consulta todos los campos
+  // const fetchSecciones = async () => {
+  //   try {
+  //     const { data, error } = await supabase
+  //       .from('secciones') // Nombre de la tabla
+  //       .select('*').eq("seccion",user.seccion).single();
+  //       // .eq('seccion', user.seccion); // Consulta todos los campos
 
-      if (error) throw error;
+  //     if (error) throw error;
 
-      setSeccion(data); // Actualiza el estado con los datos obtenidos
-    } catch (error) {
-      console.error("Error",error.message);
-      setError(error.message);
-    }
-  };
+  //     setSeccion(data); // Actualiza el estado con los datos obtenidos
+  //   } catch (error) {
+  //     console.error("Error",error.message);
+  //     setError(error.message);
+  //   }
+  // };
   const fetchPromotoras = async () => {
     try {
       const { data, error } = await supabase
@@ -45,7 +45,7 @@ const Perfil = () => {
     }
   };
     useEffect(() => {
-    fetchSecciones(); // Llama a la función al montar el componente
+    // fetchSecciones(); // Llama a la función al montar el componente
     fetchPromotoras();
   }, []);
 
@@ -67,7 +67,7 @@ const Perfil = () => {
       <p className="border p-2"><strong>Polígono:</strong> {user.poligono}</p>
       <p className="border p-2"><strong>Sección:</strong> {user.seccion}</p>
       <p className="border p-2"><strong>Puesto:</strong> {user.puesto}</p>
-      <p className="border p-2"><strong>Lista nominal:</strong> {section.lista_nominal}</p>
+      {/* <p className="border p-2"><strong>Lista nominal:</strong> {section.lista_nominal}</p> */}
       <p className="border p-2"><strong>Promotor@s del Bienestar:</strong> {promotores.length}</p>
       <button onClick={() => navigate(`/seccional/agregar/${user.usuario}`, {state: { user: user }})} className="bg-green-500 text-white mx-auto my-auto px-4 py-2 rounded">
         
@@ -101,7 +101,7 @@ const Perfil = () => {
           <p>No se encontraron resultados.</p>
         )}
       </table>
-      <MapComponent mapa={section.geometry}/>
+      {/* <MapComponent mapa={section.geometry}/> */}
       {/* <MapComponent2 mapa={user.poligono}/> */}
     </div>
   );

@@ -107,7 +107,8 @@ export default function AgregarCiudadanoRS() {
           nombre_municipio: seccionData[0].nombre_municipio,
           dtto_fed: seccionData[0].dtto_fed,
           dtto_loc: seccionData[0].dtto_loc,
-          municipio: seccionData[0].municipio
+          municipio: seccionData[0].municipio,
+          puesto: "CIUDADANO"
         }));
         // Buscar las UBT correspondientes a la sección
         const { data: ubtData, error: ubtError } = await supabase
@@ -153,7 +154,14 @@ export default function AgregarCiudadanoRS() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     const curp = nuevoCiudadano.curp.trim().toUpperCase(); // Aseguramos formato correcto
+    // setNuevoCiudadano((prev) => ({
+    //   ...prev,
+    //   usuario: curp
+    // }));
 
+    setNuevoCiudadano({ ...nuevoCiudadano, usuario: curp,ingreso_estructura: '2025-03-30' });
+    // setNuevoCiudadano({ ...nuevoCiudadano, ingreso_estructura: '2025-03-30' });
+    
     if (!CURP_REGEX.test(curp)) {
       console.log("El CURP no es válido:", curp);
       alert("El CURP ingresado no es válido. Verifica que tenga el formato correcto.");
@@ -240,17 +248,17 @@ async function handleFileUpload(event, fieldName) {
   if (!file) return;
 
   // const filePath = `ciudadanos/${id}/${fieldName}-${file.name}`;
-  const curp = nuevoCiudadano.curp.trim().toUpperCase();
-  const filePath = `ciudadanos/${fieldName}-`+curp;
-  const { data, error } = await supabase.storage.from("fotos_estructura").upload(filePath, file, { upsert: true });
+  // const curp = nuevoCiudadano.curp.trim().toUpperCase();
+  // const filePath = `ciudadanos/${fieldName}-`+curp;
+  // const { data, error } = await supabase.storage.from("fotos_estructura").upload(filePath, file, { upsert: true });
 
-  if (error) {
-    console.error("Error subiendo imagen:", error);
-    return;
-  }
+  // if (error) {
+  //   console.error("Error subiendo imagen:", error);
+  //   return;
+  // }
 
-  const { data: urlData } = supabase.storage.from("fotos_estructura").getPublicUrl(filePath);
-  setNuevoCiudadano((prev) => ({ ...prev, [fieldName]: urlData.publicUrl }));
+  // const { data: urlData } = supabase.storage.from("fotos_estructura").getPublicUrl(filePath);
+  // setNuevoCiudadano((prev) => ({ ...prev, [fieldName]: urlData.publicUrl }));
 }
 
 {/* <label>TIPO: <input type="text" value={nuevoCiudadano.tipo} onChange={(e) => setNuevoCiudadano({ ...nuevoCiudadano, tipo: e.target.value })} className="border p-2 w-full" required/></label> */}
@@ -311,14 +319,15 @@ async function handleFileUpload(event, fieldName) {
         <label>Calle: <input type="text" value={nuevoCiudadano.calle} onChange={(e) => setNuevoCiudadano({ ...nuevoCiudadano, calle: e.target.value.toUpperCase() })} className="border p-2 w-full" required/></label>
         <label>N° Ext (MZ): <input type="text" value={nuevoCiudadano.n_ext_mz} onChange={(e) => setNuevoCiudadano({ ...nuevoCiudadano, n_ext_mz: e.target.value.toUpperCase() })} className="border p-2 w-full" required/></label>
         <label>N° Int (LT): <input type="text" value={nuevoCiudadano.n_int_lt} onChange={(e) => setNuevoCiudadano({ ...nuevoCiudadano, n_int_lt: e.target.value.toUpperCase() })} className="border p-2 w-full" required/></label>
-        <label>N° Casa: <input type="text" value={nuevoCiudadano.n_casa} onChange={(e) => setNuevoCiudadano({ ...nuevoCiudadano, n_casa: e.target.value.toUpperCase() })} className="border p-2 w-full" required/></label>
+        <label>N° Casa: <input type="text" value={nuevoCiudadano.n_casa} onChange={(e) => setNuevoCiudadano({ ...nuevoCiudadano, n_casa: e.target.value.toUpperCase() })} className="border p-2 w-full" /></label>
+        <label>Localidad: <input type="text" value={nuevoCiudadano.col_loc} onChange={(e) => setNuevoCiudadano({ ...nuevoCiudadano, col_loc: e.target.value.toUpperCase() })} className="border p-2 w-full" /></label>
         <label>Código Postal: <input type="number" value={nuevoCiudadano.c_p} onChange={(e) => setNuevoCiudadano({ ...nuevoCiudadano, c_p: e.target.value})} className="border p-2 w-full" required/></label>
         <label>Teléfono 1: <input type="text" value={nuevoCiudadano.telefono_1} onChange={(e) => setNuevoCiudadano({ ...nuevoCiudadano, telefono_1: e.target.value })} className="border p-2 w-full" required/></label>
-        <label>Teléfono 2: <input type="text" value={nuevoCiudadano.telefono_2} onChange={(e) => setNuevoCiudadano({ ...nuevoCiudadano, telefono_2: e.target.value })} className="border p-2 w-full" required/></label>
+        {/* <label>Teléfono 2: <input type="text" value={nuevoCiudadano.telefono_2} onChange={(e) => setNuevoCiudadano({ ...nuevoCiudadano, telefono_2: e.target.value })} className="border p-2 w-full" required/></label>
         <label>INSTAGRAM: <input type="text" value={nuevoCiudadano.cuenta_inst} onChange={(e) => setNuevoCiudadano({ ...nuevoCiudadano, cuenta_inst: e.target.value })} className="border p-2 w-full" required/></label>
         <label>FACEBOOK 1: <input type="text" value={nuevoCiudadano.cuenta_fb} onChange={(e) => setNuevoCiudadano({ ...nuevoCiudadano, cuenta_fb: e.target.value })} className="border p-2 w-full" required/></label>
         <label>X: <input type="text" value={nuevoCiudadano.cuenta_x} onChange={(e) => setNuevoCiudadano({ ...nuevoCiudadano, cuenta_x: e.target.value })} className="border p-2 w-full" required/></label>
-        
+         */}
         
         
         <button /*onClick={handleAdd}*/ type="submit" className="bg-green-500 text-white px-4 py-2 rounded">Guardar</button>
