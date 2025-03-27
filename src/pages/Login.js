@@ -147,6 +147,7 @@ const Login = () => {
         'coordinador de poligono': `/coordinador/${data.usuario}`,
         seccional: `/perfil/${data.usuario}`,
         'promotora-bienestar': `/reporte/${data.usuario}`,
+        enlace: `/enlace/${data.usuario}`
       };
 
       const ruta = rutas[data.puesto.toLowerCase()] || null;
