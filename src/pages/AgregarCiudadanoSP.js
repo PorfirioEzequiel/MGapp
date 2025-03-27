@@ -204,7 +204,7 @@ export default function AgregarCiudadanoSP() {
         
         <button /*onClick={handleAdd}*/ type="submit" className="bg-green-500 text-white px-4 py-2 rounded">Guardar</button>
         </form>
-        <button onClick={() => navigate(`/perfil/${user.usuario}`, {state: { user: user }})} className="bg-red-500 text-white px-4 py-2 rounded">Cancelar</button>
+        <button onClick={() => navigate(`/enlace/${user.usuario}`, {state: { user: user }})} className="bg-red-500 text-white px-4 py-2 rounded">Cancelar</button>
       </div>
     </div>
   );
