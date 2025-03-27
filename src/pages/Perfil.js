@@ -12,6 +12,7 @@ const Perfil = () => {
   // const [section, setSeccion] = useState({});
   const [error, setError] = useState(null);
   const [promotores, setPromotores] = useState([]);
+  const [ciudadanos, setCiudadanos] = useState([]);
   const navigate = useNavigate();
 
   // const fetchSecciones = async () => {
@@ -33,7 +34,7 @@ const Perfil = () => {
     try {
       const { data, error } = await supabase
         .from('ciudadania') // Nombre de la tabla
-        .select('*').eq("seccion",user.seccion).eq("puesto","PROMOTORA-BIENESTAR");
+        .select('*').eq("seccion",user.seccion).eq("puesto","PROMOTORA-BIENESTAR").order('ubt', { ascending: true });
         // .eq('seccion', user.seccion); // Consulta todos los campos
 
       if (error) throw error;
@@ -44,8 +45,26 @@ const Perfil = () => {
       setError(error.message);
     }
   };
+
+  const fetchCiudadanos = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('ciudadania') // Nombre de la tabla
+        .select('*').eq("seccion",user.seccion).eq("puesto","CIUDADANO").order('ubt', { ascending: true });
+        // .eq('seccion', user.seccion); // Consulta todos los campos
+
+      if (error) throw error;
+
+      setCiudadanos(data); // Actualiza el estado con los datos obtenidos
+    } catch (error) {
+      console.error("Error",error.message);
+      setError(error.message);
+    }
+  };
+
     useEffect(() => {
     // fetchSecciones(); // Llama a la función al montar el componente
+    fetchCiudadanos();
     fetchPromotoras();
   }, []);
 
@@ -73,6 +92,8 @@ const Perfil = () => {
         
         Agregar Ciudadano
         </button>
+
+
       <table className="w-full border-collapse border border-gray-300">
         <thead>
           <tr className="bg-gray-200">
@@ -86,6 +107,37 @@ const Perfil = () => {
       {promotores.length > 0 ? (
           <tbody>
             {promotores.map((resultado) => (
+              <tr key={resultado.id}>
+                <td className="border p-2">{resultado.poligono}</td>
+                <td className="border p-2">{resultado.seccion}</td>
+                <td className="border p-2">{resultado.ubt}</td>
+                <td className="border p-2">{resultado.nombre} {resultado.a_paterno} {resultado.a_materno}</td>
+                <td className="border p-2">{resultado.puesto}</td>
+                {/* {resultado.poligono} - {resultado.seccion} - {resultado.puesto} - {resultado.nombre}  {resultado.a_paterno}  {resultado.a_materno} */}
+                
+              </tr>
+            ))}
+          </tbody>
+        ) : (
+          <p>No se encontraron resultados.</p>
+        )}
+      </table>
+     < div className='my-8 mx-2'>
+        <h2 ><strong>CIUDADANOS</strong></h2>
+      </div>
+      <table className="w-full border-collapse border border-gray-300">
+        <thead>
+          <tr className="bg-gray-200">
+            <th className="border p-2">Polígono</th>
+            <th className="border p-2">Sección</th>
+            <th className="border p-2">UBT</th>
+            <th className="border p-2">Nombre</th>
+            <th className="border p-2">Puesto</th>
+          </tr>
+        </thead>
+      {ciudadanos.length > 0 ? (
+          <tbody>
+            {ciudadanos.map((resultado) => (
               <tr key={resultado.id}>
                 <td className="border p-2">{resultado.poligono}</td>
                 <td className="border p-2">{resultado.seccion}</td>
