@@ -50,7 +50,7 @@ const Enlace = () => {
     try {
       const { data, error } = await supabase
         .from('ciudadania') // Nombre de la tabla
-        .select('*').eq("seccion",user.seccion).eq("puesto","CIUDADANO");
+        .select('*').eq("seccion",user.seccion).eq("puesto","CIUDADANO").order('observaciones', { ascending: true });
         // .eq('seccion', user.seccion); // Consulta todos los campos
 
       if (error) throw error;
@@ -106,6 +106,7 @@ const Enlace = () => {
             <th className="border p-2">Delegación</th>
             <th className="border p-2">SP</th>
             <th className="border p-2">Nombre</th>
+            <th className="border p-2">CURP</th>
             <th className="border p-2">Puesto</th>
           </tr>
         </thead>
@@ -117,6 +118,7 @@ const Enlace = () => {
                 <td className="border p-2">{resultado.seccion}</td>
                 <td className="border p-2">{resultado.observaciones}</td>
                 <td className="border p-2">{resultado.nombre} {resultado.a_paterno} {resultado.a_materno}</td>
+                <td className="border p-2">{resultado.curp}</td>
                 <td className="border p-2">{resultado.puesto}</td>
                 
               </tr>

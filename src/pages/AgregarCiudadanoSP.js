@@ -63,7 +63,7 @@ export default function AgregarCiudadanoSP() {
   
   
   
-  const CURP_REGEX = /^[A-Z]{1}[AEIOU]{1}[A-Z]{2}\d{2}(0[1-9]|1[0-2])(0[1-9]|[12]\d|3[01])[HM]{1}[A-Z]{2}[B-DF-HJ-NP-TV-Z]{3}[A-Z0-9]{1}\d{1}$/;
+  const CURP_REGEX = /^[A-Z]{1}[AEIOUX]{1}[A-Z]{2}\d{2}(0[1-9]|1[0-2])(0[1-9]|[12]\d|3[01])[HM]{1}[A-Z]{2}[B-DF-HJ-NP-TV-Z]{3}[A-Z0-9]{1}\d{1}$/;
 
 
 
@@ -88,7 +88,8 @@ export default function AgregarCiudadanoSP() {
       const { error } = await supabase.from('ciudadania').insert([nuevoCiudadano]);
       if (error) {
         console.error("Error al guardar los datos:", error);
-        alert("Error al guardar los datos:", error)
+        alert(error.code=== 23505 ? "":"REGISTRO DUPLICADO");
+        
         return;
       }
       alert("Ciudadano agregado correctamente");
@@ -142,6 +143,7 @@ export default function AgregarCiudadanoSP() {
       
     } catch (error) {
       console.error("Error inesperado:", error);
+      alert("Error al guardar los datos:", error)
       // setMessage("Ocurrió un error al enviar el reporte.");
     }
   };
