@@ -34,7 +34,7 @@ const Perfil = () => {
     try {
       const { data, error } = await supabase
         .from('ciudadania') // Nombre de la tabla
-        .select('*').eq("seccion",user.seccion).eq("puesto","PROMOTORA-BIENESTAR").order('ubt', { ascending: true });
+        .select('*').eq("seccion",user.seccion).eq("puesto","PROMOTORA-BIENESTAR").eq("status","ACTIVO").order('ubt', { ascending: true });
         // .eq('seccion', user.seccion); // Consulta todos los campos
 
       if (error) throw error;
