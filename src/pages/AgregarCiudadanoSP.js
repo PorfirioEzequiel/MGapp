@@ -88,7 +88,8 @@ export default function AgregarCiudadanoSP() {
       const { error } = await supabase.from('ciudadania').insert([nuevoCiudadano]);
       if (error) {
         console.error("Error al guardar los datos:", error);
-        alert(error.code=== 23505 ? "":"REGISTRO DUPLICADO");
+        alert("Error al guardar los datos:", error)
+        // alert(error.code=== 23505 ? "":"REGISTRO DUPLICADO");
         
         return;
       }
