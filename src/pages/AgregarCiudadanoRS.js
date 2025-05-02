@@ -2,339 +2,412 @@ import { useEffect, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import supabase from '../supabase/client';
 
-
 export default function AgregarCiudadanoRS() {
     const { state } = useLocation();
     const { user } = state || {};
-  const navigate = useNavigate();
-  // const [id, setId]= useState(1410);
-  const [seccion, setSeccion] = useState(user.seccion);
-  // const [seccion, setSeccion] = useState('');
-  const [dfed, setDfed] = useState(0);
-  const [dloc, setDloc] = useState(0);
-  const [poligono, setPoligono] = useState();
-  const [municipio, setMunicipio] = useState('');
-  const [nmunicipio, setNmunicipio] = useState(82);
-  const [secciones, setSecciones] = useState([]);
-  const [ubts, setUbts] = useState([]);
-  const [ubt, setUbt] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState(null);
-  const dependencias = [ "UBT","DIF", "ODAPAS","IMDEPORTE", "AYTTO"];
-  const [puestos, setPuestos] = useState([]);
-  const [puesto, setPuesto] = useState();
-  const [nuevoCiudadano, setNuevoCiudadano] = useState({
-    dtto_fed: 0,
-    dtto_loc: 0,
-    municipio: nmunicipio,
-    nombre_municipio: municipio,	
-    poligono: poligono,
-    seccion: "",
-    ubt: "",
-    area_adscripcion: "",	
-    dependencia: "",	
-    puesto: "",	
-    id_puesto: 0,	
-    tipo: "",	
-    ingreso_estructura: "",	
-    observaciones: "",
-    usuario: "",	
-    password: "",
-    nombre: "",
-    a_paterno: "",
-    a_materno: "",
-    curp: "",
-    calle: "",
-    n_ext_mz: "",	
-    n_int_lt: "",
-    n_casa: "",
-    c_p: 0,
-    col_loc: "",
-    telefono_1: "",
-    telefono_2: "",
-    cuenta_inst: "",
-    cuenta_fb: "",
-    cuenta_x: "",
-    status: "ACTIVO",
-    url_foto_perfil: "",
-    url_foto_ine1: "",
-    url_foto_ine2: "",
-  });
-  useEffect(() => {
-    const cargarPuestos = async () => {
-      try {
-        const { data, error } = await supabase
-          .from('puestos') // Reemplaza con el nombre de tu tabla
-          .select('*');
-        if (error) throw error;
-        // Extraer valores únicos para los selectores
-        const puestos = data.map((item) => item.puesto);
-        // console.log(data.filter(id => id.puesto ==puesto));
-        setPuestos(puestos );
-      } catch (err) {
-        console.error('Error al cargar opciones:', err.message);
-      }
+    const navigate = useNavigate();
+    
+    const [loading, setLoading] = useState(false);
+    const [error, setError] = useState(null);
+    const [ubts, setUbts] = useState([]);
+    const [puestos, setPuestos] = useState([]);
+
+    // Form validation regex
+    const CURP_REGEX = /^[A-Z]{1}[AEIOUX]{1}[A-Z]{2}\d{2}(0[1-9]|1[0-2])(0[1-9]|[12]\d|3[01])[HM]{1}[A-Z]{2}[B-DF-HJ-NP-TV-Z]{3}[A-Z0-9]{1}\d{1}$/;
+    const PHONE_REGEX = /^[0-9]{10}$/;
+    const ZIP_CODE_REGEX = /^[0-9]{5}$/;
+
+    const initialFormState = {
+        dtto_fed: 0,
+        dtto_loc: 0,
+        municipio: 82,
+        nombre_municipio: '',
+        poligono: '',
+        seccion: user.seccion || '',
+        ubt: "",
+        area_adscripcion: "",    
+        dependencia: "",    
+        puesto: "CIUDADANO",    
+        id_puesto: 0,    
+        tipo: "",    
+        ingreso_estructura: new Date().toISOString().split('T')[0], // Current date
+        observaciones: "",
+        usuario: "",    
+        password: "",
+        nombre: "",
+        a_paterno: "",
+        a_materno: "",
+        curp: "",
+        calle: "",
+        n_ext_mz: "",    
+        n_int_lt: "",
+        n_casa: "",
+        c_p: 0,
+        col_loc: "",
+        telefono_1: "",
+        telefono_2: "",
+        cuenta_inst: "",
+        cuenta_fb: "",
+        cuenta_x: "",
+        status: "ACTIVO",
+        url_foto_perfil: "",
+        url_foto_ine1: "",
+        url_foto_ine2: "",
     };
 
-    cargarPuestos();
-  }, []);
-  
-  // Función para buscar los datos de la sección
-  const buscarDatosSeccion = async (seccion) => {
-    setLoading(true);
-    try {
-      // Buscar el polígono y municipio
-      const { data: seccionData, error } = await supabase
-        .from('ubt_catalogo') // Cambia por el nombre de tu tabla
-        .select('*')
-        .eq('seccion', seccion)
-        .limit(1);
+    const [formData, setFormData] = useState(initialFormState);
 
-      if (error) throw error;
+    // Load job positions on component mount
+    useEffect(() => {
+        const loadPositions = async () => {
+            try {
+                const { data, error } = await supabase
+                    .from('puestos')
+                    .select('*');
+                
+                if (error) throw error;
+                setPuestos(data.map(item => item.puesto));
+            } catch (err) {
+                console.error('Error loading positions:', err.message);
+                setError('Error al cargar los puestos disponibles');
+            }
+        };
 
-      if (seccionData && seccionData.length > 0) {
-        setPoligono(seccionData[0].poligono);
-        // setNuevoCiudadano({ ...nuevoCiudadano, poligono: seccionData[0].poligono })}
-        setMunicipio(seccionData[0].nombre_municipio);
-        setDfed(seccionData[0].dtto_fed);
-        setDloc(seccionData[0].dtto_loc);
-        setNmunicipio(seccionData[0].municipio)
+        loadPositions();
+    }, []);
 
-        setNuevoCiudadano((prev) => ({
-          ...prev,
-          seccion,
-          poligono: seccionData[0].poligono,
-          nombre_municipio: seccionData[0].nombre_municipio,
-          dtto_fed: seccionData[0].dtto_fed,
-          dtto_loc: seccionData[0].dtto_loc,
-          municipio: seccionData[0].municipio,
-          puesto: "CIUDADANO"
+    // Load section data when section changes
+    useEffect(() => {
+        const loadSectionData = async () => {
+            if (!formData.seccion) return;
+
+            setLoading(true);
+            try {
+                const { data: sectionData, error } = await supabase
+                    .from('ubt_catalogo')
+                    .select('*')
+                    .eq('seccion', formData.seccion)
+                    .limit(1);
+
+                if (error) throw error;
+
+                if (sectionData && sectionData.length > 0) {
+                    const sectionInfo = sectionData[0];
+                    setFormData(prev => ({
+                        ...prev,
+                        poligono: sectionInfo.poligono,
+                        nombre_municipio: sectionInfo.nombre_municipio,
+                        dtto_fed: sectionInfo.dtto_fed,
+                        dtto_loc: sectionInfo.dtto_loc,
+                        municipio: sectionInfo.municipio,
+                        puesto: "CIUDADANO"
+                    }));
+
+                    // Load UBTs for this section
+                    const { data: ubtData, error: ubtError } = await supabase
+                        .from('ubt_catalogo')
+                        .select('ubt')
+                        .eq('seccion', formData.seccion);
+
+                    if (ubtError) throw ubtError;
+
+                    setUbts(ubtData.map(item => item.ubt));
+                }
+            } catch (error) {
+                console.error('Error loading section data:', error);
+                setError('Error al cargar datos de la sección');
+            } finally {
+                setLoading(false);
+            }
+        };
+
+        loadSectionData();
+    }, [formData.seccion]);
+
+    const handleInputChange = (e) => {
+        const { name, value } = e.target;
+        setFormData(prev => ({
+            ...prev,
+            [name]: typeof prev[name] === 'number' ? Number(value) : value.toUpperCase()
         }));
-        // Buscar las UBT correspondientes a la sección
-        const { data: ubtData, error: ubtError } = await supabase
-          .from('ubt_catalogo') // Cambia por el nombre de tu tabla
-          .select('ubt')
-          .eq('seccion', seccion);
+    };
 
-        if (ubtError) throw ubtError;
+    const handleSubmit = async (e) => {
+        e.preventDefault();
+        setLoading(true);
+        setError(null);
 
-        setUbts(ubtData.map((item) => item.ubt));
-      } else {
-        setPoligono(0);
-        setDfed(0);
-        setDloc(0);
-        setNmunicipio(0);
-        setMunicipio('');
-        setUbts([]);
-      }
-    } catch (error) {
-      console.error('Error al buscar datos:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
+        // Validate required fields
+        const requiredFields = ['nombre', 'a_paterno', 'curp', 'calle', 'n_ext_mz', 'telefono_1', 'c_p'];
+        const missingFields = requiredFields.filter(field => !formData[field]);
 
+        if (missingFields.length > 0) {
+            setError(`Faltan campos obligatorios: ${missingFields.join(', ')}`);
+            setLoading(false);
+            return;
+        }
 
-  async function handleAdd() {
-    const { error } = await supabase.from('ciudadania').insert([nuevoCiudadano]);
+        // Validate CURP format
+        const curp = formData.curp.trim().toUpperCase();
+        if (!CURP_REGEX.test(curp)) {
+            setError("El CURP ingresado no es válido. Verifique el formato.");
+            setLoading(false);
+            return;
+        }
 
-    if (error) console.error("Error agregando ciudadano:", nuevoCiudadano, error);
-    else {
-      alert("Ciudadano agregado correctamente");
-    //   navigate("/");
-    }
-  }
+        // Validate phone number format
+        if (formData.telefono_1 && !PHONE_REGEX.test(formData.telefono_1)) {
+            setError("El teléfono debe tener 10 dígitos");
+            setLoading(false);
+            return;
+        }
 
-  
-  
-  const CURP_REGEX = /^[A-Z]{1}[AEIOUX]{1}[A-Z]{2}\d{2}(0[1-9]|1[0-2])(0[1-9]|[12]\d|3[01])[HM]{1}[A-Z]{2}[B-DF-HJ-NP-TV-Z]{3}[A-Z0-9]{1}\d{1}$/;
+        // Validate ZIP code format
+        if (formData.c_p && !ZIP_CODE_REGEX.test(String(formData.c_p))) {
+            setError("El código postal debe tener 5 dígitos");
+            setLoading(false);
+            return;
+        }
 
+        try {
+            const citizenToInsert = {
+                ...formData,
+                usuario: curp, // Set username as CURP
+                curp: curp // Ensure CURP is in uppercase
+            };
 
+            const { error } = await supabase.from('ciudadania').insert([citizenToInsert]);
+            
+            if (error) {
+                if (error.code === '23505') {
+                    throw new Error("Este CURP ya está registrado");
+                } else {
+                    throw new Error(`Error al guardar: ${error.message}`);
+                }
+            }
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    const curp = nuevoCiudadano.curp.trim().toUpperCase(); // Aseguramos formato correcto
-    // setNuevoCiudadano((prev) => ({
-    //   ...prev,
-    //   usuario: curp
-    // }));
+            alert("Ciudadano agregado correctamente");
+            // Reset form while preserving initial values
+            setFormData({
+                ...initialFormState,
+                seccion: user.seccion || ''
+            });
+            setUbts([]);
+            navigate(`/perfil/${user.usuario}`, { state: { user } })
 
-    setNuevoCiudadano({ ...nuevoCiudadano, usuario: curp,ingreso_estructura: '2025-03-30' });
-    // setNuevoCiudadano({ ...nuevoCiudadano, ingreso_estructura: '2025-03-30' });
-    
-    if (!CURP_REGEX.test(curp)) {
-      console.log("El CURP no es válido:", curp);
-      alert("El CURP ingresado no es válido. Verifica que tenga el formato correcto.");
-      return;
-    }
-    try {
-      console.log(nuevoCiudadano)
-      const { error } = await supabase.from('ciudadania').insert([nuevoCiudadano]);
-      if (error) {
-        console.error("Error al guardar los datos:", error);
-        alert("Error al guardar los datos:");
-        return;
-      }
-      alert("Ciudadano agregado correctamente");
+        } catch (error) {
+            console.error("Error saving citizen:", error);
+            setError(error.message || "Ocurrió un error al guardar los datos");
+        } finally {
+            setLoading(false);
+        }
+    };
 
-    // Limpiar todos los campos
-    setNuevoCiudadano({
-      dtto_fed: 0,
-      dtto_loc: 0,
-      municipio: nmunicipio,
-      nombre_municipio: '',
-      poligono: '',
-      seccion: '',
-      ubt: '',
-      area_adscripcion: '',
-      dependencia: '',
-      puesto: '',
-      id_puesto: 0,
-      tipo: '',
-      ingreso_estructura: '',
-      observaciones: '',
-      usuario: '',
-      password: '',
-      nombre: '',
-      a_paterno: '',
-      a_materno: '',
-      curp: '',
-      calle: '',
-      n_ext_mz: '',
-      n_int_lt: '',
-      n_casa: '',
-      c_p: 0,
-      col_loc: '',
-      telefono_1: '',
-      telefono_2: '',
-      cuenta_inst: '',
-      cuenta_fb: '',
-      cuenta_x: '',
-      status: 'ACTIVO',
-      url_foto_perfil: '',
-      url_foto_ine1: '',
-      url_foto_ine2: '',
-    });
+    return (
+        <div className="p-4 mx-auto max-w-3xl">
+            <h1 className="text-2xl font-bold mb-6 text-center">Agregar Ciudadano</h1>
+            
+            {error && (
+                <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-4">
+                    {error}
+                </div>
+            )}
 
-      setSeccion('');
-      setUbts([]);
-      setPoligono('');
-      setMunicipio('');
-      setDfed(0);
-      setDloc(0);
-      setNmunicipio('');
-      
-    } catch (error) {
-      console.error("Error inesperado:", error);
-      alert("Error al guardar los datos:", error)
-      // setMessage("Ocurrió un error al enviar el reporte.");
-    }
-  };
-  
-// Efecto para buscar datos cuando cambia la sección
-useEffect(() => {
-  if (seccion) {
-    buscarDatosSeccion(seccion);
-  } else {
-    setPoligono(0);
-    setMunicipio('');
-    setDfed(0);
-    setDloc(0);
-    setNmunicipio(0);
-    setUbts([]);
-  }
-}, [seccion]);
-async function handleFileUpload(event, fieldName) {
-  const file = event.target.files[0];
-  if (!file) return;
+            <div className="bg-gray-50 p-4 mb-6 rounded-lg shadow">
+                <h2 className="text-lg font-semibold mb-3">Información de Sección</h2>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                        <p><strong>Sección:</strong> {formData.seccion || 'No especificada'}</p>
+                        <p><strong>Distrito Federal:</strong> {formData.dtto_fed || 'No especificado'}</p>
+                        <p><strong>Distrito Local:</strong> {formData.dtto_loc || 'No especificado'}</p>
+                    </div>
+                    <div>
+                        <p><strong>Polígono:</strong> {formData.poligono || 'No especificado'}</p>
+                        <p><strong>Municipio:</strong> {formData.nombre_municipio || 'No especificado'}</p>
+                    </div>
+                </div>
+            </div>
 
-  // const filePath = `ciudadanos/${id}/${fieldName}-${file.name}`;
-  // const curp = nuevoCiudadano.curp.trim().toUpperCase();
-  // const filePath = `ciudadanos/${fieldName}-`+curp;
-  // const { data, error } = await supabase.storage.from("fotos_estructura").upload(filePath, file, { upsert: true });
+            <form onSubmit={handleSubmit} className="space-y-4">
+                {ubts.length > 0 && (
+                    <div className="mb-4">
+                        <label className="block text-sm font-medium text-gray-700 mb-1">UBT:</label>
+                        <select
+                            name="ubt"
+                            value={formData.ubt}
+                            onChange={handleInputChange}
+                            className="border border-gray-300 rounded-md p-2 w-full"
+                            required
+                        >
+                            <option value="">Seleccionar UBT</option>
+                            {ubts.map((ubt, index) => (
+                                <option key={index} value={ubt}>{ubt}</option>
+                            ))}
+                        </select>
+                    </div>
+                )}
 
-  // if (error) {
-  //   console.error("Error subiendo imagen:", error);
-  //   return;
-  // }
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Nombre:</label>
+                        <input
+                            type="text"
+                            name="nombre"
+                            value={formData.nombre}
+                            onChange={handleInputChange}
+                            className="border border-gray-300 rounded-md p-2 w-full"
+                            required
+                        />
+                    </div>
+                    <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Apellido Paterno:</label>
+                        <input
+                            type="text"
+                            name="a_paterno"
+                            value={formData.a_paterno}
+                            onChange={handleInputChange}
+                            className="border border-gray-300 rounded-md p-2 w-full"
+                            required
+                        />
+                    </div>
+                    <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Apellido Materno:</label>
+                        <input
+                            type="text"
+                            name="a_materno"
+                            value={formData.a_materno}
+                            onChange={handleInputChange}
+                            className="border border-gray-300 rounded-md p-2 w-full"
+                            required
+                        />
+                    </div>
+                </div>
 
-  // const { data: urlData } = supabase.storage.from("fotos_estructura").getPublicUrl(filePath);
-  // setNuevoCiudadano((prev) => ({ ...prev, [fieldName]: urlData.publicUrl }));
-}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">CURP:</label>
+                        <input
+                            type="text"
+                            name="curp"
+                            value={formData.curp}
+                            onChange={handleInputChange}
+                            className="border border-gray-300 rounded-md p-2 w-full uppercase"
+                            required
+                            maxLength={18}
+                        />
+                    </div>
+                    <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Teléfono:</label>
+                        <input
+                            type="tel"
+                            name="telefono_1"
+                            value={formData.telefono_1}
+                            onChange={handleInputChange}
+                            className="border border-gray-300 rounded-md p-2 w-full"
+                            required
+                            maxLength={10}
+                        />
+                    </div>
+                </div>
 
-{/* <label>TIPO: <input type="text" value={nuevoCiudadano.tipo} onChange={(e) => setNuevoCiudadano({ ...nuevoCiudadano, tipo: e.target.value })} className="border p-2 w-full" required/></label> */}
-        
-  return (
-    <div className="p-4 mx-auto">
-      <h1 className="text-xl font-bold mb-4">Agregar Ciudadano</h1>
-      <div className="grid gap-4">
+                <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Calle:</label>
+                    <input
+                        type="text"
+                        name="calle"
+                        value={formData.calle}
+                        onChange={handleInputChange}
+                        className="border border-gray-300 rounded-md p-2 w-full"
+                        required
+                    />
+                </div>
 
-      
-      
-      <form onSubmit={handleSubmit} /*class="py-4 px-6"*/>
-  
-        
-    <div className="border p-2 w-full" >
-      {loading && <p>Cargando...</p>}
-        <div className="border p-2 w-full" >
-            <p>
-                <strong>Sección:</strong> {user.seccion}
-            </p>
-            <p>
-                <strong>Distrito Federal:</strong> {dfed}
-            </p>
-          <p>
-            <strong>Distrito Local:</strong> {dloc}
-          </p>
-          <p>
-            <strong>Polígono:</strong> {poligono}
-          </p>
-          <p>
-            <strong>Municipio:</strong> {municipio}
-          </p>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">N° Ext (MZ):</label>
+                        <input
+                            type="text"
+                            name="n_ext_mz"
+                            value={formData.n_ext_mz}
+                            onChange={handleInputChange}
+                            className="border border-gray-300 rounded-md p-2 w-full"
+                            required
+                        />
+                    </div>
+                    <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">N° Int (LT):</label>
+                        <input
+                            type="text"
+                            name="n_int_lt"
+                            value={formData.n_int_lt}
+                            onChange={handleInputChange}
+                            className="border border-gray-300 rounded-md p-2 w-full"
+                        />
+                    </div>
+                    <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">N° Casa:</label>
+                        <input
+                            type="text"
+                            name="n_casa"
+                            value={formData.n_casa}
+                            onChange={handleInputChange}
+                            className="border border-gray-300 rounded-md p-2 w-full"
+                        />
+                    </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Colonia/Localidad:</label>
+                        <input
+                            type="text"
+                            name="col_loc"
+                            value={formData.col_loc}
+                            onChange={handleInputChange}
+                            className="border border-gray-300 rounded-md p-2 w-full"
+                        />
+                    </div>
+                    <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Código Postal:</label>
+                        <input
+                            type="number"
+                            name="c_p"
+                            value={formData.c_p}
+                            onChange={handleInputChange}
+                            className="border border-gray-300 rounded-md p-2 w-full"
+                            required
+                            min="0"
+                            max="99999"
+                        />
+                    </div>
+                </div>
+
+                <div className="flex justify-end space-x-4 mt-8">
+                    <button
+                        type="button"
+                        onClick={() => navigate(`/perfil/${user.usuario}`, { state: { user } })}
+                        className="bg-gray-500 hover:bg-gray-600 text-white px-6 py-2 rounded transition"
+                        disabled={loading}
+                    >
+                        Cancelar
+                    </button>
+                    <button
+                        type="submit"
+                        className="bg-green-500 hover:bg-green-600 text-white px-6 py-2 rounded transition"
+                        disabled={loading}
+                    >
+                        {loading ? (
+                            <span className="flex items-center justify-center">
+                                <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                </svg>
+                                Guardando...
+                            </span>
+                        ) : 'Guardar'}
+                    </button>
+                </div>
+            </form>
         </div>
-      
-      {ubts.length > 0 && (
-        <div>
-          <label >UBT:</label>
-          <select id="ubt" 
-          // onChange={(e) => setUbt(e.target.value)}
-          onChange={(e) => setNuevoCiudadano({ ...nuevoCiudadano, ubt: e.target.value })}
-          className="border p-2 w-full" required>
-            <option value="">Seleccionar UBT</option>
-            {ubts.map((ubt, index) => (
-              <option key={index} value={ubt}>
-                {ubt}
-              </option>
-            ))}
-          </select>
-        </div>
-      )}
-    </div>
-        
-        <label>Nombre: <input type="text" value={nuevoCiudadano.nombre} onChange={(e) => setNuevoCiudadano({ ...nuevoCiudadano, nombre: e.target.value.toUpperCase() })} className="border p-2 w-full" required/></label>
-        <label>Apellido Paterno: <input type="text" value={nuevoCiudadano.a_paterno} onChange={(e) => setNuevoCiudadano({ ...nuevoCiudadano, a_paterno: e.target.value.toUpperCase() })} className="border p-2 w-full" required/></label>
-        
-        <label>Apellido Materno: <input type="text" value={nuevoCiudadano.a_materno} onChange={(e) => setNuevoCiudadano({ ...nuevoCiudadano, a_materno: e.target.value.toUpperCase() })} className="border p-2 w-full" required/></label>
-        <label>CURP: <input type="text" value={nuevoCiudadano.curp} onChange={(e) => setNuevoCiudadano({ ...nuevoCiudadano, curp: e.target.value.trim().toUpperCase() })} className="border p-2 w-full" required/></label>
-        <label>Calle: <input type="text" value={nuevoCiudadano.calle} onChange={(e) => setNuevoCiudadano({ ...nuevoCiudadano, calle: e.target.value.toUpperCase() })} className="border p-2 w-full" required/></label>
-        <label>N° Ext (MZ): <input type="text" value={nuevoCiudadano.n_ext_mz} onChange={(e) => setNuevoCiudadano({ ...nuevoCiudadano, n_ext_mz: e.target.value.toUpperCase() })} className="border p-2 w-full" required/></label>
-        <label>N° Int (LT): <input type="text" value={nuevoCiudadano.n_int_lt} onChange={(e) => setNuevoCiudadano({ ...nuevoCiudadano, n_int_lt: e.target.value.toUpperCase() })} className="border p-2 w-full" required/></label>
-        <label>N° Casa: <input type="text" value={nuevoCiudadano.n_casa} onChange={(e) => setNuevoCiudadano({ ...nuevoCiudadano, n_casa: e.target.value.toUpperCase() })} className="border p-2 w-full" /></label>
-        <label>Localidad: <input type="text" value={nuevoCiudadano.col_loc} onChange={(e) => setNuevoCiudadano({ ...nuevoCiudadano, col_loc: e.target.value.toUpperCase() })} className="border p-2 w-full" /></label>
-        <label>Código Postal: <input type="number" value={nuevoCiudadano.c_p} onChange={(e) => setNuevoCiudadano({ ...nuevoCiudadano, c_p: e.target.value})} className="border p-2 w-full" required/></label>
-        <label>Teléfono 1: <input type="text" value={nuevoCiudadano.telefono_1} onChange={(e) => setNuevoCiudadano({ ...nuevoCiudadano, telefono_1: e.target.value })} className="border p-2 w-full" required/></label>
-        {/* <label>Teléfono 2: <input type="text" value={nuevoCiudadano.telefono_2} onChange={(e) => setNuevoCiudadano({ ...nuevoCiudadano, telefono_2: e.target.value })} className="border p-2 w-full" required/></label>
-        <label>INSTAGRAM: <input type="text" value={nuevoCiudadano.cuenta_inst} onChange={(e) => setNuevoCiudadano({ ...nuevoCiudadano, cuenta_inst: e.target.value })} className="border p-2 w-full" required/></label>
-        <label>FACEBOOK 1: <input type="text" value={nuevoCiudadano.cuenta_fb} onChange={(e) => setNuevoCiudadano({ ...nuevoCiudadano, cuenta_fb: e.target.value })} className="border p-2 w-full" required/></label>
-        <label>X: <input type="text" value={nuevoCiudadano.cuenta_x} onChange={(e) => setNuevoCiudadano({ ...nuevoCiudadano, cuenta_x: e.target.value })} className="border p-2 w-full" required/></label>
-         */}
-        
-        
-        <button /*onClick={handleAdd}*/ type="submit" className="bg-green-500 text-white px-4 py-2 rounded">Guardar</button>
-        </form>
-        <button onClick={() => navigate(`/perfil/${user.usuario}`, {state: { user: user }})} className="bg-red-500 text-white px-4 py-2 rounded">Cancelar</button>
-      </div>
-    </div>
-  );
+    );
 }

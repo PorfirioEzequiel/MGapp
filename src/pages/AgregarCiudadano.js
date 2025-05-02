@@ -373,7 +373,7 @@ async function handleFileUpload(event, fieldName) {
       )}
     </div>
         {/* <label>UBT: <input type="text" value={nuevoCiudadano.ubt} onChange={(e) => setNuevoCiudadano({ ...nuevoCiudadano, ubt: e.target.value })} className="border p-2 w-full" required/></label> */}
-        <label>AREA: <input type="text" value={nuevoCiudadano.area_adscripcion} onChange={(e) => setNuevoCiudadano({ ...nuevoCiudadano, area_adscripcion: e.target.value.trim().toUpperCase() })} className="border p-2 w-full" required/></label>
+        <label>AREA: <input type="text" value={nuevoCiudadano.area_adscripcion} onChange={(e) => setNuevoCiudadano({ ...nuevoCiudadano, area_adscripcion: e.target.value.toUpperCase() })} className="border p-2 w-full" required/></label>
         <label>DEPENDENCIA: 
           <select id="dependen"
           value={nuevoCiudadano.dependencia} 

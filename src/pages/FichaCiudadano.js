@@ -27,6 +27,12 @@ const FichaCiudadano = () => {
     const { error } = await supabase
       .from("ciudadania")
       .update({
+        usuario: ciudadano.usuario,
+        password: ciudadano.password,
+        dtto_fed: ciudadano.dtto_fed,
+        dtto_loc: ciudadano.dtto_loc,
+        poligono: ciudadano.poligono,
+        seccion: ciudadano.seccion,
         nombre: ciudadano.nombre,
         a_paterno: ciudadano.a_paterno,
         a_materno: ciudadano.a_materno,
@@ -131,6 +137,72 @@ const FichaCiudadano = () => {
 
       {/* Formulario en dos columnas */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <label>
+          Distrito Federal:
+          <input
+            type="text"
+            value={ciudadano.dtto_fed}
+            onChange={(e) => setCiudadano({ ...ciudadano, dtto_fed: e.target.value})}
+            className="border p-2 w-full"
+            required
+          />
+        </label>
+
+        <label>
+          Distrito Local:
+          <input
+            type="text"
+            value={ciudadano.dtto_loc}
+            onChange={(e) => setCiudadano({ ...ciudadano, dtto_loc: e.target.value })}
+            className="border p-2 w-full"
+            required
+          />
+        </label>
+
+
+        <label>
+          Poligono:
+          <input
+            type="text"
+            value={ciudadano.poligono}
+            onChange={(e) => setCiudadano({ ...ciudadano, poligono: e.target.value})}
+            className="border p-2 w-full"
+            required
+          />
+        </label>
+
+        <label>
+          Sección:
+          <input
+            type="text"
+            value={ciudadano.seccion}
+            onChange={(e) => setCiudadano({ ...ciudadano, seccion: e.target.value })}
+            className="border p-2 w-full"
+            required
+          />
+        </label>
+        
+        <label>
+          Area:
+          <input
+            type="text"
+            value={ciudadano.area_adscripcion}
+            onChange={(e) => setCiudadano({ ...ciudadano, area_adscripcion: e.target.value.toUpperCase() })}
+            className="border p-2 w-full"
+            required
+          />
+        </label>
+        <label>
+          Dependencia:
+          <input
+            type="text"
+            value={ciudadano.dependencia}
+            onChange={(e) => setCiudadano({ ...ciudadano, dependencia: e.target.value.toUpperCase() })}
+            className="border p-2 w-full"
+            required
+          />
+        </label>
+
         <label>
           Nombre:
           <input
@@ -172,6 +244,31 @@ const FichaCiudadano = () => {
             required
           />
         </label>
+
+        <label>
+          Usuario:
+          <input
+            type="text"
+            value={ciudadano.usuario}
+            maxLength="18"
+            onChange={(e) => setCiudadano({ ...ciudadano, usuario: e.target.value })}
+            className="border p-2 w-full"
+            required
+          />
+        </label>
+
+        <label>
+          Contraseña:
+          <input
+            type="text"
+            value={ciudadano.password}
+            maxLength="18"
+            onChange={(e) => setCiudadano({ ...ciudadano, password: e.target.value})}
+            className="border p-2 w-full"
+            required
+          />
+        </label>
+
         <label>
           Ingreso a la estructura:
           <input
