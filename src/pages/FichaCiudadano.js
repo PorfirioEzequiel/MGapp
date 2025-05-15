@@ -250,7 +250,7 @@ const FichaCiudadano = () => {
           <input
             type="text"
             value={ciudadano.usuario}
-            maxLength="18"
+            // maxLength="18"
             onChange={(e) => setCiudadano({ ...ciudadano, usuario: e.target.value })}
             className="border p-2 w-full"
             required

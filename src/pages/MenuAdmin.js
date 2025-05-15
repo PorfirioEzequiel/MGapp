@@ -43,7 +43,7 @@ const MenuAdmin = () => {
       <button class="flex items-center flex-row w-full bg-transparent hover:bg-blue-600 text-sm text-blue-600 hover:text-white font-semibold py-2 px-4 border border-blue-500 hover:border-transparent h-14 rounded-lg"><LiaSitemapSolid size={25}/>ESTRUCTURA</button>
       </div>
     </div>
-    <MapComponent2 mapa={1}/>
+    <MapComponent2 mapa={2}/>
     </div>
     </>
   );
