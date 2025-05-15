@@ -31,6 +31,7 @@ export default function AgregarCiudadanoRS() {
         id_puesto: 0,    
         tipo: "",    
         ingreso_estructura: new Date().toISOString().split('T')[0], // Current date
+        movilizador:"",
         observaciones: "",
         usuario: "",    
         password: "",
@@ -49,7 +50,6 @@ export default function AgregarCiudadanoRS() {
         cuenta_inst: "",
         cuenta_fb: "",
         cuenta_x: "",
-        // promotora_bienestar: "",
         status: "ACTIVO",
         url_foto_perfil: "",
         url_foto_ine1: "",
@@ -312,8 +312,8 @@ export default function AgregarCiudadanoRS() {
                     <label className="block text-sm font-medium text-gray-700 mb-1">Movilizador:</label>
                     <input
                         type="text"
-                        name="observaciones"
-                        value={formData.observaciones}
+                        name="movilizador"
+                        value={formData.movilizador}
                         onChange={handleInputChange}
                         className="border border-gray-300 rounded-md p-2 w-full"
                         placeholder="NOMBRE DEL MOVILIZADOR"
