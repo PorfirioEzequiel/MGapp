@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import supabase from '../supabase/client';
 
@@ -27,7 +27,7 @@ export default function AgregarCiudadanoRS() {
         ubt: "",
         area_adscripcion: "",    
         dependencia: "",    
-        puesto: "CIUDADANO",    
+        puesto: "",    
         id_puesto: 0,    
         tipo: "",    
         ingreso_estructura: new Date().toISOString().split('T')[0], // Current date
@@ -42,13 +42,14 @@ export default function AgregarCiudadanoRS() {
         n_ext_mz: "",    
         n_int_lt: "",
         n_casa: "",
-        c_p: 0,
+        c_p: null,
         col_loc: "",
         telefono_1: "",
         telefono_2: "",
         cuenta_inst: "",
         cuenta_fb: "",
         cuenta_x: "",
+        // promotora_bienestar: "",
         status: "ACTIVO",
         url_foto_perfil: "",
         url_foto_ine1: "",
@@ -56,7 +57,30 @@ export default function AgregarCiudadanoRS() {
     };
 
     const [formData, setFormData] = useState(initialFormState);
+    const [promotores, setPromotores] = useState([]);
 
+    const fetchPromotoras = useCallback(async () => {
+        try {
+            const { data, error } = await supabase
+                .from('ciudadania')
+                .select('*')
+                .eq("seccion", user.seccion)
+                .eq("puesto", "PROMOTORA-BIENESTAR")
+                .eq("status", "ACTIVO")
+                .order('ubt', { ascending: true });
+
+            if (error) throw error;
+            setPromotores(data || []);
+        } catch (error) {
+            console.error("Error fetching promotoras:", error.message);
+            setError(error.message);
+        }
+    }, [user.seccion]);
+
+    useEffect(() => {
+        fetchPromotoras();
+    }, [fetchPromotoras]);
+  
     // Load job positions on component mount
     useEffect(() => {
         const loadPositions = async () => {
@@ -202,7 +226,10 @@ export default function AgregarCiudadanoRS() {
             setLoading(false);
         }
     };
-
+    const promotorasUBT = formData.ubt 
+        ? promotores.filter(pb => pb.ubt === formData.ubt)
+        : [];
+    const puestosc=["MOVILIZADOR", "INVITADO"]
     return (
         <div className="p-4 mx-auto max-w-3xl">
             <h1 className="text-2xl font-bold mb-6 text-center">Agregar Ciudadano</h1>
@@ -246,8 +273,60 @@ export default function AgregarCiudadanoRS() {
                         </select>
                     </div>
                 )}
+                {formData.ubt && (
+                    <div className="mb-4">
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Promotora Bienestar:</label>
+                        <div className="border border-gray-300 rounded-md p-2 bg-gray-50">
+                            {promotorasUBT.length > 0 ? (
+                                promotorasUBT.map(pb => (
+                                    <div key={pb.id}>
+                                        {pb.nombre} {pb.a_paterno} {pb.a_materno} - Tel: {pb.telefono_1}
+                                    </div>
+                                ))
+                            ) : (
+                                <div className="text-gray-500">No hay promotoras asignadas a esta UBT</div>
+                            )}
+                        </div>
+                    </div>
+                )}
+
+                
+                    <div className="mb-4">
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Puesto:</label>
+                        <select
+                            name="puesto"
+                            value={formData.puesto}
+                            onChange={handleInputChange}
+                            className="border border-gray-300 rounded-md p-2 w-full"
+                            required
+                        >
+                            <option value="">Seleccionar puesto</option>
+                            {puestosc.map((puesto, index) => (
+                                <option key={index} value={puesto}>{puesto}</option>
+                            ))}
+                        </select>
+                    </div>
+                
+                    
+                    <div className="mb-4">
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Movilizador:</label>
+                    <input
+                        type="text"
+                        name="observaciones"
+                        value={formData.observaciones}
+                        onChange={handleInputChange}
+                        className="border border-gray-300 rounded-md p-2 w-full"
+                        placeholder="NOMBRE DEL MOVILIZADOR"
+                        required
+                    />
+                    
+                </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+
+
+                    
+
                     <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">Nombre:</label>
                         <input
@@ -365,6 +444,7 @@ export default function AgregarCiudadanoRS() {
                             value={formData.col_loc}
                             onChange={handleInputChange}
                             className="border border-gray-300 rounded-md p-2 w-full"
+                            required
                         />
                     </div>
                     <div>
