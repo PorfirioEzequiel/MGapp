@@ -33,6 +33,7 @@ const FichaCiudadano = () => {
         dtto_loc: ciudadano.dtto_loc,
         poligono: ciudadano.poligono,
         seccion: ciudadano.seccion,
+        ubt: ciudadano.ubt,
         nombre: ciudadano.nombre,
         a_paterno: ciudadano.a_paterno,
         a_materno: ciudadano.a_materno,
@@ -45,6 +46,7 @@ const FichaCiudadano = () => {
         n_ext_mz: ciudadano.n_ext_mz,
         n_int_lt: ciudadano.n_int_lt,
         n_casa: ciudadano.n_casa,
+        movilizador: ciudadano.movilizador,
         c_p: ciudadano.c_p,
         col_loc: ciudadano.col_loc,
         url_foto_perfil: ciudadano.url_foto_perfil,
@@ -181,6 +183,17 @@ const FichaCiudadano = () => {
             required
           />
         </label>
+
+        <label>
+          UBT:
+          <input
+            type="text"
+            value={ciudadano.ubt}
+            onChange={(e) => setCiudadano({ ...ciudadano, ubt: e.target.value })}
+            className="border p-2 w-full"
+            required
+          />
+        </label>
         
         <label>
           Area:
@@ -286,6 +299,17 @@ const FichaCiudadano = () => {
             type="text"
             value={ciudadano.observaciones}
             onChange={(e) => setCiudadano({ ...ciudadano, observaciones: e.target.value.toUpperCase() })}
+            className="border p-2 w-full"
+            required
+          />
+        </label>
+
+        <label>
+          Movilizador:
+          <input
+            type="text"
+            value={ciudadano.movilizador}
+            onChange={(e) => setCiudadano({ ...ciudadano, movilizador: e.target.value.toUpperCase() })}
             className="border p-2 w-full"
             required
           />

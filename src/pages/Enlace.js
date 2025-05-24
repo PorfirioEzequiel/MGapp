@@ -49,8 +49,8 @@ const Enlace = () => {
   const fetchCiudadanos = async () => {
     try {
       const { data, error } = await supabase
-        .from('ciudadania') // Nombre de la tabla
-        .select('*').eq("seccion",user.seccion).eq("puesto","CIUDADANO").order('observaciones', { ascending: true });
+        .from('servidores') // Nombre de la tabla
+        .select('*').eq("delegacion",user.seccion);
         // .eq('seccion', user.seccion); // Consulta todos los campos
 
       if (error) throw error;
@@ -102,24 +102,24 @@ const Enlace = () => {
       <table className="w-full border-collapse border border-gray-300">
         <thead>
           <tr className="bg-gray-200">
-            <th className="border p-2">Polígono</th>
+            {/* <th className="border p-2">Polígono</th> */}
             <th className="border p-2">Delegación</th>
             <th className="border p-2">SP</th>
             <th className="border p-2">Nombre</th>
             <th className="border p-2">CURP</th>
-            <th className="border p-2">Puesto</th>
+            {/* <th className="border p-2">Puesto</th> */}
           </tr>
         </thead>
       {ciudadanos.length > 0 ? (
           <tbody>
             {ciudadanos.map((resultado) => (
               <tr key={resultado.id}>
-                <td className="border p-2">{resultado.poligono}</td>
+                {/* <td className="border p-2">{resultado.poligono}</td> */}
                 <td className="border p-2">{resultado.seccion}</td>
-                <td className="border p-2">{resultado.observaciones}</td>
-                <td className="border p-2">{resultado.nombre} {resultado.a_paterno} {resultado.a_materno}</td>
+                <td className="border p-2">{resultado.sp}</td>
+                <td className="border p-2">{resultado.nombre}</td>
                 <td className="border p-2">{resultado.curp}</td>
-                <td className="border p-2">{resultado.puesto}</td>
+                {/* <td className="border p-2">{resultado.puesto}</td> */}
                 
               </tr>
             ))}
