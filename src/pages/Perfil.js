@@ -50,7 +50,7 @@ const Perfil = () => {
     try {
       const { data, error } = await supabase
         .from('ciudadania') // Nombre de la tabla
-        .select('*').eq("seccion",user.seccion).or(`puesto.eq.MOVILIZADOR,puesto.eq.INVITADO`).order('ubt', { ascending: true });
+        .select('*').eq("seccion",user.seccion).or(`puesto.eq.MOVILIZADOR,puesto.eq.INVITADO`).order('puesto', { ascending: false }).order('ubt', { ascending: true });
         // .eq('seccion', user.seccion); // Consulta todos los campos
 
       if (error) throw error;
@@ -86,6 +86,7 @@ const Perfil = () => {
       <p className="border p-2"><strong>Polígono:</strong> {user.poligono}</p>
       <p className="border p-2"><strong>Sección:</strong> {user.seccion}</p>
       <p className="border p-2"><strong>Puesto:</strong> {user.puesto}</p>
+      
       {/* <p className="border p-2"><strong>Lista nominal:</strong> {section.lista_nominal}</p> */}
       <p className="border p-2"><strong>Promotor@s del Bienestar:</strong> {promotores.length}</p>
       <button onClick={() => navigate(`/seccional/agregar/${user.usuario}`, {state: { user: user }})} className="bg-green-500 text-white mx-auto my-auto px-4 py-2 rounded">
@@ -102,6 +103,7 @@ const Perfil = () => {
             <th className="border p-2">UBT</th>
             <th className="border p-2">Nombre</th>
             <th className="border p-2">Puesto</th>
+            
           </tr>
         </thead>
       {promotores.length > 0 ? (
@@ -113,6 +115,7 @@ const Perfil = () => {
                 <td className="border p-2">{resultado.ubt}</td>
                 <td className="border p-2">{resultado.nombre} {resultado.a_paterno} {resultado.a_materno}</td>
                 <td className="border p-2">{resultado.puesto}</td>
+                
                 {/* {resultado.poligono} - {resultado.seccion} - {resultado.puesto} - {resultado.nombre}  {resultado.a_paterno}  {resultado.a_materno} */}
                 
               </tr>
@@ -133,6 +136,8 @@ const Perfil = () => {
             <th className="border p-2">UBT</th>
             <th className="border p-2">Nombre</th>
             <th className="border p-2">Puesto</th>
+            <th className="border p-2">Movilizador</th>
+            <th className="border p-2">Editar</th>
           </tr>
         </thead>
       {ciudadanos.length > 0 ? (
@@ -144,6 +149,11 @@ const Perfil = () => {
                 <td className="border p-2">{resultado.ubt}</td>
                 <td className="border p-2">{resultado.nombre} {resultado.a_paterno} {resultado.a_materno}</td>
                 <td className="border p-2">{resultado.puesto}</td>
+                <td className="border p-2">{resultado.movilizador}</td>
+                <td><button onClick={() => navigate(`/ciudadanoE/${resultado.id}`)}
+                  className="bg-blue-500 text-white px-4 py-2 rounded">
+                    EDITAR
+                </button></td>
                 {/* {resultado.poligono} - {resultado.seccion} - {resultado.puesto} - {resultado.nombre}  {resultado.a_paterno}  {resultado.a_materno} */}
                 
               </tr>
