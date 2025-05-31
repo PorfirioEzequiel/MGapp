@@ -103,6 +103,9 @@ const Perfil = () => {
             <th className="border p-2">UBT</th>
             <th className="border p-2">Nombre</th>
             <th className="border p-2">Puesto</th>
+            <th className="border p-2">12:00 HRS</th>
+            <th className="border p-2">15:00 HRS</th>
+            <th className="border p-2">18:00 HRS</th>
             
           </tr>
         </thead>
@@ -115,6 +118,36 @@ const Perfil = () => {
                 <td className="border p-2">{resultado.ubt}</td>
                 <td className="border p-2">{resultado.nombre} {resultado.a_paterno} {resultado.a_materno}</td>
                 <td className="border p-2">{resultado.puesto}</td>
+                <td className="border p-2">
+                  <input type="number"
+                            name="nombre"
+                            // value={formData.nombre}
+                            // onChange={handleInputChange}
+                            className="border border-gray-300 rounded-md p-2"
+                            required/>
+                  <button className="bg-rose-500 text-white px-4 py-2 rounded">ENVIAR</button>
+                </td>
+                <td className="border p-2">
+                  <input type="number"
+                            name="nombre"
+                            // value={formData.nombre}
+                            // onChange={handleInputChange}
+                            className="border border-gray-300 rounded-md p-2"
+                            required/>
+                  <button className="bg-rose-500 text-white px-4 py-2 rounded">ENVIAR</button>
+                </td>
+                <td className="border p-2">
+                  <input type="number"
+                            name="nombre"
+                            // value={formData.nombre}
+                            // onChange={handleInputChange}
+                            className="border border-gray-300 rounded-md p-2"
+                            required/>
+                  <button className="bg-rose-500 text-white px-4 py-2 rounded">ENVIAR</button>
+                </td>
+
+                {/* <td className="border p-2"><input></input><button>Enviar</button></td>
+                <td className="border p-2"><input></input><button>Enviar</button></td> */}
                 
                 {/* {resultado.poligono} - {resultado.seccion} - {resultado.puesto} - {resultado.nombre}  {resultado.a_paterno}  {resultado.a_materno} */}
                 
