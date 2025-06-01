@@ -15,6 +15,52 @@ const Enlace = () => {
   const [ciudadanos, setCiudadanos] = useState([]);
   const navigate = useNavigate();
 
+  const [reportData, setReportData] = useState({});
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const handleInputChange = (promotorId, time, value) => {
+    setReportData(prev => ({
+      ...prev,
+      [promotorId]: {
+        ...prev[promotorId],
+        [time]: value
+      }
+    }));
+  };
+
+  const handleSubmit = async (time) => {
+    if (!reportData[time]) {
+      alert('Por favor ingresa un valor');
+      return;
+    }
+
+    setIsSubmitting(true);
+    try {
+      // Replace with your actual Supabase table and columns
+      //  const promotor = promotores.find(p => p.id === promotorId);
+    
+    // if (!promotor) {
+    //   throw new Error('Promotor no encontrado');
+    // }
+      const { error } = await supabase
+        .from('cortes_s')
+        .upsert({
+          delegacion: user.seccion,
+          [time]: reportData[time],
+          // updated_at: new Date().toISOString()
+        });
+
+      if (error) throw error;
+      
+      alert('Reporte enviado exitosamente');
+    } catch (error) {
+      console.error('Error submitting report:', error);
+      alert('Error al enviar el reporte');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
   // const fetchSecciones = async () => {
   //   try {
   //     const { data, error } = await supabase
@@ -87,6 +133,69 @@ const Enlace = () => {
       <p className="border p-2"><strong>Delegación:</strong> {user.seccion}</p>
       <p className="border p-2"><strong>Puesto:</strong> {user.puesto}</p>
       {/* <p className="border p-2"><strong>Lista nominal:</strong> {section.lista_nominal}</p> */}
+
+
+      <div className="border p-2">
+          <div className="flex gap-2">
+            <h1>12:00 HRS</h1>
+            <input
+              type="number"
+              value={reportData[['twelve'] || '']}
+              onChange={(e) => handleInputChange( 'twelve', e.target.value)}
+              className="border border-gray-300 rounded-md p-2 w-20"
+              required
+            />
+            <button 
+              onClick={() => handleSubmit('twelve')}
+              disabled={isSubmitting}
+              className="bg-rose-500 text-white px-4 py-2 rounded disabled:opacity-50"
+            >
+              {isSubmitting ? 'ENVIANDO...' : 'ENVIAR'}
+            </button>
+          </div>
+        </div>
+        
+        {/* 15:00 HRS */}
+        <div className="border p-2">
+          <div className="flex gap-2">
+            <h1>15:00 HRS</h1>
+            <input
+              type="number"
+              value={reportData['fifteen'] || ''}
+              onChange={(e) => handleInputChange('fifteen', e.target.value)}
+              className="border border-gray-300 rounded-md p-2 w-20"
+              required
+            />
+            <button 
+              onClick={() => handleSubmit( 'fifteen')}
+              disabled={isSubmitting}
+              className="bg-rose-500 text-white px-4 py-2 rounded disabled:opacity-50"
+            >
+              {isSubmitting ? 'ENVIANDO...' : 'ENVIAR'}
+            </button>
+          </div>
+        </div>
+        
+        {/* 18:00 HRS */}
+        <div className="border p-2">
+          <div className="flex gap-2">
+            <h1>18:00 HRS</h1>
+            <input
+              type="number"
+              value={reportData['eighteen'] || ''}
+              onChange={(e) => handleInputChange('eighteen', e.target.value)}
+              className="border border-gray-300 rounded-md p-2 w-20"
+              required
+            />
+            <button 
+              onClick={() => handleSubmit('eighteen')}
+              disabled={isSubmitting}
+              className="bg-rose-500 text-white px-4 py-2 rounded disabled:opacity-50"
+            >
+              {isSubmitting ? 'ENVIANDO...' : 'ENVIAR'}
+            </button>
+          </div>
+        </div>
       <div className='m-4'>
       <button onClick={() => navigate(`/enlace/agregar/${user.usuario}`, {state: { user: user }})} className="bg-purple-500 text-white mx-auto my-auto px-4 py-2 rounded">
         
