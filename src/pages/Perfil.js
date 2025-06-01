@@ -14,6 +14,55 @@ const Perfil = () => {
   const [promotores, setPromotores] = useState([]);
   const [ciudadanos, setCiudadanos] = useState([]);
   const navigate = useNavigate();
+  const [reportData, setReportData] = useState({});
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const handleInputChange = (promotorId, time, value) => {
+    setReportData(prev => ({
+      ...prev,
+      [promotorId]: {
+        ...prev[promotorId],
+        [time]: value
+      }
+    }));
+  };
+
+  const handleSubmit = async (promotorId, time) => {
+    if (!reportData[promotorId]?.[time]) {
+      alert('Por favor ingresa un valor');
+      return;
+    }
+
+    setIsSubmitting(true);
+    try {
+      // Replace with your actual Supabase table and columns
+       const promotor = promotores.find(p => p.id === promotorId);
+    
+    if (!promotor) {
+      throw new Error('Promotor no encontrado');
+    }
+      const { error } = await supabase
+        .from('cortes')
+        .upsert({
+          promotor_id: promotorId,
+          poligono: promotor.poligono,
+          seccion: promotor.seccion,
+          ubt: promotor.ubt,
+          pb: `${promotor.nombre} ${promotor.a_paterno}`,
+          [time]: reportData[promotorId][time],
+          // updated_at: new Date().toISOString()
+        });
+
+      if (error) throw error;
+      
+      alert('Reporte enviado exitosamente');
+    } catch (error) {
+      console.error('Error submitting report:', error);
+      alert('Error al enviar el reporte');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
 
   // const fetchSecciones = async () => {
   //   try {
@@ -111,40 +160,72 @@ const Perfil = () => {
         </thead>
       {promotores.length > 0 ? (
           <tbody>
-            {promotores.map((resultado) => (
-              <tr key={resultado.id}>
-                <td className="border p-2">{resultado.poligono}</td>
-                <td className="border p-2">{resultado.seccion}</td>
-                <td className="border p-2">{resultado.ubt}</td>
-                <td className="border p-2">{resultado.nombre} {resultado.a_paterno} {resultado.a_materno}</td>
-                <td className="border p-2">{resultado.puesto}</td>
-                <td className="border p-2">
-                  <input type="number"
-                            name="nombre"
-                            // value={formData.nombre}
-                            // onChange={handleInputChange}
-                            className="border border-gray-300 rounded-md p-2"
-                            required/>
-                  <button className="bg-rose-500 text-white px-4 py-2 rounded">ENVIAR</button>
-                </td>
-                <td className="border p-2">
-                  <input type="number"
-                            name="nombre"
-                            // value={formData.nombre}
-                            // onChange={handleInputChange}
-                            className="border border-gray-300 rounded-md p-2"
-                            required/>
-                  <button className="bg-rose-500 text-white px-4 py-2 rounded">ENVIAR</button>
-                </td>
-                <td className="border p-2">
-                  <input type="number"
-                            name="nombre"
-                            // value={formData.nombre}
-                            // onChange={handleInputChange}
-                            className="border border-gray-300 rounded-md p-2"
-                            required/>
-                  <button className="bg-rose-500 text-white px-4 py-2 rounded">ENVIAR</button>
-                </td>
+            {promotores.map((promotor) => (
+              <tr key={promotor.id}>
+                <td className="border p-2">{promotor.poligono}</td>
+                <td className="border p-2">{promotor.seccion}</td>
+                <td className="border p-2">{promotor.ubt}</td>
+                <td className="border p-2">{promotor.nombre} {promotor.a_paterno} {promotor.a_materno}</td>
+                <td className="border p-2">{promotor.puesto}</td>
+                {/* 12:00 HRS */}
+        <td className="border p-2">
+          <div className="flex gap-2">
+            <input
+              type="number"
+              value={reportData[promotor.id]?.['twelve'] || ''}
+              onChange={(e) => handleInputChange(promotor.id, 'twelve', e.target.value)}
+              className="border border-gray-300 rounded-md p-2 w-20"
+              required
+            />
+            <button 
+              onClick={() => handleSubmit(promotor.id, 'twelve')}
+              disabled={isSubmitting}
+              className="bg-rose-500 text-white px-4 py-2 rounded disabled:opacity-50"
+            >
+              {isSubmitting ? 'ENVIANDO...' : 'ENVIAR'}
+            </button>
+          </div>
+        </td>
+        
+        {/* 15:00 HRS */}
+        <td className="border p-2">
+          <div className="flex gap-2">
+            <input
+              type="number"
+              value={reportData[promotor.id]?.['fifteen'] || ''}
+              onChange={(e) => handleInputChange(promotor.id, 'fifteen', e.target.value)}
+              className="border border-gray-300 rounded-md p-2 w-20"
+              required
+            />
+            <button 
+              onClick={() => handleSubmit(promotor.id, 'fifteen')}
+              disabled={isSubmitting}
+              className="bg-rose-500 text-white px-4 py-2 rounded disabled:opacity-50"
+            >
+              {isSubmitting ? 'ENVIANDO...' : 'ENVIAR'}
+            </button>
+          </div>
+        </td>
+        
+        {/* 18:00 HRS */}
+        <td className="border p-2">
+          <div className="flex gap-2">
+            <input
+              type="number"
+              value={reportData[promotor.id]?.['eighteen'] || ''}
+              onChange={(e) => handleInputChange(promotor.id, 'eighteen', e.target.value)}
+              className="border border-gray-300 rounded-md p-2 w-20"
+              required
+            />
+            <button 
+              onClick={() => handleSubmit(promotor.id, 'eighteen')}
+              disabled={isSubmitting}
+              className="bg-rose-500 text-white px-4 py-2 rounded disabled:opacity-50"
+            >
+              {isSubmitting ? 'ENVIANDO...' : 'ENVIAR'}
+            </button>
+          </div>
+        </td>
 
                 {/* <td className="border p-2"><input></input><button>Enviar</button></td>
                 <td className="border p-2"><input></input><button>Enviar</button></td> */}
