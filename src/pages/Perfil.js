@@ -48,7 +48,7 @@ const Perfil = () => {
           poligono: promotor.poligono,
           seccion: promotor.seccion,
           ubt: promotor.ubt,
-          pb: `${promotor.nombre} ${promotor.a_paterno}`,
+          pb: `${promotor.nombre} ${promotor.a_paterno} ${promotor.a_materno}`,
           [time]: reportData[promotorId][time],
           // updated_at: new Date().toISOString()
         });
