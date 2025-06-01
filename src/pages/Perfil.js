@@ -152,8 +152,8 @@ const Perfil = () => {
             <th className="border p-2">UBT</th>
             <th className="border p-2">Nombre</th>
             <th className="border p-2">Puesto</th>
-            <th className="border p-2">12:00 HRS</th>
-            <th className="border p-2">15:00 HRS</th>
+            {/* <th className="border p-2">12:00 HRS</th>
+            <th className="border p-2">15:00 HRS</th> */}
             <th className="border p-2">18:00 HRS</th>
             
           </tr>
@@ -168,7 +168,7 @@ const Perfil = () => {
                 <td className="border p-2">{promotor.nombre} {promotor.a_paterno} {promotor.a_materno}</td>
                 <td className="border p-2">{promotor.puesto}</td>
                 {/* 12:00 HRS */}
-        <td className="border p-2">
+        {/* <td className="border p-2">
           <div className="flex gap-2">
             <input
               type="number"
@@ -185,10 +185,10 @@ const Perfil = () => {
               {isSubmitting ? 'ENVIANDO...' : 'ENVIAR'}
             </button>
           </div>
-        </td>
+        </td> */}
         
         {/* 15:00 HRS */}
-        <td className="border p-2">
+        {/* <td className="border p-2">
           <div className="flex gap-2">
             <input
               type="number"
@@ -205,7 +205,7 @@ const Perfil = () => {
               {isSubmitting ? 'ENVIANDO...' : 'ENVIAR'}
             </button>
           </div>
-        </td>
+        </td> */}
         
         {/* 18:00 HRS */}
         <td className="border p-2">
