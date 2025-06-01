@@ -4,124 +4,179 @@ import supabase from "../supabase/client";
 import { useNavigate } from "react-router-dom";
 
 function Territorio(){
-    // const [section, setSeccion] = useState([]);
-    const [error, setError] = useState(null);
-    const [poligono, setPoligono] = useState();
-    const [seccion, setSeccion] = useState('');
 
-    const [resultados, setResultados] = useState([]);
-    const [opciones, setOpciones] = useState({ poligonos: [], secciones: []});
-    const navigate = useNavigate();
+  // ... (código existente)
+  
+  const [resumenReportes, setResumenReportes] = useState([]);
+  const [filtroSeccion, setFiltroSeccion] = useState('');
+  const [filtroPoligono, setFiltroPoligono] = useState('');
+  const [isLoadingResumen, setIsLoadingResumen] = useState(false);
+  const [error, setError] = useState(null);
+  // Función para obtener el resumen de reportes
+  const fetchResumenReportes = async () => {
+    setIsLoadingResumen(true);
+    try {
+      const { data, error } = await supabase
+        .from('cortes')
+        .select('seccion, poligono, twelve, fifteen, eighteen')
+        .order('poligono', { ascending: true });
 
-    const handlepoligono= async (e)=>{
-        try {
-            // Construir filtros dinámicos
-            const getpoligono = e.target.value;
-            setPoligono(getpoligono);
-            let query = supabase.from('secciones').select('*').order('pologono', { ascending: true });
-      
-            if (getpoligono) query = query.eq('pologono', poligono);
-            //if (seccion) query = query.eq('seccion', seccion);
-      
-            const { data, error } = await query;
-      
-            if (error) throw error;
-      
-            setResultados(data);
-          } catch (err) {
-            console.error('Error al filtrar:', err.message);
-          }
-        };
-    
+      if (error) throw error;
+
+      // Procesar datos para agrupar por sección y polígono
+      const resumen = data.reduce((acc, item) => {
+        const key = `${item.seccion}-${item.poligono}`;
+        if (!acc[key]) {
+          acc[key] = {
+            seccion: item.seccion,
+            poligono: item.poligono,
+            twelve: 0,
+            fifteen: 0,
+            eighteen: 0,
+            total: 0
+          };
+        }
         
-    
-  
-    // Cargar datos iniciales para los selectores
-    useEffect(() => {
-      const cargarOpciones = async () => {
-        try {
-          const { data, error } = await supabase
-            .from('secciones') // Reemplaza con el nombre de tu tabla
-            .select('pologono, seccion').order('pologono', { ascending: true });
-  
-          if (error) throw error;
-  
-          // Extraer valores únicos para los selectores
-          const poligonos = [...new Set(data.map((item) => item.pologono))];
-          const secciones = [...new Set(data.map((item) => item.seccion))];
+        // Sumar valores (verificando que no sean null)
+        if (item.twelve) acc[key].twelve += item.twelve;
+        if (item.fifteen) acc[key].fifteen += item.fifteen;
+        if (item.eighteen) acc[key].eighteen += item.eighteen;
+        
+        // Calcular total por fila
+        acc[key].total = acc[key].twelve + acc[key].fifteen + acc[key].eighteen;
+        
+        return acc;
+      }, {});
 
-          setOpciones({ poligonos, secciones });
-        } catch (err) {
-          console.error('Error al cargar opciones:', err.message);
-        }
-      };
-  
-      cargarOpciones();
-    }, []);
-    
-    // Manejar búsqueda en Supabase
-    // const manejarFiltro = async () => {
-    //   try {
-    //     // Construir filtros dinámicos
-    //     let query = supabase.from('secciones').select('*').order('pologono', { ascending: true });
-  
-    //     if (poligono) query = query.eq('pologono', poligono);
-    //     if (seccion) query = query.eq('seccion', seccion);
-  
-    //     const { data, error } = await query;
-  
-    //     if (error) throw error;
-  
-    //     setResultados(data);
-    //   } catch (err) {
-    //     console.error('Error al filtrar:', err.message);
-    //   }
-    // };
+      setResumenReportes(Object.values(resumen));
+    } catch (error) {
+      console.error("Error obteniendo resumen:", error);
+      setError("Error al obtener el resumen de reportes");
+    } finally {
+      setIsLoadingResumen(false);
+    }
+  };
 
-    const fetchSecciones = async () => {
-        try {
-          const { data, error } = await supabase
-            .from('secciones') // Nombre de la tabla
-            .select('*');//.eq("pologono",props.mapa);
-            // .eq('seccion', user.seccion); // Consulta todos los campos
-    
-          if (error) throw error;
-    
-          setSeccion(data); // Actualiza el estado con los datos obtenidos
-        } catch (error) {
-          console.error("Error",error.message);
-          setError(error.message);
-        }
-      };
-    
-        useEffect(() => {
-        fetchSecciones(); // Llama a la función al montar el componente
-    
-      }, []);
-      // Estado para almacenar los valores seleccionados
+  // Llamar la función al montar el componente
+  useEffect(() => {
+    fetchResumenReportes();
+  }, []);
 
-     
-    return(<>
-        {/* <h1>{opciones.poligonos}</h1> */}
-        <div className="text-dark"> 
-            <select name='poligono' className='form-control' onChange={(e)=>handlepoligono(e)} required>
-                <option value="">--Selecciona el Polígono--</option>{
-                        // const poligonos = [...new Set(jsonData.map((pol)=>pol.POLIGONO))]
-                        opciones.poligonos.map( (getpol)=>(
-                          <option value={getpol} key={getpol}>{getpol}</option> 
-                        ))
+  // Filtrar resultados
+  const resumenFiltrado = resumenReportes.filter(item => 
+    (filtroSeccion === '' || item.seccion.includes(filtroSeccion)) &&
+    (filtroPoligono === '' || item.poligono.includes(filtroPoligono))
+  );
 
-                        }
+  // Calcular totales generales
+  const totalesGenerales = resumenFiltrado.reduce(
+    (totales, item) => {
+      totales.twelve += item.twelve;
+      totales.fifteen += item.fifteen;
+      totales.eighteen += item.eighteen;
+      totales.general += item.total;
+      return totales;
+    }, 
+    { twelve: 0, fifteen: 0, eighteen: 0, general: 0 }
+  );
 
-                    
-                        </select> 
-                        <h1>{poligono}</h1>   
-                        <h1>{resultados.map((secciones)=>(
-                            <h2>{secciones.seccion}</h2>
-                        ))}</h1>       
-                    </div>
+  return (
+    <div className='mx-auto'>
+      {/* ... (código existente) */}
 
-        <MapComponent2 mapa={poligono}/></>
-    )
+      {/* Sección del resumen */}
+      <div className='my-8 p-4 bg-white rounded-lg shadow'>
+        <h2 className="text-xl font-bold mb-4">Resumen de Reportes</h2>
+        
+        {/* Filtros */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+          <div>
+            <label className="block text-sm font-medium mb-1">Sección</label>
+            <input
+              type="text"
+              value={filtroSeccion}
+              onChange={(e) => setFiltroSeccion(e.target.value)}
+              className="w-full border p-2 rounded"
+              placeholder="Filtrar por sección"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium mb-1">Polígono</label>
+            <input
+              type="text"
+              value={filtroPoligono}
+              onChange={(e) => setFiltroPoligono(e.target.value)}
+              className="w-full border p-2 rounded"
+              placeholder="Filtrar por polígono"
+            />
+          </div>
+          <div className="flex items-end">
+            <button 
+              onClick={fetchResumenReportes}
+              disabled={isLoadingResumen}
+              className="bg-blue-500 text-white px-4 py-2 rounded disabled:opacity-50"
+            >
+              {isLoadingResumen ? 'Actualizando...' : 'Actualizar Datos'}
+            </button>
+          </div>
+        </div>
+
+        {/* Tabla de resultados */}
+        <div className="overflow-x-auto">
+          <table className="w-full border-collapse">
+            <thead>
+              <tr className="bg-gray-100">
+                <th className="border p-2 text-left">Sección</th>
+                <th className="border p-2 text-left">Polígono</th>
+                <th className="border p-2 text-right">12:00 HRS</th>
+                <th className="border p-2 text-right">15:00 HRS</th>
+                <th className="border p-2 text-right">18:00 HRS</th>
+                <th className="border p-2 text-right font-bold">Total</th>
+              </tr>
+            </thead>
+            <tbody>
+              {isLoadingResumen ? (
+                <tr>
+                  <td colSpan="6" className="border p-4 text-center">
+                    Cargando datos...
+                  </td>
+                </tr>
+              ) : resumenFiltrado.length > 0 ? (
+                resumenFiltrado
+                  .sort((a, b) => a.seccion.localeCompare(b.seccion) || a.poligono.localeCompare(b.poligono))
+                  .map((item, index) => (
+                    <tr key={index} className={index % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
+                      <td className="border p-2">{item.seccion}</td>
+                      <td className="border p-2">{item.poligono}</td>
+                      <td className="border p-2 text-right">{item.twelve.toLocaleString()}</td>
+                      <td className="border p-2 text-right">{item.fifteen.toLocaleString()}</td>
+                      <td className="border p-2 text-right">{item.eighteen.toLocaleString()}</td>
+                      <td className="border p-2 text-right font-bold">{item.total.toLocaleString()}</td>
+                    </tr>
+                  ))
+              ) : (
+                <tr>
+                  <td colSpan="6" className="border p-4 text-center">
+                    No se encontraron resultados
+                  </td>
+                </tr>
+              )}
+            </tbody>
+            <tfoot>
+              <tr className="bg-gray-100 font-bold">
+                <td className="border p-2" colSpan="2">Total General</td>
+                <td className="border p-2 text-right">{totalesGenerales.twelve.toLocaleString()}</td>
+                <td className="border p-2 text-right">{totalesGenerales.fifteen.toLocaleString()}</td>
+                <td className="border p-2 text-right">{totalesGenerales.eighteen.toLocaleString()}</td>
+                <td className="border p-2 text-right">{totalesGenerales.general.toLocaleString()}</td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+      </div>
+
+      {/* ... (resto del código existente) */}
+    </div>
+  );
 };
 export default Territorio;
