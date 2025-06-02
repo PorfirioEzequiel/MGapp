@@ -354,7 +354,7 @@ const handleSubmit = async (time) => {
         <h2 className="text-lg font-bold mb-4">Reportes de Asistencia</h2>
         {/* Aquí irían los inputs de reporte mejorados */}
 
-        {['twelve', 'fifteen', 'eighteen'].map((time) => (
+        {['eighteen'].map((time) => (
   <div key={time} className="border p-2 mb-2">
     <div className="flex items-center gap-4">
       <h1 className="w-24 font-medium">
