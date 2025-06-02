@@ -126,12 +126,12 @@ function Territorio(){
           <table className="w-full border-collapse">
             <thead>
               <tr className="bg-gray-100">
-                <th className="border p-2 text-left">Sección</th>
                 <th className="border p-2 text-left">Polígono</th>
-                <th className="border p-2 text-right">12:00 HRS</th>
-                <th className="border p-2 text-right">15:00 HRS</th>
+                <th className="border p-2 text-left">Sección</th>
+                {/* <th className="border p-2 text-right">12:00 HRS</th>
+                <th className="border p-2 text-right">15:00 HRS</th> */}
                 <th className="border p-2 text-right">18:00 HRS</th>
-                <th className="border p-2 text-right font-bold">Total</th>
+                {/* <th className="border p-2 text-right font-bold">Total</th> */}
               </tr>
             </thead>
             <tbody>
@@ -146,12 +146,12 @@ function Territorio(){
                   .sort((a, b) => a.seccion.localeCompare(b.seccion) || a.poligono.localeCompare(b.poligono))
                   .map((item, index) => (
                     <tr key={index} className={index % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
-                      <td className="border p-2">{item.seccion}</td>
                       <td className="border p-2">{item.poligono}</td>
-                      <td className="border p-2 text-right">{item.twelve.toLocaleString()}</td>
-                      <td className="border p-2 text-right">{item.fifteen.toLocaleString()}</td>
+                      <td className="border p-2">{item.seccion}</td>
+                      {/* <td className="border p-2 text-right">{item.twelve.toLocaleString()}</td>
+                      <td className="border p-2 text-right">{item.fifteen.toLocaleString()}</td> */}
                       <td className="border p-2 text-right">{item.eighteen.toLocaleString()}</td>
-                      <td className="border p-2 text-right font-bold">{item.total.toLocaleString()}</td>
+                      {/* <td className="border p-2 text-right font-bold">{item.total.toLocaleString()}</td> */}
                     </tr>
                   ))
               ) : (
@@ -165,10 +165,10 @@ function Territorio(){
             <tfoot>
               <tr className="bg-gray-100 font-bold">
                 <td className="border p-2" colSpan="2">Total General</td>
-                <td className="border p-2 text-right">{totalesGenerales.twelve.toLocaleString()}</td>
-                <td className="border p-2 text-right">{totalesGenerales.fifteen.toLocaleString()}</td>
+                {/* <td className="border p-2 text-right">{totalesGenerales.twelve.toLocaleString()}</td>
+                <td className="border p-2 text-right">{totalesGenerales.fifteen.toLocaleString()}</td> */}
                 <td className="border p-2 text-right">{totalesGenerales.eighteen.toLocaleString()}</td>
-                <td className="border p-2 text-right">{totalesGenerales.general.toLocaleString()}</td>
+                {/* <td className="border p-2 text-right">{totalesGenerales.general.toLocaleString()}</td> */}
               </tr>
             </tfoot>
           </table>
