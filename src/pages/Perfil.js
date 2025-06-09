@@ -1,21 +1,41 @@
 import React, { useEffect, useState } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import supabase from '../supabase/client';
-import MapComponent from '../map/MapComponent';
-import MapComponent2 from '../map/MapComponent2';
 
 const Perfil = () => {
   const { state } = useLocation();
   const { user } = state || {};
   const { usuario } = useParams();
 
-  // const [section, setSeccion] = useState({});
   const [error, setError] = useState(null);
   const [promotores, setPromotores] = useState([]);
   const [ciudadanos, setCiudadanos] = useState([]);
+  const [filteredCiudadanos, setFilteredCiudadanos] = useState([]);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [ubtFilter, setUbtFilter] = useState('');
   const navigate = useNavigate();
   const [reportData, setReportData] = useState({});
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // Filtros para ciudadanos
+  useEffect(() => {
+    let results = ciudadanos;
+    
+    if (ubtFilter) {
+      results = results.filter(c => c.ubt.toString().includes(ubtFilter));
+    }
+    
+    if (searchTerm) {
+      const term = searchTerm.toLowerCase();
+      results = results.filter(c => 
+        c.nombre.toLowerCase().includes(term) || 
+        c.a_paterno.toLowerCase().includes(term) ||
+        c.a_materno.toLowerCase().includes(term)
+      );
+    }
+    
+    setFilteredCiudadanos(results);
+  }, [ciudadanos, ubtFilter, searchTerm]);
 
   const handleInputChange = (promotorId, time, value) => {
     setReportData(prev => ({
@@ -35,12 +55,9 @@ const Perfil = () => {
 
     setIsSubmitting(true);
     try {
-      // Replace with your actual Supabase table and columns
-       const promotor = promotores.find(p => p.id === promotorId);
-    
-    if (!promotor) {
-      throw new Error('Promotor no encontrado');
-    }
+      const promotor = promotores.find(p => p.id === promotorId);
+      if (!promotor) throw new Error('Promotor no encontrado');
+      
       const { error } = await supabase
         .from('cortes')
         .upsert({
@@ -50,11 +67,9 @@ const Perfil = () => {
           ubt: promotor.ubt,
           pb: `${promotor.nombre} ${promotor.a_paterno} ${promotor.a_materno}`,
           [time]: reportData[promotorId][time],
-          // updated_at: new Date().toISOString()
         });
 
       if (error) throw error;
-      
       alert('Reporte enviado exitosamente');
     } catch (error) {
       console.error('Error submitting report:', error);
@@ -64,33 +79,20 @@ const Perfil = () => {
     }
   };
 
-  // const fetchSecciones = async () => {
-  //   try {
-  //     const { data, error } = await supabase
-  //       .from('secciones') // Nombre de la tabla
-  //       .select('*').eq("seccion",user.seccion).single();
-  //       // .eq('seccion', user.seccion); // Consulta todos los campos
-
-  //     if (error) throw error;
-
-  //     setSeccion(data); // Actualiza el estado con los datos obtenidos
-  //   } catch (error) {
-  //     console.error("Error",error.message);
-  //     setError(error.message);
-  //   }
-  // };
   const fetchPromotoras = async () => {
     try {
       const { data, error } = await supabase
-        .from('ciudadania') // Nombre de la tabla
-        .select('*').eq("seccion",user.seccion).eq("puesto","PROMOTORA-BIENESTAR").eq("status","ACTIVO").order('ubt', { ascending: true });
-        // .eq('seccion', user.seccion); // Consulta todos los campos
+        .from('ciudadania')
+        .select('*')
+        .eq("seccion", user.seccion)
+        .eq("puesto", "PROMOTORA-BIENESTAR")
+        .eq("status", "ACTIVO")
+        .order('ubt', { ascending: true });
 
       if (error) throw error;
-
-      setPromotores(data); // Actualiza el estado con los datos obtenidos
+      setPromotores(data);
     } catch (error) {
-      console.error("Error",error.message);
+      console.error("Error", error.message);
       setError(error.message);
     }
   };
@@ -98,28 +100,27 @@ const Perfil = () => {
   const fetchCiudadanos = async () => {
     try {
       const { data, error } = await supabase
-        .from('ciudadania') // Nombre de la tabla
-        .select('*').eq("seccion",user.seccion).or(`puesto.eq.MOVILIZADOR,puesto.eq.INVITADO`).order('puesto', { ascending: false }).order('ubt', { ascending: true });
-        // .eq('seccion', user.seccion); // Consulta todos los campos
+        .from('ciudadania')
+        .select('*')
+        .eq("seccion", user.seccion)
+        .or('puesto.eq.MOVILIZADOR,puesto.eq.INVITADO')
+        .order('puesto', { ascending: false })
+        .order('ubt', { ascending: true });
 
       if (error) throw error;
-
-      setCiudadanos(data); // Actualiza el estado con los datos obtenidos
+      setCiudadanos(data);
+      setFilteredCiudadanos(data);
     } catch (error) {
-      console.error("Error",error.message);
+      console.error("Error", error.message);
       setError(error.message);
     }
   };
 
-    useEffect(() => {
-    // fetchSecciones(); // Llama a la función al montar el componente
+  useEffect(() => {
     fetchCiudadanos();
     fetchPromotoras();
   }, []);
 
-  
-  
-  
   if (error) {
     return <p>Error: {error}</p>;
   }
@@ -127,122 +128,113 @@ const Perfil = () => {
   if (!user) {
     return <p>Error: Usuario no encontrado</p>;
   }
-  
+
   return (
-    <div className='mx-auto'>
-      {/* <h1>Perfil de {usuario}</h1> */}
-      <h1 className="border p-2">Bienvenido {user.nombre} {user.a_paterno} {user.a_materno}</h1>
-      <p className="border p-2"><strong>Polígono:</strong> {user.poligono}</p>
-      <p className="border p-2"><strong>Sección:</strong> {user.seccion}</p>
-      <p className="border p-2"><strong>Puesto:</strong> {user.puesto}</p>
-      
-      {/* <p className="border p-2"><strong>Lista nominal:</strong> {section.lista_nominal}</p> */}
-      <p className="border p-2"><strong>Promotor@s del Bienestar:</strong> {promotores.length}</p>
-      <button onClick={() => navigate(`/seccional/agregar/${user.usuario}`, {state: { user: user }})} className="bg-green-500 text-white mx-auto my-auto px-4 py-2 rounded">
-        
-        Agregar Ciudadano
-        </button>
-
-
-      <table className="w-full border-collapse border border-gray-300">
-        <thead>
-          <tr className="bg-gray-200">
-            <th className="border p-2">Polígono</th>
-            <th className="border p-2">Sección</th>
-            <th className="border p-2">UBT</th>
-            <th className="border p-2">Nombre</th>
-            <th className="border p-2">Puesto</th>
-            {/* <th className="border p-2">12:00 HRS</th>
-            <th className="border p-2">15:00 HRS</th> */}
-            <th className="border p-2">18:00 HRS</th>
-            
-          </tr>
-        </thead>
-      {promotores.length > 0 ? (
-          <tbody>
-            {promotores.map((promotor) => (
-              <tr key={promotor.id}>
-                <td className="border p-2">{promotor.poligono}</td>
-                <td className="border p-2">{promotor.seccion}</td>
-                <td className="border p-2">{promotor.ubt}</td>
-                <td className="border p-2">{promotor.nombre} {promotor.a_paterno} {promotor.a_materno}</td>
-                <td className="border p-2">{promotor.puesto}</td>
-                {/* 12:00 HRS */}
-        {/* <td className="border p-2">
-          <div className="flex gap-2">
-            <input
-              type="number"
-              value={reportData[promotor.id]?.['twelve'] || ''}
-              onChange={(e) => handleInputChange(promotor.id, 'twelve', e.target.value)}
-              className="border border-gray-300 rounded-md p-2 w-20"
-              required
-            />
-            <button 
-              onClick={() => handleSubmit(promotor.id, 'twelve')}
-              disabled={isSubmitting}
-              className="bg-rose-500 text-white px-4 py-2 rounded disabled:opacity-50"
-            >
-              {isSubmitting ? 'ENVIANDO...' : 'ENVIAR'}
-            </button>
-          </div>
-        </td> */}
-        
-        {/* 15:00 HRS */}
-        {/* <td className="border p-2">
-          <div className="flex gap-2">
-            <input
-              type="number"
-              value={reportData[promotor.id]?.['fifteen'] || ''}
-              onChange={(e) => handleInputChange(promotor.id, 'fifteen', e.target.value)}
-              className="border border-gray-300 rounded-md p-2 w-20"
-              required
-            />
-            <button 
-              onClick={() => handleSubmit(promotor.id, 'fifteen')}
-              disabled={isSubmitting}
-              className="bg-rose-500 text-white px-4 py-2 rounded disabled:opacity-50"
-            >
-              {isSubmitting ? 'ENVIANDO...' : 'ENVIAR'}
-            </button>
-          </div>
-        </td> */}
-        
-        {/* 18:00 HRS */}
-        <td className="border p-2">
-          <div className="flex gap-2">
-            <input
-              type="number"
-              value={reportData[promotor.id]?.['eighteen'] || ''}
-              onChange={(e) => handleInputChange(promotor.id, 'eighteen', e.target.value)}
-              className="border border-gray-300 rounded-md p-2 w-20"
-              required
-            />
-            <button 
-              onClick={() => handleSubmit(promotor.id, 'eighteen')}
-              disabled={isSubmitting}
-              className="bg-rose-500 text-white px-4 py-2 rounded disabled:opacity-50"
-            >
-              {isSubmitting ? 'ENVIANDO...' : 'ENVIAR'}
-            </button>
-          </div>
-        </td>
-
-                {/* <td className="border p-2"><input></input><button>Enviar</button></td>
-                <td className="border p-2"><input></input><button>Enviar</button></td> */}
-                
-                {/* {resultado.poligono} - {resultado.seccion} - {resultado.puesto} - {resultado.nombre}  {resultado.a_paterno}  {resultado.a_materno} */}
-                
-              </tr>
-            ))}
-          </tbody>
-        ) : (
-          <p>No se encontraron resultados.</p>
-        )}
-      </table>
-     < div className='my-8 mx-2'>
-        <h2 ><strong>CIUDADANOS</strong></h2>
+    <div className='mx-auto p-4'>
+      <h1 className="text-xl font-bold border-b pb-2 mb-4">Bienvenido {user.nombre} {user.a_paterno} {user.a_materno}</h1>
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+        <div className="border p-2 rounded">
+          <strong>Polígono:</strong> {user.poligono}
+        </div>
+        <div className="border p-2 rounded">
+          <strong>Sección:</strong> {user.seccion}
+        </div>
+        <div className="border p-2 rounded">
+          <strong>Puesto:</strong> {user.puesto}
+        </div>
+        <div className="border p-2 rounded">
+          <strong>Promotor@s:</strong> {promotores.length}
+        </div>
       </div>
-      <table className="w-full border-collapse border border-gray-300">
+      
+      <button 
+        onClick={() => navigate(`/seccional/agregar/${user.usuario}`, {state: { user }})} 
+        className="bg-green-500 hover:bg-green-600 text-white px-4 py-2 rounded mb-6"
+      >
+        Agregar Ciudadano
+      </button>
+
+      {/* Tabla de Promotores */}
+      <div className="mb-8">
+        <h2 className="text-lg font-semibold mb-2">PROMOTORES DEL BIENESTAR</h2>
+        <table className="w-full border-collapse border border-gray-300">
+          <thead>
+            <tr className="bg-gray-200">
+              <th className="border p-2">Polígono</th>
+              <th className="border p-2">Sección</th>
+              <th className="border p-2">UBT</th>
+              <th className="border p-2">Nombre</th>
+              <th className="border p-2">Puesto</th>
+              <th className="border p-2">18:00 HRS</th>
+            </tr>
+          </thead>
+          <tbody>
+            {promotores.length > 0 ? (
+              promotores.map((promotor) => (
+                <tr key={promotor.id}>
+                  <td className="border p-2">{promotor.poligono}</td>
+                  <td className="border p-2">{promotor.seccion}</td>
+                  <td className="border p-2">{promotor.ubt}</td>
+                  <td className="border p-2">{promotor.nombre} {promotor.a_paterno} {promotor.a_materno}</td>
+                  <td className="border p-2">{promotor.puesto}</td>
+                  <td className="border p-2">
+                    <div className="flex gap-2">
+                      <input
+                        type="number"
+                        value={reportData[promotor.id]?.['eighteen'] || ''}
+                        onChange={(e) => handleInputChange(promotor.id, 'eighteen', e.target.value)}
+                        className="border border-gray-300 rounded-md p-2 w-20"
+                        required
+                      />
+                      <button 
+                        onClick={() => handleSubmit(promotor.id, 'eighteen')}
+                        disabled={isSubmitting}
+                        className="bg-rose-500 hover:bg-rose-600 text-white px-4 py-2 rounded disabled:opacity-50"
+                      >
+                        {isSubmitting ? 'ENVIANDO...' : 'ENVIAR'}
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))
+            ) : (
+              <tr>
+                <td colSpan="6" className="text-center p-2">No se encontraron promotores</td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      {/* Filtros para Ciudadanos */}
+      <div className='mb-6'>
+        <h2 className="text-lg font-semibold mb-2">CIUDADANOS</h2>
+        <div className="flex flex-wrap gap-4 mb-4">
+          <div>
+            <label className="block mb-1 font-medium">Filtrar por UBT:</label>
+            <input
+              type="text"
+              value={ubtFilter}
+              onChange={(e) => setUbtFilter(e.target.value)}
+              className="border border-gray-300 rounded-md p-2 w-full"
+              placeholder="Número de UBT"
+            />
+          </div>
+          <div className="flex-1">
+            <label className="block mb-1 font-medium">Filtrar por nombre:</label>
+            <input
+              type="text"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="border border-gray-300 rounded-md p-2 w-full"
+              placeholder="Nombre del ciudadano"
+            />
+          </div>
+        </div>
+      </div>
+
+      {/* Tabla de Ciudadanos */}
+      <table className="w-full border-collapse border border-gray-300 mb-8">
         <thead>
           <tr className="bg-gray-200">
             <th className="border p-2">Polígono</th>
@@ -251,34 +243,49 @@ const Perfil = () => {
             <th className="border p-2">Nombre</th>
             <th className="border p-2">Puesto</th>
             <th className="border p-2">Movilizador</th>
-            <th className="border p-2">Editar</th>
+            <th className="border p-2">Acciones</th>
           </tr>
         </thead>
-      {ciudadanos.length > 0 ? (
-          <tbody>
-            {ciudadanos.map((resultado) => (
-              <tr key={resultado.id}>
-                <td className="border p-2">{resultado.poligono}</td>
-                <td className="border p-2">{resultado.seccion}</td>
-                <td className="border p-2">{resultado.ubt}</td>
-                <td className="border p-2">{resultado.nombre} {resultado.a_paterno} {resultado.a_materno}</td>
-                <td className="border p-2">{resultado.puesto}</td>
-                <td className="border p-2">{resultado.movilizador}</td>
-                <td><button onClick={() => navigate(`/ciudadanoE/${resultado.id}`)}
-                  className="bg-blue-500 text-white px-4 py-2 rounded">
-                    EDITAR
-                </button></td>
-                {/* {resultado.poligono} - {resultado.seccion} - {resultado.puesto} - {resultado.nombre}  {resultado.a_paterno}  {resultado.a_materno} */}
-                
+        <tbody>
+          {filteredCiudadanos.length > 0 ? (
+            filteredCiudadanos.map((ciudadano) => (
+              <tr key={ciudadano.id}>
+                <td className="border p-2">{ciudadano.poligono}</td>
+                <td className="border p-2">{ciudadano.seccion}</td>
+                <td className="border p-2">{ciudadano.ubt}</td>
+                <td className="border p-2">{ciudadano.nombre} {ciudadano.a_paterno} {ciudadano.a_materno}</td>
+                <td className="border p-2">{ciudadano.puesto}</td>
+                <td className="border p-2">{ciudadano.movilizador}</td>
+                <td className="border p-2">
+                  <div className="flex gap-2">
+                    <button 
+                      onClick={() => navigate(`/subir-evidencias/${ciudadano.id}`, { 
+                        state: { 
+                          ciudadano,
+                          user 
+                        } 
+                      })}
+                      className="bg-blue-500 hover:bg-blue-600 text-white px-3 py-1 rounded text-sm"
+                    >
+                      SUBIR EVIDENCIAS
+                    </button>
+                    <button 
+                      onClick={() => navigate(`/ciudadanoE/${ciudadano.id}`)}
+                      className="bg-gray-500 hover:bg-gray-600 text-white px-3 py-1 rounded text-sm"
+                    >
+                      EDITAR
+                    </button>
+                  </div>
+                </td>
               </tr>
-            ))}
-          </tbody>
-        ) : (
-          <p>No se encontraron resultados.</p>
-        )}
+            ))
+          ) : (
+            <tr>
+              <td colSpan="7" className="text-center p-4">No se encontraron ciudadanos</td>
+            </tr>
+          )}
+        </tbody>
       </table>
-      {/* <MapComponent mapa={section.geometry}/> */}
-      {/* <MapComponent2 mapa={user.poligono}/> */}
     </div>
   );
 };
