@@ -19,7 +19,7 @@ const SubirEvidencias = () => {
   };
 
   const handleSubmit = async () => {
-    if (files.length < cantidad) {
+    if (files.length < 1) {
       alert(`Por favor suba ${cantidad} evidencia(s)`);
       return;
     }
@@ -118,7 +118,7 @@ const SubirEvidencias = () => {
           type="number"
         //   min="0"
           value={cantidad}
-          onChange={(e) => setCantidad(Math.max(1, e.target.value))}
+          onChange={(e) => setCantidad( e.target.value)}
           className="border border-gray-300 rounded-md p-2 w-20"
         />
       </div>
@@ -126,7 +126,7 @@ const SubirEvidencias = () => {
       <div className="mb-6">
         <h2 className="text-lg font-semibold mb-4">Subir evidencias fotográficas ({cantidad}):</h2>
         <div className="grid gap-4">
-          {[...Array(Number(cantidad))].map((_, index) => (
+          {[...Array(Number([1]))].map((_, index) => (
             <div key={index} className="border p-4 rounded-lg">
               <label className="block mb-2">Evidencia #{index + 1}</label>
               <input

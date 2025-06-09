@@ -103,7 +103,7 @@ const Perfil = () => {
         .from('ciudadania')
         .select('*')
         .eq("seccion", user.seccion)
-        .or('puesto.eq.MOVILIZADOR,puesto.eq.INVITADO')
+        .or('puesto.eq.MOVILIZADOR,puesto.eq.MOVILIZADOR')
         .order('puesto', { ascending: false })
         .order('ubt', { ascending: true });
 
@@ -165,7 +165,7 @@ const Perfil = () => {
               <th className="border p-2">UBT</th>
               <th className="border p-2">Nombre</th>
               <th className="border p-2">Puesto</th>
-              <th className="border p-2">18:00 HRS</th>
+              {/* <th className="border p-2">18:00 HRS</th> */}
             </tr>
           </thead>
           <tbody>
@@ -177,7 +177,7 @@ const Perfil = () => {
                   <td className="border p-2">{promotor.ubt}</td>
                   <td className="border p-2">{promotor.nombre} {promotor.a_paterno} {promotor.a_materno}</td>
                   <td className="border p-2">{promotor.puesto}</td>
-                  <td className="border p-2">
+                  {/* <td className="border p-2">
                     <div className="flex gap-2">
                       <input
                         type="number"
@@ -194,7 +194,7 @@ const Perfil = () => {
                         {isSubmitting ? 'ENVIANDO...' : 'ENVIAR'}
                       </button>
                     </div>
-                  </td>
+                  </td> */}
                 </tr>
               ))
             ) : (
@@ -211,7 +211,7 @@ const Perfil = () => {
         <h2 className="text-lg font-semibold mb-2">CIUDADANOS</h2>
         <div className="flex flex-wrap gap-4 mb-4">
           <div>
-            <label className="block mb-1 font-medium">Filtrar por UBT:</label>
+            <label className="block mb-1 font-medium">Buscar por UBT:</label>
             <input
               type="text"
               value={ubtFilter}
@@ -221,7 +221,7 @@ const Perfil = () => {
             />
           </div>
           <div className="flex-1">
-            <label className="block mb-1 font-medium">Filtrar por nombre:</label>
+            <label className="block mb-1 font-medium">Buscar por nombre:</label>
             <input
               type="text"
               value={searchTerm}
