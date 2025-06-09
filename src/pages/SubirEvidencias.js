@@ -128,7 +128,7 @@ const SubirEvidencias = () => {
         <div className="grid gap-4">
           {[...Array(Number([1]))].map((_, index) => (
             <div key={index} className="border p-4 rounded-lg">
-              <label className="block mb-2">Evidencia #{index + 1}</label>
+              <label className="block mb-2">Evidencia Fotográfica</label>
               <input
                 type="file"
                 accept="image/*"
