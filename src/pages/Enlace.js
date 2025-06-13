@@ -1,247 +1,3 @@
-// import React, { useEffect, useState } from 'react';
-// import { useLocation, useNavigate, useParams } from 'react-router-dom';
-// import supabase from '../supabase/client';
-// import MapComponent from '../map/MapComponent';
-// import MapComponent2 from '../map/MapComponent2';
-
-// const Enlace = () => {
-//   const { state } = useLocation();
-//   const { user } = state || {};
-//   const { usuario } = useParams();
-
-//   // const [section, setSeccion] = useState({});
-//   const [error, setError] = useState(null);
-//   const [promotores, setPromotores] = useState([]);
-//   const [ciudadanos, setCiudadanos] = useState([]);
-//   const navigate = useNavigate();
-
-//   const [reportData, setReportData] = useState({});
-//   const [isSubmitting, setIsSubmitting] = useState(false);
-
-//   const handleInputChange = (promotorId, time, value) => {
-//     setReportData(prev => ({
-//       ...prev,
-//       [promotorId]: {
-//         ...prev[promotorId],
-//         [time]: value
-//       }
-//     }));
-//   };
-
-//   const handleSubmit = async (time) => {
-//     if (!reportData[time]) {
-//       alert('Por favor ingresa un valor');
-//       return;
-//     }
-
-//     setIsSubmitting(true);
-//     try {
-//       // Replace with your actual Supabase table and columns
-//       //  const promotor = promotores.find(p => p.id === promotorId);
-    
-//     // if (!promotor) {
-//     //   throw new Error('Promotor no encontrado');
-//     // }
-//       const { error } = await supabase
-//         .from('cortes_s')
-//         .upsert({
-//           delegacion: user.seccion,
-//           [time]: reportData[time],
-//           // updated_at: new Date().toISOString()
-//         });
-
-//       if (error) throw error;
-      
-//       alert('Reporte enviado exitosamente');
-//     } catch (error) {
-//       console.error('Error submitting report:', error);
-//       alert('Error al enviar el reporte');
-//     } finally {
-//       setIsSubmitting(false);
-//     }
-//   };
-
-//   // const fetchSecciones = async () => {
-//   //   try {
-//   //     const { data, error } = await supabase
-//   //       .from('secciones') // Nombre de la tabla
-//   //       .select('*').eq("seccion",user.seccion).single();
-//   //       // .eq('seccion', user.seccion); // Consulta todos los campos
-
-//   //     if (error) throw error;
-
-//   //     setSeccion(data); // Actualiza el estado con los datos obtenidos
-//   //   } catch (error) {
-//   //     console.error("Error",error.message);
-//   //     setError(error.message);
-//   //   }
-//   // };
-// //   const fetchPromotoras = async () => {
-// //     try {
-// //       const { data, error } = await supabase
-// //         .from('ciudadania') // Nombre de la tabla
-// //         .select('*').eq("seccion",user.seccion).eq("puesto","PROMOTORA-BIENESTAR").order('ubt', { ascending: true });
-// //         // .eq('seccion', user.seccion); // Consulta todos los campos
-
-// //       if (error) throw error;
-
-// //       setPromotores(data); // Actualiza el estado con los datos obtenidos
-// //     } catch (error) {
-// //       console.error("Error",error.message);
-// //       setError(error.message);
-// //     }
-// //   };
-
-//   const fetchCiudadanos = async () => {
-//     try {
-//       const { data, error } = await supabase
-//         .from('servidores') // Nombre de la tabla
-//         .select('*').eq("delegacion",user.seccion);
-//         // .eq('seccion', user.seccion); // Consulta todos los campos
-
-//       if (error) throw error;
-
-//       setCiudadanos(data); // Actualiza el estado con los datos obtenidos
-//     } catch (error) {
-//       console.error("Error",error.message);
-//       setError(error.message);
-//     }
-//   };
-
-//     useEffect(() => {
-//     // fetchSecciones(); // Llama a la función al montar el componente
-//     fetchCiudadanos();
-//     // fetchPromotoras();
-//   }, []);
-
-  
-  
-  
-//   if (error) {
-//     return <p>Error: {error}</p>;
-//   }
-
-//   if (!user) {
-//     return <p>Error: Usuario no encontrado</p>;
-//   }
-  
-//   return (
-//     <div className='mx-auto'>
-//       {/* <h1>Perfil de {usuario}</h1> */}
-//       <h1 className="border p-2">Bienvenido {user.nombre}</h1>
-//       <p className="border p-2"><strong>Polígono:</strong> {user.poligono}</p>
-//       <p className="border p-2"><strong>Delegación:</strong> {user.seccion}</p>
-//       <p className="border p-2"><strong>Puesto:</strong> {user.puesto}</p>
-//       {/* <p className="border p-2"><strong>Lista nominal:</strong> {section.lista_nominal}</p> */}
-
-
-//       <div className="border p-2">
-//           <div className="flex gap-2">
-//             <h1>12:00 HRS</h1>
-//             <input
-//               type="number"
-//               value={reportData[['twelve'] || '']}
-//               onChange={(e) => handleInputChange( 'twelve', e.target.value)}
-//               className="border border-gray-300 rounded-md p-2 w-20"
-//               required
-//             />
-//             <button 
-//               onClick={() => handleSubmit('twelve')}
-//               disabled={isSubmitting}
-//               className="bg-rose-500 text-white px-4 py-2 rounded disabled:opacity-50"
-//             >
-//               {isSubmitting ? 'ENVIANDO...' : 'ENVIAR'}
-//             </button>
-//           </div>
-//         </div>
-        
-//         {/* 15:00 HRS */}
-//         <div className="border p-2">
-//           <div className="flex gap-2">
-//             <h1>15:00 HRS</h1>
-//             <input
-//               type="number"
-//               value={reportData['fifteen'] || ''}
-//               onChange={(e) => handleInputChange('fifteen', e.target.value)}
-//               className="border border-gray-300 rounded-md p-2 w-20"
-//               required
-//             />
-//             <button 
-//               onClick={() => handleSubmit( 'fifteen')}
-//               disabled={isSubmitting}
-//               className="bg-rose-500 text-white px-4 py-2 rounded disabled:opacity-50"
-//             >
-//               {isSubmitting ? 'ENVIANDO...' : 'ENVIAR'}
-//             </button>
-//           </div>
-//         </div>
-        
-//         {/* 18:00 HRS */}
-//         <div className="border p-2">
-//           <div className="flex gap-2">
-//             <h1>18:00 HRS</h1>
-//             <input
-//               type="number"
-//               value={reportData['eighteen'] || ''}
-//               onChange={(e) => handleInputChange('eighteen', e.target.value)}
-//               className="border border-gray-300 rounded-md p-2 w-20"
-//               required
-//             />
-//             <button 
-//               onClick={() => handleSubmit('eighteen')}
-//               disabled={isSubmitting}
-//               className="bg-rose-500 text-white px-4 py-2 rounded disabled:opacity-50"
-//             >
-//               {isSubmitting ? 'ENVIANDO...' : 'ENVIAR'}
-//             </button>
-//           </div>
-//         </div>
-//       <div className='m-4'>
-//       <button onClick={() => navigate(`/enlace/agregar/${user.usuario}`, {state: { user: user }})} className="bg-purple-500 text-white mx-auto my-auto px-4 py-2 rounded">
-        
-//         Agregar Ciudadano
-//         </button>
-//     </div>
-
-
-
-//      < div className='my-8 mx-2'>
-//         <h2 ><strong>CIUDADANOS</strong></h2>
-//       </div>
-//       <table className="w-full border-collapse border border-gray-300">
-//         <thead>
-//           <tr className="bg-gray-200">
-//             {/* <th className="border p-2">Polígono</th> */}
-//             <th className="border p-2">Delegación</th>
-//             <th className="border p-2">SP</th>
-//             <th className="border p-2">Nombre</th>
-//             <th className="border p-2">CURP</th>
-//             {/* <th className="border p-2">Puesto</th> */}
-//           </tr>
-//         </thead>
-//       {ciudadanos.length > 0 ? (
-//           <tbody>
-//             {ciudadanos.map((resultado) => (
-//               <tr key={resultado.id}>
-//                 {/* <td className="border p-2">{resultado.poligono}</td> */}
-//                 <td className="border p-2">{resultado.seccion}</td>
-//                 <td className="border p-2">{resultado.sp}</td>
-//                 <td className="border p-2">{resultado.nombre}</td>
-//                 <td className="border p-2">{resultado.curp}</td>
-//                 {/* <td className="border p-2">{resultado.puesto}</td> */}
-                
-//               </tr>
-//             ))}
-//           </tbody>
-//         ) : (
-//           <p>No se encontraron resultados.</p>
-//         )}
-//       </table>
-//     </div>
-//   );
-// };
-
-// export default Enlace;
 import React, { useEffect, useState } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import supabase from '../supabase/client';
@@ -254,72 +10,140 @@ const Enlace = () => {
   const [ciudadanos, setCiudadanos] = useState([]);
   const [searchTerm, setSearchTerm] = useState('');
   const navigate = useNavigate();
+  const [loading, setLoading] = useState(true);
 
-const [reportData, setReportData] = useState({
-  twelve: '',
-  fifteen: '',
-  eighteen: ''
-});
-const [isSubmitting, setIsSubmitting] = useState(false);
-const handleInputChange = (time, value) => {
-  setReportData(prev => ({
-    ...prev,
-    [time]: value
-  }));
-};
+  // Estado para los reportes de movilización
+  const [movilizaciones, setMovilizaciones] = useState({});
+  const [fotos, setFotos] = useState({});
 
-const handleSubmit = async (time) => {
-  if (!reportData[time]) {
-    alert('Por favor ingresa un valor');
-    return;
-  }
+  const handleInputChange = (spId, field, value) => {
+    setMovilizaciones(prev => ({
+      ...prev,
+      [spId]: {
+        ...prev[spId],
+        [field]: value
+      }
+    }));
+  };
 
-  setIsSubmitting(true);
-  try {
-    const { error } = await supabase
-      .from('cortes_s')
-      .upsert({
-        delegacion: user.seccion,
-        [time]: parseInt(reportData[time]),
-        // fecha: new Date().toISOString().split('T')[0], // Guardar fecha actual
-        // hora: time,
-        // usuario: user.usuario // Registrar quién envió el reporte
-      });
+  const handleFileChange = (spId, e) => {
+    const file = e.target.files[0];
+    if (file) {
+      setFotos(prev => ({
+        ...prev,
+        [spId]: file
+      }));
+    }
+  };
 
-    if (error) throw error;
-    
-    alert('Reporte enviado exitosamente');
-    // Limpiar solo el campo enviado
-    setReportData(prev => ({...prev, [time]: ''}));
-  } catch (error) {
-    console.error('Error submitting report:', error);
-    alert(`Error al enviar el reporte: ${error.message}`);
-  } finally {
-    setIsSubmitting(false);
-  }
-};
+  const handleSubmit = async (spId) => {
+    const reporte = movilizaciones[spId];
+    if (!reporte || reporte.participo === undefined) {
+      alert('Por favor indica si participó');
+      return;
+    }
 
-  // ... (aquí irían las funciones handleInputChange y handleSubmit mejoradas que mostré arriba)
+    if (reporte.participo === 'si' && !reporte.cantidad) {
+      alert('Por favor ingresa la cantidad movilizada');
+      return;
+    }
+
+    try {
+      setLoading(true);
+      
+      // Subir foto si existe
+      let fotoUrl = null;
+      if (fotos[spId]) {
+        const fileExt = fotos[spId].name.split('.').pop();
+        const fileName = `${spId}_${Date.now()}.${fileExt}`;
+        const { error: uploadError } = await supabase.storage
+          .from('evidencias-movilizacion')
+          .upload(`evidencias/${fileName}`, fotos[spId]);
+        
+        if (uploadError) throw uploadError;
+        
+        // Obtener URL pública
+        const { data: urlData } = supabase.storage
+          .from('evidencias-movilizacion')
+          .getPublicUrl(`evidencias/${fileName}`);
+        
+        fotoUrl = urlData.publicUrl;
+      }
+
+      // Guardar reporte en la base de datos
+      const { error } = await supabase
+        .from('reportes_movilizacion')
+        .upsert({
+          sp_id: spId,
+          participo: reporte.participo === 'si',
+          cantidad: reporte.participo === 'si' ? parseInt(reporte.cantidad) : 0,
+          evidencia_url: fotoUrl,
+          delegacion: user.seccion,
+          reportado_por: user.usuario,
+          fecha: new Date().toISOString().split('T')[0]
+        });
+
+      if (error) throw error;
+      
+      alert('Reporte enviado exitosamente');
+      
+      // Actualizar lista para mostrar el estado
+      setCiudadanos(prev => prev.map(sp => 
+        sp.id === spId ? { ...sp, reportado: true } : sp
+      ));
+      
+    } catch (error) {
+      console.error('Error enviando reporte:', error);
+      alert(`Error: ${error.message}`);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const fetchCiudadanos = async () => {
     try {
-      const { data, error } = await supabase
+      setLoading(true);
+      const { data: servidores, error } = await supabase
         .from('servidores')
         .select('*')
         .eq('delegacion', user.seccion)
         .order('sp', { ascending: true });
 
       if (error) throw error;
-      setCiudadanos(data || []);
+
+      // Obtener reportes existentes para hoy
+      const hoy = new Date().toISOString().split('T')[0];
+      const { data: reportes } = await supabase
+        .from('reportes_movilizacion')
+        .select('sp_id, participo, cantidad')
+        .eq('fecha', hoy)
+        .eq('delegacion', user.seccion);
+
+      // Marcar los SP que ya han reportado
+      const servidoresConEstado = servidores.map(sp => {
+        const reporte = reportes.find(r => r.sp_id === sp.id);
+        return {
+          ...sp,
+          reportado: !!reporte,
+          participo: reporte?.participo,
+          cantidad: reporte?.cantidad
+        };
+      });
+
+      setCiudadanos(servidoresConEstado || []);
     } catch (error) {
       console.error("Error cargando servidores:", error.message);
       setError(error.message);
+    } finally {
+      setLoading(false);
     }
   };
 
   useEffect(() => {
-    fetchCiudadanos();
-  }, []);
+    if (user?.seccion) {
+      fetchCiudadanos();
+    }
+  }, [user]);
 
   if (error) {
     return (
@@ -346,105 +170,127 @@ const handleSubmit = async (time) => {
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <p><strong>Delegación:</strong> {user.seccion}</p>
           <p><strong>Puesto:</strong> {user.puesto}</p>
-          {/* <p><strong>Usuario:</strong> {user.usuario}</p> */}
         </div>
       </div>
 
       <div className="bg-white rounded-lg shadow p-4 mb-6">
-        <h2 className="text-lg font-bold mb-4">Reportes de Asistencia</h2>
-        {/* Aquí irían los inputs de reporte mejorados */}
+        <div className="flex justify-between items-center mb-4">
+          <h2 className="text-xl font-bold">REPORTE DE MOVILIZACIÓN POR SP</h2>
+          <div className="flex gap-2">
+            <input
+              type="text"
+              placeholder="Buscar SP..."
+              className="border p-2 rounded"
+              onChange={(e) => setSearchTerm(e.target.value)}
+            />
+            <button 
+              onClick={fetchCiudadanos}
+              className="bg-blue-500 text-white px-4 py-2 rounded"
+              disabled={loading}
+            >
+              {loading ? 'Actualizando...' : 'Actualizar'}
+            </button>
+          </div>
+        </div>
 
-        {['eighteen'].map((time) => (
-  <div key={time} className="border p-2 mb-2">
-    <div className="flex items-center gap-4">
-      <h1 className="w-24 font-medium">
-        {time === 'twelve' ? '12:00 HRS' : 
-         time === 'fifteen' ? '15:00 HRS' : '18:00 HRS'}
-      </h1>
-      <input
-        type="number"
-        value={reportData[time] || ''}
-        onChange={(e) => handleInputChange(time, e.target.value)}
-        className="border border-gray-300 rounded-md p-2 w-20"
-        required
-        min="0"
-      />
-      <button 
-        onClick={() => handleSubmit(time)}
-        disabled={isSubmitting}
-        className="bg-rose-500 hover:bg-rose-600 text-white px-4 py-2 rounded disabled:opacity-50"
-      >
-        {isSubmitting ? 'ENVIANDO...' : 'ENVIAR'}
-      </button>
-      {reportData[time] && (
-        <span className="text-green-600 ml-2">
-          {reportData[time]} personas
-        </span>
-      )}
-    </div>
-  </div>
-))}
-      </div>
-
-      <div className="bg-white rounded-lg shadow p-4">
-        {/* Aquí iría la tabla de servidores mejorada */}
-        <div className='my-8 mx-2'>
-  <div className="flex justify-between items-center mb-4">
-    <h2 className="text-xl font-bold"><strong>SERVIDORES</strong></h2>
-    <div className="flex gap-2">
-      <input
-        type="text"
-        placeholder="Buscar por nombre..."
-        className="border p-2 rounded"
-        onChange={(e) => setSearchTerm(e.target.value)}
-      />
-      <button 
-        onClick={fetchCiudadanos}
-        className="bg-blue-500 text-white px-4 py-2 rounded"
-      >
-        Actualizar
-      </button>
-    </div>
-  </div>
-
-  <div className="overflow-x-auto">
-    <table className="w-full border-collapse border border-gray-300">
-      <thead>
-        <tr className="bg-gray-200">
-          <th className="border p-2">Delegación</th>
-          <th className="border p-2">SP</th>
-          <th className="border p-2">Nombre</th>
-          <th className="border p-2">CURP</th>
-          <th className="border p-2">Teléfono</th>
-        </tr>
-      </thead>
-      <tbody>
-        {ciudadanos.length > 0 ? (
-          ciudadanos
-            .filter(ciudadano => 
-              ciudadano.nombre.toLowerCase().includes(searchTerm.toLowerCase()) ||
-              ciudadano.sp.toLowerCase().includes(searchTerm.toLowerCase())
-            )
-            .map((ciudadano) => (
-              <tr key={ciudadano.id} className="hover:bg-gray-50">
-                <td className="border p-2">{ciudadano.delegacion}</td>
-                <td className="border p-2">{ciudadano.sp}</td>
-                <td className="border p-2">{ciudadano.nombre}</td>
-                <td className="border p-2 font-mono">{ciudadano.curp}</td>
-                <td className="border p-2">{ciudadano.telefono}</td>
-              </tr>
-            ))
+        {loading ? (
+          <p>Cargando servidores...</p>
         ) : (
-          <tr>
-            <td colSpan="5" className="border p-2 text-center">
-              No se encontraron servidores
-            </td>
-          </tr>
+          <div className="space-y-4">
+            {ciudadanos
+              .filter(ciudadano => 
+                ciudadano.nombre.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                ciudadano.sp.toLowerCase().includes(searchTerm.toLowerCase())
+              )
+              .map((ciudadano) => (
+                <div key={ciudadano.id} className="border p-4 rounded-lg">
+                  <div className="flex justify-between items-center mb-2">
+                    <h3 className="font-bold">
+                      {ciudadano.nombre}
+                      {ciudadano.reportado && (
+                        <span className="ml-2 bg-green-100 text-green-800 text-xs px-2 py-1 rounded">
+                          Reportado
+                        </span>
+                      )}
+                    </h3>
+                    {/* <span className="text-sm text-gray-500">Tel: {ciudadano.telefono}</span> */}
+                  </div>
+
+                  {ciudadano.reportado ? (
+                    <div className="bg-green-50 p-3 rounded">
+                      <p>
+                        <strong>Estado:</strong> {ciudadano.participo ? 'Participó' : 'No participó'}
+                      </p>
+                      {ciudadano.participo && (
+                        <p>
+                          <strong>Movilizó:</strong> {ciudadano.cantidad} personas
+                        </p>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      <div>
+                        <label className="block mb-1">¿Participó en la movilización?</label>
+                        <div className="flex gap-4">
+                          <label className="inline-flex items-center">
+                            <input
+                              type="radio"
+                              name={`participacion-${ciudadano.id}`}
+                              value="si"
+                              onChange={(e) => handleInputChange(ciudadano.id, 'participo', e.target.value)}
+                              className="mr-2"
+                            />
+                            Sí
+                          </label>
+                          <label className="inline-flex items-center">
+                            <input
+                              type="radio"
+                              name={`participacion-${ciudadano.id}`}
+                              value="no"
+                              onChange={(e) => handleInputChange(ciudadano.id, 'participo', e.target.value)}
+                              className="mr-2"
+                            />
+                            No
+                          </label>
+                        </div>
+                      </div>
+
+                      {movilizaciones[ciudadano.id]?.participo === 'si' && (
+                        <div>
+                          <label className="block mb-1">¿Cuántas personas movilizó?</label>
+                          <input
+                            type="number"
+                            min="0"
+                            className="border p-2 rounded w-full max-w-xs"
+                            onChange={(e) => handleInputChange(ciudadano.id, 'cantidad', e.target.value)}
+                          />
+                        </div>
+                      )}
+
+                      <div>
+                        <label className="block mb-1">Evidencia fotográfica</label>
+                        <input
+                          type="file"
+                          accept="image/*"
+                          capture="environment"
+                          className="border p-2 rounded w-full"
+                          onChange={(e) => handleFileChange(ciudadano.id, e)}
+                        />
+                      </div>
+
+                      <button
+                        onClick={() => handleSubmit(ciudadano.id)}
+                        disabled={loading || !movilizaciones[ciudadano.id]?.participo}
+                        className="bg-rose-500 hover:bg-rose-600 text-white px-4 py-2 rounded disabled:opacity-50"
+                      >
+                        {loading ? 'Enviando...' : 'Enviar Reporte'}
+                      </button>
+                    </div>
+                  )}
+                </div>
+              ))}
+          </div>
         )}
-      </tbody>
-    </table>
-  </div>
-</div>
       </div>
 
       <div className="mt-4 text-center">
