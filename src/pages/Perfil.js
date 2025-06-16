@@ -10,6 +10,7 @@ const Perfil = () => {
   const [error, setError] = useState(null);
   const [promotores, setPromotores] = useState([]);
   const [ciudadanos, setCiudadanos] = useState([]);
+  const [ciudadanosInv, setCiudadanosInv] = useState([]);
   const [filteredCiudadanos, setFilteredCiudadanos] = useState([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [ubtFilter, setUbtFilter] = useState('');
@@ -116,9 +117,29 @@ const Perfil = () => {
     }
   };
 
+  const fetchCiudadanosIn = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('ciudadania')
+        .select('*')
+        .eq("seccion", user.seccion)
+        .or('puesto.eq.INVITADO,puesto.eq.INVITADO')
+        .order('puesto', { ascending: false })
+        .order('ubt', { ascending: true });
+
+      if (error) throw error;
+      setCiudadanosInv(data);
+      // setFilteredCiudadanos(data);
+    } catch (error) {
+      console.error("Error", error.message);
+      setError(error.message);
+    }
+  };
+
   useEffect(() => {
     fetchCiudadanos();
     fetchPromotoras();
+    fetchCiudadanosIn();
   }, []);
 
   if (error) {
@@ -147,12 +168,7 @@ const Perfil = () => {
         </div>
       </div>
       
-      {/* <button 
-        onClick={() => navigate(`/seccional/agregar/${user.usuario}`, {state: { user }})} 
-        className="bg-green-500 hover:bg-green-600 text-white px-4 py-2 rounded mb-6"
-      >
-        Agregar Ciudadano
-      </button> */}
+      
 
       {/* Tabla de Promotores */}
       <div className="mb-8">
@@ -205,6 +221,14 @@ const Perfil = () => {
           </tbody>
         </table>
       </div>
+      
+      <button 
+        onClick={() => navigate(`/seccional/agregar/${user.usuario}`, {state: { user }})} 
+        className="bg-green-500 hover:bg-green-600 text-white px-4 py-2 rounded mb-6"
+      >
+        Agregar Ciudadano
+      </button>
+
 
       {/* Filtros para Ciudadanos */}
       <div className='mb-6'>
@@ -286,6 +310,46 @@ const Perfil = () => {
           )}
         </tbody>
       </table>
+
+
+      <div className="mb-8">
+        <h2 className="text-lg font-semibold mb-2">INVITADOS</h2>
+        <table className="w-full border-collapse border border-gray-300">
+          <thead>
+            <tr className="bg-gray-200">
+              <th className="border p-2">Polígono</th>
+              <th className="border p-2">Sección</th>
+              <th className="border p-2">UBT</th>
+              <th className="border p-2">Nombre</th>
+              <th className="border p-2">Puesto</th>
+              <th className="border p-2">EDITAR</th>
+            </tr>
+          </thead>
+          <tbody>
+            {ciudadanosInv.length > 0 ? (
+              ciudadanosInv.map((promotor) => (
+                <tr key={promotor.id}>
+                  <td className="border p-2">{promotor.poligono}</td>
+                  <td className="border p-2">{promotor.seccion}</td>
+                  <td className="border p-2">{promotor.ubt}</td>
+                  <td className="border p-2">{promotor.nombre} {promotor.a_paterno} {promotor.a_materno}</td>
+                  <td className="border p-2">{promotor.puesto}</td>
+                  <td className="border p-2"><button 
+                      onClick={() => navigate(`/ciudadanoE/${promotor.id}`)}
+                      className="bg-gray-500 hover:bg-gray-600 text-white px-3 py-1 rounded text-sm"
+                    >
+                      EDITAR
+                    </button></td>
+                </tr>
+              ))
+            ) : (
+              <tr>
+                <td colSpan="6" className="text-center p-2">No se encontraron promotores</td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 };
