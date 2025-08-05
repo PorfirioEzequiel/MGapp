@@ -293,12 +293,12 @@ const Perfil = () => {
                     >
                       SUBIR EVIDENCIAS
                     </button>
-                    <button 
+                    {/* <button 
                       onClick={() => navigate(`/ciudadanoE/${ciudadano.id}`)}
                       className="bg-gray-500 hover:bg-gray-600 text-white px-3 py-1 rounded text-sm"
                     >
                       EDITAR
-                    </button>
+                    </button> */}
                   </div>
                 </td>
               </tr>
@@ -322,7 +322,7 @@ const Perfil = () => {
               <th className="border p-2">UBT</th>
               <th className="border p-2">Nombre</th>
               <th className="border p-2">Puesto</th>
-              <th className="border p-2">EDITAR</th>
+              {/* <th className="border p-2">EDITAR</th> */}
             </tr>
           </thead>
           <tbody>
@@ -334,12 +334,12 @@ const Perfil = () => {
                   <td className="border p-2">{promotor.ubt}</td>
                   <td className="border p-2">{promotor.nombre} {promotor.a_paterno} {promotor.a_materno}</td>
                   <td className="border p-2">{promotor.puesto}</td>
-                  <td className="border p-2"><button 
+                  {/* <td className="border p-2"><button 
                       onClick={() => navigate(`/ciudadanoE/${promotor.id}`)}
                       className="bg-gray-500 hover:bg-gray-600 text-white px-3 py-1 rounded text-sm"
                     >
                       EDITAR
-                    </button></td>
+                    </button></td> */}
                 </tr>
               ))
             ) : (

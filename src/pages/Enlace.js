@@ -275,6 +275,7 @@ const Enlace = () => {
                           capture="environment"
                           className="border p-2 rounded w-full"
                           onChange={(e) => handleFileChange(ciudadano.id, e)}
+                          // required
                         />
                       </div>
 

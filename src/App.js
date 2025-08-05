@@ -15,6 +15,7 @@ import Enlace from './pages/Enlace';
 import AgregarCiudadanoSP from './pages/AgregarCiudadanoSP';
 import FichaCiudadanoEdit from './pages/FichaCiudadanoEdit';
 import SubirEvidencias from './pages/SubirEvidencias';
+import Movilizadores from './pages/Movilizadores';
 
 // Componente para proteger rutas privadas
 const PrivateRoute = ({ children }) => {
@@ -27,6 +28,7 @@ function App() {
     <Router>
       <Routes>
         <Route path="/" element={<Login />} />
+        <Route path="/movilizadores" element={<Movilizadores />} />
 
         {/* Rutas protegidas */}
         <Route path="/admin" element={<PrivateRoute><Admin /></PrivateRoute>} />
