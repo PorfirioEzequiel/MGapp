@@ -222,12 +222,12 @@ const Perfil = () => {
         </table>
       </div>
       
-      <button 
+      {/* <button 
         onClick={() => navigate(`/seccional/agregar/${user.usuario}`, {state: { user }})} 
         className="bg-green-500 hover:bg-green-600 text-white px-4 py-2 rounded mb-6"
       >
         Agregar Ciudadano
-      </button>
+      </button> */}
 
 
       {/* Filtros para Ciudadanos */}
