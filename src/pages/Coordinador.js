@@ -87,7 +87,7 @@ const Coordinador = () => {
     try {
       const { data, error } = await supabase
         .from('ciudadania') // Nombre de la tabla
-        .select('*').eq('poligono',user.poligono).eq('puesto',"PROMOTORA-BIENESTAR");
+        .select('*').eq('poligono',user.poligono).eq('puesto',"PROMOTORA-BIENESTAR").eq('status',"ACTIVO");
         // .eq('seccion', user.seccion); // Consulta todos los campos
 
       if (error1) throw error;
@@ -134,7 +134,7 @@ const Coordinador = () => {
   return (
     <div className='mx-auto'>
       {/* <h1>Perfil de {usuario}</h1> */}
-      <h1 className="border p-2">Bienvenido {user.nombre} {user.a_paterno} {user.a_materno}</h1>
+      <h1 className="border p-2">Bienvenid@: {user.nombre} {user.a_paterno} {user.a_materno}</h1>
       <p className="border p-2"><strong>Polígono:</strong> {user.poligono}</p>
       {/* <p className="border p-2"><strong>Sección:</strong> {user.seccion}</p> */}
       <p className="border p-2"><strong>Puesto:</strong> {user.puesto}</p>
@@ -142,6 +142,13 @@ const Coordinador = () => {
 
       <p className="border p-2"><strong>Seccionales:</strong> {seccionales.length}</p>
       <p className="border p-2"><strong>Promotor@s del Bienestar:</strong> {promotores.length}</p>
+      <button 
+        onClick={() => navigate(`/seccional/agregar/${user.usuario}`, {state: { user }})} 
+        className="bg-pink-500 hover:bg-pink-600 text-white px-4 py-2 rounded mb-6 mt-6"
+      >
+        Agregar Colaborador
+      </button>
+
       <table className="w-full border-collapse border border-gray-300">
         <thead>
           <tr className="bg-gray-200">
