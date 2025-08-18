@@ -143,7 +143,7 @@ const Coordinador = () => {
       <p className="border p-2"><strong>Seccionales:</strong> {seccionales.length}</p>
       <p className="border p-2"><strong>Promotor@s del Bienestar:</strong> {promotores.length}</p>
       <button 
-        onClick={() => navigate(`/seccional/agregar/${user.usuario}`, {state: { user }})} 
+        onClick={() => navigate(`/coordinador/agregar/${user.usuario}`, {state: { user }})} 
         className="bg-pink-500 hover:bg-pink-600 text-white px-4 py-2 rounded mb-6 mt-6"
       >
         Agregar Colaborador

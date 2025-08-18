@@ -16,6 +16,7 @@ import AgregarCiudadanoSP from './pages/AgregarCiudadanoSP';
 import FichaCiudadanoEdit from './pages/FichaCiudadanoEdit';
 import SubirEvidencias from './pages/SubirEvidencias';
 import Movilizadores from './pages/Movilizadores';
+import AgregarCiudadanoCP from './pages/AgregarCiudadanoCP';
 
 // Componente para proteger rutas privadas
 const PrivateRoute = ({ children }) => {
@@ -37,6 +38,7 @@ function App() {
         <Route path="/perfil/:usuario" element={<PrivateRoute><Perfil /></PrivateRoute>} />
         <Route path="/enlace/:usuario" element={<PrivateRoute><Enlace /></PrivateRoute>} />
         <Route path="/coordinador/:usuario" element={<PrivateRoute><Coordinador /></PrivateRoute>} />
+        <Route path="/coordinador/agregar/:usuario" element={<PrivateRoute><AgregarCiudadanoCP /></PrivateRoute>} />
         <Route path="/reporte/:usuario" element={<PrivateRoute><WaterSurveyForm /></PrivateRoute>} />
         <Route path="/ciudadano/:id" element={<PrivateRoute><FichaCiudadano /></PrivateRoute>} />
         <Route path="/ciudadanoE/:id" element={<PrivateRoute><FichaCiudadanoEdit /></PrivateRoute>} />
