@@ -15,7 +15,7 @@ import Enlace from './pages/Enlace';
 import AgregarCiudadanoSP from './pages/AgregarCiudadanoSP';
 import FichaCiudadanoEdit from './pages/FichaCiudadanoEdit';
 import SubirEvidencias from './pages/SubirEvidencias';
-import Movilizadores from './pages/Movilizadores';
+// import Movilizadores from './pages/Movilizadores';
 import AgregarCiudadanoCP from './pages/AgregarCiudadanoCP';
 
 // Componente para proteger rutas privadas
