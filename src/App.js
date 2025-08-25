@@ -29,7 +29,7 @@ function App() {
     <Router>
       <Routes>
         <Route path="/" element={<Login />} />
-        <Route path="/movilizadores" element={<Movilizadores />} />
+        {/* <Route path="/movilizadores" element={<Movilizadores />} /> */}
 
         {/* Rutas protegidas */}
         <Route path="/admin" element={<PrivateRoute><Admin /></PrivateRoute>} />

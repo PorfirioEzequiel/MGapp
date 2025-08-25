@@ -57,7 +57,7 @@ export default function AgregarCiudadanoCP() {
     cuenta_inst: "",
     cuenta_fb: "",
     cuenta_x: "",
-    status: "ACTIVO",
+    status: "SOLICITUD DE ALTA",
     url_foto_perfil: "",
     url_foto_ine1: "",
     url_foto_ine2: "",
@@ -108,7 +108,8 @@ export default function AgregarCiudadanoCP() {
 
     cargarPuestos();
   }, []);
-  
+
+  //  setPuestos(["SECCIONAL","PROMOTORA-BIENESTAR"]);
   // Función para buscar los datos de la sección
   const buscarDatosSeccion = async (seccion) => {
     setLoading(true);
@@ -232,7 +233,7 @@ export default function AgregarCiudadanoCP() {
       cuenta_inst: '',
       cuenta_fb: '',
       cuenta_x: '',
-      status: 'ACTIVO',
+      status: 'SOLICITUD DE ALTA',
       url_foto_perfil: '',
       url_foto_ine1: '',
       url_foto_ine2: '',
@@ -288,24 +289,11 @@ async function handleFileUpload(event, fieldName) {
   return (
     <div className="p-4 mx-auto">
       <h1 className="text-xl font-bold mb-4">Agregar Ciudadano</h1>
-      <div className="grid gap-4">
+  <div className="grid gap-4">
 
-      {/* dtto_fed	dtto_loc	municipio	nombre_municipio	poligono	seccion	ubt	
-        area_adscripcion	dependencia	puesto	id_puesto	tipo	ingreso_estructura	observaciones	
-      usuario	password	nombre	a_paterno	a_materno	curp	calle	
-      n_ext_mz	n_int_lt	n_casa	c_p	col_loc	telefono_1	telefono_2	
-      cuenta_inst	cuenta_fb	cuenta_x	status */}
       
       <form onSubmit={handleSubmit} /*class="py-4 px-6"*/>
-        {/* <label>SECCIÓN: 
-          <input type="text" 
-                  value={secciones.seccion} 
-                  onChange={handleSeccionChange} 
-                  className="border p-2 w-full" 
-                  required/>
-        </label> */}
-
-                
+         
         
     <div className="border p-2 w-full" >
     <div className="flex flex-wrap justify md:justify-start mb-4">
@@ -356,7 +344,17 @@ async function handleFileUpload(event, fieldName) {
       <div className="border p-2 w-full" >
         
         
-        <label>
+        
+
+
+      </div>
+    </div>
+      <div>
+
+      {loading && <p>Cargando...</p>}
+      
+    
+      <label>
           Sección:
           <select 
           value={seccion} 
@@ -370,41 +368,6 @@ async function handleFileUpload(event, fieldName) {
             ))}
           </select>
         </label>
-
-
-
-        {/* <input
-          id="seccion"
-          type="text"
-          value={seccion}
-          onChange={(e) => setSeccion(e.target.value)}
-          // onChange={(e) => setNuevoCiudadano({ ...nuevoCiudadano, ubt: e.target.value })}
-          // value={nuevoCiudadano.seccion} 
-          // onChange={(e) => setNuevoCiudadano({ ...nuevoCiudadano, seccion: e.target.value }) }
-          placeholder="Ingresa la sección"
-          className="border p-2 w-full" 
-          required
-        /> */}
-      </div>
-
-      {loading && <p>Cargando...</p>}
-      
-    
-        {/* <div className="border p-2 w-full" >
-        <p>
-            <strong>Distrito Federal:</strong> {dfed}
-          </p>
-          <p>
-            <strong>Distrito Local:</strong> {dloc}
-          </p>
-          <p>
-            <strong>Polígono:</strong> {poligono}
-          </p>
-          <p>
-            <strong>Municipio:</strong> {municipio}
-          </p>
-        </div> */}
-      
       {ubts.length > 0 && (
         <div>
           <label >UBT:</label>
@@ -423,22 +386,6 @@ async function handleFileUpload(event, fieldName) {
       )}
     </div>
         {/* <label>UBT: <input type="text" value={nuevoCiudadano.ubt} onChange={(e) => setNuevoCiudadano({ ...nuevoCiudadano, ubt: e.target.value })} className="border p-2 w-full" required/></label> */}
-        <label>AREA: <input type="text" value={nuevoCiudadano.area_adscripcion} onChange={(e) => setNuevoCiudadano({ ...nuevoCiudadano, area_adscripcion: e.target.value.toUpperCase() })} className="border p-2 w-full" required/></label>
-        <label>DEPENDENCIA: 
-          <select id="dependen"
-          value={nuevoCiudadano.dependencia} 
-          onChange={(e) => setNuevoCiudadano({ ...nuevoCiudadano, dependencia: e.target.value })} 
-          className="border p-2 w-full" required>
-            <option>Selecionar</option>
-            {dependencias.map((dep, index) => (
-              <option key={index} value={dep}>
-                {dep}
-              </option>
-            ))}
-          </select>
-        </label>
-        {/* <label>PUESTO: <input type="text" value={nuevoCiudadano.puesto} onChange={(e) => setNuevoCiudadano({ ...nuevoCiudadano, puesto: e.target.value })} className="border p-2 w-full" required/></label>
-        <label>ID PUESTO: <input type="number" value={nuevoCiudadano.id_puesto} onChange={(e) => setNuevoCiudadano({ ...nuevoCiudadano, id_puesto: e.target.value })} className="border p-2 w-full" required/></label> */}
         <label>
           Puesto:
           <select 
@@ -465,15 +412,34 @@ async function handleFileUpload(event, fieldName) {
           </select>
         </label>
         
+        <label>AREA: <input type="text" value={nuevoCiudadano.area_adscripcion} onChange={(e) => setNuevoCiudadano({ ...nuevoCiudadano, area_adscripcion: e.target.value.toUpperCase() })} className="border p-2 w-full" required/></label>
+        <label>DEPENDENCIA: 
+          <select id="dependen"
+          value={nuevoCiudadano.dependencia} 
+          onChange={(e) => setNuevoCiudadano({ ...nuevoCiudadano, dependencia: e.target.value })} 
+          className="border p-2 w-full" required>
+            <option>Selecionar</option>
+            {dependencias.map((dep, index) => (
+              <option key={index} value={dep}>
+                {dep}
+              </option>
+            ))}
+          </select>
+        </label>
+        {/* <label>PUESTO: <input type="text" value={nuevoCiudadano.puesto} onChange={(e) => setNuevoCiudadano({ ...nuevoCiudadano, puesto: e.target.value })} className="border p-2 w-full" required/></label>
+        <label>ID PUESTO: <input type="number" value={nuevoCiudadano.id_puesto} onChange={(e) => setNuevoCiudadano({ ...nuevoCiudadano, id_puesto: e.target.value })} className="border p-2 w-full" required/></label> */}
         
         
         
-        <label>TIPO: <input type="text" value={nuevoCiudadano.tipo} 
-        onChange={(e) => setNuevoCiudadano({ ...nuevoCiudadano, tipo: e.target.value })} className="border p-2 w-full" required/></label>
+        
+        
+        <label>TIPO: <input type="text" value={nuevoCiudadano.tipo} onChange={(e) => setNuevoCiudadano({ ...nuevoCiudadano, tipo: e.target.value })} className="border p-2 w-full" required/></label>
         <label>INGRESO A LA ESTRUCTURA: <input type="date" value={nuevoCiudadano.ingreso_estructura} onChange={(e) => setNuevoCiudadano({ ...nuevoCiudadano, ingreso_estructura: e.target.value })} className="border p-2 w-full" required/></label>
         <label>OBSERVACIONES: <input type="text" value={nuevoCiudadano.observaciones} onChange={(e) => setNuevoCiudadano({ ...nuevoCiudadano, observaciones: e.target.value.toUpperCase() })} className="border p-2 w-full" required/></label>
         <label>Usuario: <input type="text" value={nuevoCiudadano.usuario} onChange={(e) => setNuevoCiudadano({ ...nuevoCiudadano, usuario: e.target.value.trim()})} className="border p-2 w-full" required/></label>
         <label>Contraseña: <input type="text" value={nuevoCiudadano.password} onChange={(e) => setNuevoCiudadano({ ...nuevoCiudadano, password: e.target.value.trim() })} className="border p-2 w-full" required/></label>
+        
+        
         <label>Nombre: <input type="text" value={nuevoCiudadano.nombre} onChange={(e) => setNuevoCiudadano({ ...nuevoCiudadano, nombre: e.target.value.toUpperCase() })} className="border p-2 w-full" required/></label>
         <label>Apellido Paterno: <input type="text" value={nuevoCiudadano.a_paterno} onChange={(e) => setNuevoCiudadano({ ...nuevoCiudadano, a_paterno: e.target.value.toUpperCase() })} className="border p-2 w-full" required/></label>
         <label>Apellido Materno: <input type="text" value={nuevoCiudadano.a_materno} onChange={(e) => setNuevoCiudadano({ ...nuevoCiudadano, a_materno: e.target.value.toUpperCase() })} className="border p-2 w-full" required/></label>
