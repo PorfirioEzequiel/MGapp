@@ -7,6 +7,7 @@ const Filtro = () => {
   const [poligono, setPoligono] = useState('');
   const [seccion, setSeccion] = useState('');
   const [puesto, setPuesto] = useState('');
+  const [status, setStatus] = useState('');
   const [nombre, setNombre] = useState('');
   const [resultados, setResultados] = useState([]);
   const [opciones, setOpciones] = useState({ poligonos: [], secciones: [], puestos: [] });
@@ -18,7 +19,7 @@ const Filtro = () => {
       try {
         const { data, error } = await supabase
           .from('ciudadania') // Reemplaza con el nombre de tu tabla
-          .select('poligono, seccion, puesto');
+          .select('poligono, seccion, puesto, status');
 
         if (error) throw error;
 
@@ -26,9 +27,10 @@ const Filtro = () => {
         const poligonos = [...new Set(data.map((item) => item.poligono))];
         const secciones = [...new Set(data.map((item) => item.seccion))];
         const puestos = [...new Set(data.map((item) => item.puesto))];
+        const status = [...new Set(data.map((item) => item.status))];
         const puestos1 = [...new Set(data.map((item) => item.puesto))];
         // console.log(puestos1);
-        setOpciones({ poligonos, secciones, puestos });
+        setOpciones({ poligonos, secciones, puestos, status });
       } catch (err) {
         console.error('Error al cargar opciones:', err.message);
       }
@@ -46,6 +48,7 @@ const Filtro = () => {
       if (poligono) query = query.eq('poligono', poligono);
       if (seccion) query = query.eq('seccion', seccion);
       if (puesto) query = query.eq('puesto', puesto);
+      if (status) query = query.eq('status', status);
       if (nombre) query = query.ilike('nombre', `%${nombre}%`);
 
       const { data, error } = await query;
@@ -107,6 +110,22 @@ const Filtro = () => {
             ))}
           </select>
         </label>
+        <label>
+          Estatus:
+          <select 
+          value={status} 
+          onChange={(e) => setStatus(e.target.value)}
+          className="border p-2 w-full">
+            <option value="">Todos</option>
+            {opciones.status.map((sta) => (
+              <option key={sta} value={sta}>
+                {sta}
+              </option>
+            ))}
+          </select>
+        </label>
+
+
         {/* Input para Nombre */}
         <label>
           Nombre:

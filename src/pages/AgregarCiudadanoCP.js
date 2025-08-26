@@ -20,7 +20,7 @@ export default function AgregarCiudadanoCP() {
   const [ubt, setUbt] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
-  const dependencias = [ "UBT","DIF", "ODAPAS","IMDEPORTE", "AYTTO"];
+  const dependencias = [ "DIF", "ODAPAS","IMDEPORTE", "AYTTO"];
   const [puestos, setPuestos] = useState([]);
   const [puesto, setPuesto] = useState();
   const [opciones, setOpciones] = useState({ secciones: []});
@@ -171,7 +171,7 @@ export default function AgregarCiudadanoCP() {
     if (error) console.error("Error agregando ciudadano:", nuevoCiudadano, error);
     else {
       alert("Ciudadano agregado correctamente");
-    //   navigate("/");
+      navigate(-1);
     }
   }
 
@@ -190,6 +190,11 @@ export default function AgregarCiudadanoCP() {
       alert("El CURP ingresado no es válido. Verifica que tenga el formato correcto.");
       return;
     }
+
+    if (nuevoCiudadano.puesto === "PROMOTORA-BIENESTAR") {
+      nuevoCiudadano.usuario = curp;
+      nuevoCiudadano.password = curp
+    }
     try {
       console.log(nuevoCiudadano)
       const { error } = await supabase.from('ciudadania').insert([nuevoCiudadano]);
@@ -199,7 +204,7 @@ export default function AgregarCiudadanoCP() {
         return;
       }
       alert("Ciudadano agregado correctamente");
-
+      navigate(-1);
     // Limpiar todos los campos
     setNuevoCiudadano({
       dtto_fed: 0,
@@ -233,7 +238,7 @@ export default function AgregarCiudadanoCP() {
       cuenta_inst: '',
       cuenta_fb: '',
       cuenta_x: '',
-      status: 'SOLICITUD DE ALTA',
+      status: '',
       url_foto_perfil: '',
       url_foto_ine1: '',
       url_foto_ine2: '',
@@ -288,7 +293,7 @@ async function handleFileUpload(event, fieldName) {
         
   return (
     <div className="p-4 mx-auto">
-      <h1 className="text-xl font-bold mb-4">Agregar Ciudadano</h1>
+      <h1 className="text-xl font-bold mb-4">Agregar Colaborador</h1>
   <div className="grid gap-4">
 
       
@@ -386,7 +391,68 @@ async function handleFileUpload(event, fieldName) {
       )}
     </div>
         {/* <label>UBT: <input type="text" value={nuevoCiudadano.ubt} onChange={(e) => setNuevoCiudadano({ ...nuevoCiudadano, ubt: e.target.value })} className="border p-2 w-full" required/></label> */}
-        <label>
+        
+       {/* Selector de Puesto */}
+        <div>
+          <label className="block text-sm font-medium">PUESTO</label>
+          <select
+            value={nuevoCiudadano.puesto}
+            onChange={(e) => setNuevoCiudadano({ ...nuevoCiudadano, puesto: e.target.value })}
+            className="w-full border rounded-lg p-2"
+            required
+          >
+            <option value="">Selecciona un puesto</option>
+            <option value="PROMOTORA-BIENESTAR">PROMOTORA-BIENESTAR</option>
+            <option value="SECCIONAL">SECCIONAL</option>
+          </select>
+        </div>
+
+        {/* Usuario y contraseña solo si es SECCIONAL */}
+        {nuevoCiudadano.puesto === "SECCIONAL" && (
+          <>
+            <div>
+              <label className="block text-sm font-medium">Usuario</label>
+              <input
+                type="text"
+                value={nuevoCiudadano.usuario}
+                onChange={(e) => setNuevoCiudadano({ ...nuevoCiudadano, usuario: e.target.value.trim()})}
+                className="w-full border rounded-lg p-2"
+                required={puesto === "SECCIONAL"}
+              />
+            </div>
+
+
+            <div>
+              <label className="block text-sm font-medium">Contraseña</label>
+              <input
+                type="password"
+                value={nuevoCiudadano.password} 
+                onChange={(e) => setNuevoCiudadano({ ...nuevoCiudadano, password: e.target.value.trim() })}
+                className="w-full border rounded-lg p-2"
+                required={puesto === "SECCIONAL"}
+              />
+            </div>
+          <label>DEPENDENCIA: 
+          <select id="dependen"
+          value={nuevoCiudadano.dependencia} 
+          onChange={(e) => setNuevoCiudadano({ ...nuevoCiudadano, dependencia: e.target.value })} 
+          className="border p-2 w-full" required>
+            <option>Selecionar</option>
+            {dependencias.map((dep, index) => (
+              <option key={index} value={dep}>
+                {dep}
+              </option>
+            ))}
+          </select>
+          </label>
+          <label>AREA: <input type="text" value={nuevoCiudadano.area_adscripcion} onChange={(e) => setNuevoCiudadano({ ...nuevoCiudadano, area_adscripcion: e.target.value.toUpperCase() })} className="border p-2 w-full" required/></label>
+        
+         </>
+        )}
+
+        
+        
+        {/* <label>
           Puesto:
           <select 
           value={nuevoCiudadano.puesto} 
@@ -410,22 +476,9 @@ async function handleFileUpload(event, fieldName) {
               </option>
             ))}
           </select>
-        </label>
+        </label> */}
         
-        <label>AREA: <input type="text" value={nuevoCiudadano.area_adscripcion} onChange={(e) => setNuevoCiudadano({ ...nuevoCiudadano, area_adscripcion: e.target.value.toUpperCase() })} className="border p-2 w-full" required/></label>
-        <label>DEPENDENCIA: 
-          <select id="dependen"
-          value={nuevoCiudadano.dependencia} 
-          onChange={(e) => setNuevoCiudadano({ ...nuevoCiudadano, dependencia: e.target.value })} 
-          className="border p-2 w-full" required>
-            <option>Selecionar</option>
-            {dependencias.map((dep, index) => (
-              <option key={index} value={dep}>
-                {dep}
-              </option>
-            ))}
-          </select>
-        </label>
+        
         {/* <label>PUESTO: <input type="text" value={nuevoCiudadano.puesto} onChange={(e) => setNuevoCiudadano({ ...nuevoCiudadano, puesto: e.target.value })} className="border p-2 w-full" required/></label>
         <label>ID PUESTO: <input type="number" value={nuevoCiudadano.id_puesto} onChange={(e) => setNuevoCiudadano({ ...nuevoCiudadano, id_puesto: e.target.value })} className="border p-2 w-full" required/></label> */}
         
@@ -433,11 +486,11 @@ async function handleFileUpload(event, fieldName) {
         
         
         
-        <label>TIPO: <input type="text" value={nuevoCiudadano.tipo} onChange={(e) => setNuevoCiudadano({ ...nuevoCiudadano, tipo: e.target.value })} className="border p-2 w-full" required/></label>
+        {/* <label>TIPO: <input type="text" value={nuevoCiudadano.tipo} onChange={(e) => setNuevoCiudadano({ ...nuevoCiudadano, tipo: e.target.value })} className="border p-2 w-full" required/></label> */}
         <label>INGRESO A LA ESTRUCTURA: <input type="date" value={nuevoCiudadano.ingreso_estructura} onChange={(e) => setNuevoCiudadano({ ...nuevoCiudadano, ingreso_estructura: e.target.value })} className="border p-2 w-full" required/></label>
         <label>OBSERVACIONES: <input type="text" value={nuevoCiudadano.observaciones} onChange={(e) => setNuevoCiudadano({ ...nuevoCiudadano, observaciones: e.target.value.toUpperCase() })} className="border p-2 w-full" required/></label>
-        <label>Usuario: <input type="text" value={nuevoCiudadano.usuario} onChange={(e) => setNuevoCiudadano({ ...nuevoCiudadano, usuario: e.target.value.trim()})} className="border p-2 w-full" required/></label>
-        <label>Contraseña: <input type="text" value={nuevoCiudadano.password} onChange={(e) => setNuevoCiudadano({ ...nuevoCiudadano, password: e.target.value.trim() })} className="border p-2 w-full" required/></label>
+        {/* <label>Usuario: <input type="text" value={nuevoCiudadano.usuario} onChange={(e) => setNuevoCiudadano({ ...nuevoCiudadano, usuario: e.target.value.trim()})} className="border p-2 w-full" required/></label>
+        <label>Contraseña: <input type="text" value={nuevoCiudadano.password} onChange={(e) => setNuevoCiudadano({ ...nuevoCiudadano, password: e.target.value.trim() })} className="border p-2 w-full" required/></label> */}
         
         
         <label>Nombre: <input type="text" value={nuevoCiudadano.nombre} onChange={(e) => setNuevoCiudadano({ ...nuevoCiudadano, nombre: e.target.value.toUpperCase() })} className="border p-2 w-full" required/></label>
