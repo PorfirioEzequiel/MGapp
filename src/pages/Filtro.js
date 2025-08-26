@@ -10,7 +10,7 @@ const Filtro = () => {
   const [status, setStatus] = useState('');
   const [nombre, setNombre] = useState('');
   const [resultados, setResultados] = useState([]);
-  const [opciones, setOpciones] = useState({ poligonos: [], secciones: [], puestos: [] });
+  const [opciones, setOpciones] = useState({ poligonos: [], secciones: [], puestos: [], status: [] });
   const navigate = useNavigate();
 
   // Cargar datos iniciales para los selectores
@@ -28,7 +28,7 @@ const Filtro = () => {
         const secciones = [...new Set(data.map((item) => item.seccion))];
         const puestos = [...new Set(data.map((item) => item.puesto))];
         const status = [...new Set(data.map((item) => item.status))];
-        const puestos1 = [...new Set(data.map((item) => item.puesto))];
+        // const puestos1 = [...new Set(data.map((item) => item.puesto))];
         // console.log(puestos1);
         setOpciones({ poligonos, secciones, puestos, status });
       } catch (err) {
@@ -110,6 +110,7 @@ const Filtro = () => {
             ))}
           </select>
         </label>
+        {/* Selector para Estatus */}
         <label>
           Estatus:
           <select 
@@ -117,9 +118,9 @@ const Filtro = () => {
           onChange={(e) => setStatus(e.target.value)}
           className="border p-2 w-full">
             <option value="">Todos</option>
-            {opciones.status.map((sta) => (
-              <option key={sta} value={sta}>
-                {sta}
+            {opciones.status.map((statu) => (
+              <option key={statu} value={statu}>
+                {statu}
               </option>
             ))}
           </select>
