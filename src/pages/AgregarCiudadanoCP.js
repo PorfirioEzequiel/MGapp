@@ -313,7 +313,8 @@ async function handleFileUpload(event, fieldName) {
         file:disabled:opacity-50 file:disabled:pointer-events-none
         dark:text-neutral-500
         dark:file:bg-blue-500
-        dark:hover:file:bg-blue-400 mt-6"/>
+        dark:hover:file:bg-blue-400 mt-6"
+        required/>
         </div>
         <div className="mx-16"></div>
         <div>
@@ -327,7 +328,8 @@ async function handleFileUpload(event, fieldName) {
         file:disabled:opacity-50 file:disabled:pointer-events-none
         dark:text-neutral-500
         dark:file:bg-blue-500
-        dark:hover:file:bg-blue-400 mt-6" />
+        dark:hover:file:bg-blue-400 mt-6" 
+        required/>
        
        
         </div>
@@ -343,7 +345,8 @@ async function handleFileUpload(event, fieldName) {
         file:disabled:opacity-50 file:disabled:pointer-events-none
         dark:text-neutral-500
         dark:file:bg-blue-500
-        dark:hover:file:bg-blue-400 mt-6" />
+        dark:hover:file:bg-blue-400 mt-6"
+        required />
         </div>
       </div>
       <div className="border p-2 w-full" >

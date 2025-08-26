@@ -3,6 +3,8 @@ import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import supabase from '../supabase/client';
 import MapComponent from '../map/MapComponent';
 import MapComponent2 from '../map/MapComponent2';
+import ToggleStatusButton from './ToggleStatusButton';
+import ToggleStatusButtonCP from './ToggleStatusButtonCP';
 
 const Coordinador = () => {
   const { state } = useLocation();
@@ -172,6 +174,7 @@ const Coordinador = () => {
                   className="bg-blue-500 text-white px-4 py-2 rounded">
                     VERIFICAR
                 </button>
+                <ToggleStatusButtonCP registroId={resultado.id} initialStatus={resultado.status} />
                 </td>
               </tr>
             ))}
@@ -243,6 +246,8 @@ const Coordinador = () => {
                   className="bg-blue-500 text-white px-4 py-2 rounded">
                     VERIFICAR
                 </button>
+
+                <ToggleStatusButtonCP registroId={resultado.id} initialStatus={resultado.status} />
                 </td>
                 {/* {resultado.status} */}
               </tr>
