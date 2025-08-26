@@ -9,7 +9,7 @@ const ToggleStatusButtonCP = ({ registroId, initialStatus }) => {
     setLoading(true);
 
     // Determina el nuevo status
-    const nuevoStatus = status === 'ACTIVO' ? 'ELIMINADO' : 'ACTIVO';
+    const nuevoStatus = status === 'ACTIVO' ? 'SOLICITAR BAJA' : 'ACTIVO';
 
     try {
       // Actualiza el status en Supabase
