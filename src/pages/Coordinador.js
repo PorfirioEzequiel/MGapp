@@ -224,6 +224,7 @@ const Coordinador = () => {
             <th className="border p-2">UBT</th>
             <th className="border p-2">Nombre</th>
             <th className="border p-2">Puesto</th>
+            <th className="border p-2">Estatus</th>
             {/* <th className="border p-2">Eliminar</th> */}
             <th className="border p-2">Verificar</th>
           </tr>
@@ -240,6 +241,7 @@ const Coordinador = () => {
                 <td className="border p-2">{resultado.ubt}</td>
                 <td className="border p-2">{resultado.nombre} {resultado.a_paterno} {resultado.a_materno}</td>
                 <td className="border p-2">{resultado.puesto}</td>
+                <td className="border p-2">{resultado.status}</td>
                 
                 <td className="border p-2">
                 <button onClick={() => navigate(`/ciudadano/${resultado.id}`)}
