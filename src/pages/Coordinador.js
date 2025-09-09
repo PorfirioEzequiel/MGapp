@@ -55,7 +55,7 @@ const Coordinador = () => {
   const manejarFiltro = async () => {
     try {
       // Construir filtros dinámicos
-      let query = supabase.from('ciudadania').select('*').eq('poligono',user.poligono).eq('puesto',"PROMOTORA-BIENESTAR").eq('status',"ACTIVO").order('ubt', { ascending: true });
+      let query = supabase.from('ciudadania').select('*').eq('poligono',user.poligono).eq('puesto',"PROMOTORA-BIENESTAR").in('status', ['ACTIVO', 'SOLICITUD DE ALTA']).order('ubt', { ascending: true });
 
       if (seccion) query = query.eq('seccion', seccion);
       if (nombre) query = query.ilike('nombre', `%${nombre}%`);
