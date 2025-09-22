@@ -17,6 +17,9 @@ import FichaCiudadanoEdit from './pages/FichaCiudadanoEdit';
 import SubirEvidencias from './pages/SubirEvidencias';
 // import Movilizadores from './pages/Movilizadores';
 import AgregarCiudadanoCP from './pages/AgregarCiudadanoCP';
+import TableroBoard from './admin/TableroBoard';
+import SolicitudesAdmin from './admin/SolicitudesAdmin';
+import ReportePoligonos from './admin/ReportePoligonos';
 
 // Componente para proteger rutas privadas
 const PrivateRoute = ({ children }) => {
@@ -34,6 +37,10 @@ function App() {
         {/* Rutas protegidas */}
         <Route path="/admin" element={<PrivateRoute><Admin /></PrivateRoute>} />
         <Route path="/territorio" element={<PrivateRoute><Territorio /></PrivateRoute>} />
+        <Route path="/tablero" element={<PrivateRoute><TableroBoard /></PrivateRoute>} />
+        <Route path="/solicitudes" element={<PrivateRoute><SolicitudesAdmin /></PrivateRoute>} />
+        <Route path="/admin/reporte" element={<PrivateRoute><ReportePoligonos /></PrivateRoute>} />
+
         <Route path="/menu/:usuario" element={<PrivateRoute><MeniAdmin /></PrivateRoute>} />
         <Route path="/perfil/:usuario" element={<PrivateRoute><Perfil /></PrivateRoute>} />
         <Route path="/enlace/:usuario" element={<PrivateRoute><Enlace /></PrivateRoute>} />

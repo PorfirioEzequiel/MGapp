@@ -5,8 +5,6 @@ import { useNavigate } from "react-router-dom";
 
 function Territorio(){
 
-  // ... (código existente)
-  
   const [resumenReportes, setResumenReportes] = useState([]);
   const [filtroSeccion, setFiltroSeccion] = useState('');
   const [filtroPoligono, setFiltroPoligono] = useState('');
@@ -17,8 +15,8 @@ function Territorio(){
     setIsLoadingResumen(true);
     try {
       const { data, error } = await supabase
-        .from('cortes')
-        .select('seccion, poligono, twelve, fifteen, eighteen')
+        .from('ubt_catalogo')
+        .select('seccion, poligono, ubt')
         .order('poligono', { ascending: true });
 
       if (error) throw error;

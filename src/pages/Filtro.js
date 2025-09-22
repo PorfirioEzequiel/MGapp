@@ -19,7 +19,9 @@ const Filtro = () => {
       try {
         const { data, error } = await supabase
           .from('ciudadania') // Reemplaza con el nombre de tu tabla
-          .select('poligono, seccion, puesto, status');
+          .select('poligono, seccion, puesto, status')
+          .order('seccion', { ascending: true })
+          .order('poligono', { ascending: true });
 
         if (error) throw error;
 
@@ -180,6 +182,7 @@ const Filtro = () => {
                 <td className="border p-2">{resultado.puesto}</td>
                 <td className="border p-2">
                 <ToggleStatusButton registroId={resultado.id} initialStatus={resultado.status} />
+   
                 </td>
                 <td className="border p-2">
                 <button onClick={() => navigate(`/ciudadano/${resultado.id}`)}

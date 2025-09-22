@@ -1,6 +1,6 @@
 import React from 'react';
 import { LiaUserFriendsSolid, LiaMapMarkedAltSolid , LiaCookieBiteSolid, LiaBlackTie, LiaFileContractSolid ,LiaSitemapSolid, LiaWeixin, LiaWalletSolid, LiaUsersSolid } from "react-icons/lia";
-import { AiTwotoneFund } from "react-icons/ai";
+// import { AiTwotoneFund } from "react-icons/ai";
 import MapComponent2 from '../map/MapComponent2';
 import { useNavigate } from 'react-router-dom';
 const MenuAdmin = () => {
@@ -19,16 +19,16 @@ const MenuAdmin = () => {
       </div>
       <div class="flex items-center justify-center xl:w-1/3 sm:w-full mb-4 px-2">
       
-      <button class="flex items-center flex-row w-full bg-transparent hover:bg-blue-600 text-sm text-blue-600 hover:text-white font-semibold py-2 px-4 border border-blue-500 hover:border-transparent h-14 rounded-lg"><LiaUserFriendsSolid size={25}/>CIUDADANOS</button>
+      <button onClick={() => navigate("/tablero")} class="flex items-center flex-row w-full bg-transparent hover:bg-blue-600 text-sm text-blue-600 hover:text-white font-semibold py-2 px-4 border border-blue-500 hover:border-transparent h-14 rounded-lg"><LiaUserFriendsSolid size={25}/>CIUDADANOS</button>
       </div>
       <div class="flex items-center justify-center xl:w-1/3 sm:w-full mb-4 px-2">
       <button onClick={() => navigate("/territorio")} class="flex items-center flex-row w-full bg-transparent hover:bg-blue-600 text-sm text-blue-600 hover:text-white font-semibold py-2 px-4 border border-blue-500 hover:border-transparent h-14 rounded-lg"><LiaMapMarkedAltSolid size={25}/>TERRITORIO</button>
       </div>
       <div class="flex items-center justify-center xl:w-1/3 sm:w-full mb-4 px-2">
-      <button class="flex items-center flex-row w-full bg-transparent hover:bg-blue-600 text-sm text-blue-600 hover:text-white font-semibold py-2 px-4 border border-blue-500 hover:border-transparent h-14 rounded-lg"><LiaCookieBiteSolid size={25}/>ESTADISTICA</button>
+      <button onClick={() => navigate("/admin/reporte")} class="flex items-center flex-row w-full bg-transparent hover:bg-blue-600 text-sm text-blue-600 hover:text-white font-semibold py-2 px-4 border border-blue-500 hover:border-transparent h-14 rounded-lg"><LiaCookieBiteSolid size={25}/>ESTADISTICA</button>
       </div>
       <div class="flex items-center justify-center xl:w-1/3 sm:w-full mb-4 px-2">
-      <button class="flex items-center flex-row w-full bg-transparent hover:bg-blue-600 text-sm text-blue-600 hover:text-white font-semibold py-2 px-4 border border-blue-500 hover:border-transparent h-14 rounded-lg"><LiaFileContractSolid  size={25}/>ACTIVIDADES</button>
+      <button onClick={() => navigate("/solicitudes")} class="flex items-center flex-row w-full bg-transparent hover:bg-blue-600 text-sm text-blue-600 hover:text-white font-semibold py-2 px-4 border border-blue-500 hover:border-transparent h-14 rounded-lg"><LiaFileContractSolid  size={25}/>ALTAS/BAJAS</button>
       </div>
       <div class="flex items-center justify-center xl:w-1/3 sm:w-full mb-4 px-2">
       <button class="flex items-center flex-row w-full bg-transparent hover:bg-blue-600 text-sm text-blue-600 hover:text-white font-semibold py-2 px-4 border border-blue-500 hover:border-transparent h-14 rounded-lg"><LiaUsersSolid size={25}/>APOYOS</button>
@@ -43,7 +43,7 @@ const MenuAdmin = () => {
       <button class="flex items-center flex-row w-full bg-transparent hover:bg-blue-600 text-sm text-blue-600 hover:text-white font-semibold py-2 px-4 border border-blue-500 hover:border-transparent h-14 rounded-lg"><LiaSitemapSolid size={25}/>ESTRUCTURA</button>
       </div>
     </div>
-    <MapComponent2 mapa={2}/>
+    {/* <MapComponent2 mapa={3}/> */}
     </div>
     </>
   );
