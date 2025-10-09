@@ -23,6 +23,7 @@ const Login = () => {
         .select('*')
         .eq('usuario', formData.usuario)
         .eq('password', formData.contraseña)
+        .eq('status', 'ACTIVO')
         .single();
 
       if (error || !data) {

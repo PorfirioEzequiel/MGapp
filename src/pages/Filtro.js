@@ -160,6 +160,7 @@ const Filtro = () => {
             <th className="border p-2">Sección</th>
             <th className="border p-2">UBT</th>
             <th className="border p-2">Nombre</th>
+            <th className="border p-2">CURP</th>
             <th className="border p-2">Puesto</th>
             <th className="border p-2">Eliminar</th>
             <th className="border p-2">Editar</th>
@@ -179,6 +180,7 @@ const Filtro = () => {
                 {/* <td className="border p-2">{resultado.telefono_1}</td>
                 <td className="border p-2">{resultado.usuario}</td>
                 <td className="border p-2">{resultado.password}</td> */}
+                <td className="border p-2">{resultado.curp}</td>
                 <td className="border p-2">{resultado.puesto}</td>
                 <td className="border p-2">
                 <ToggleStatusButton registroId={resultado.id} initialStatus={resultado.status} />

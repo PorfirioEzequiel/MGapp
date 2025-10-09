@@ -40,7 +40,7 @@ const MenuAdmin = () => {
       <button class="flex items-center flex-row w-full bg-transparent hover:bg-blue-600 text-sm text-blue-600 hover:text-white font-semibold py-2 px-4 border border-blue-500 hover:border-transparent h-14 rounded-lg"><LiaWeixin size={25}/>REDES SOCIALES</button>
       </div>
       <div class="flex items-center justify-center xl:w-1/3 sm:w-full mb-4 px-2">
-      <button class="flex items-center flex-row w-full bg-transparent hover:bg-blue-600 text-sm text-blue-600 hover:text-white font-semibold py-2 px-4 border border-blue-500 hover:border-transparent h-14 rounded-lg"><LiaSitemapSolid size={25}/>ESTRUCTURA</button>
+      <button onClick={() => navigate("/admin/base")} class="flex items-center flex-row w-full bg-transparent hover:bg-blue-600 text-sm text-blue-600 hover:text-white font-semibold py-2 px-4 border border-blue-500 hover:border-transparent h-14 rounded-lg"><LiaSitemapSolid size={25}/>ESTRUCTURA</button>
       </div>
     </div>
     {/* <MapComponent2 mapa={3}/> */}
