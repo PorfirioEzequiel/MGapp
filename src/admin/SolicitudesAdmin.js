@@ -127,6 +127,7 @@ const SolicitudesAdmin = () => {
               className="w-32 h-32 object-cover border mb-2"
             />
             <p><b>Nombre:</b> {selected.nombre} {selected.a_paterno} {selected.a_materno}</p>
+            <p><b>Mótivo de baja:</b> {selected.motivo_baja} </p>
             <p><b>CURP:</b> {selected.curp}</p>
             <p><b>Dirección:</b> {selected.calle} {selected.n_ext_mz} {selected.n_int_lt} {selected.n_casa} {selected.c_p} {selected.col_loc}</p>
             <p><b>Teléfono:</b> {selected.telefono_1}</p>

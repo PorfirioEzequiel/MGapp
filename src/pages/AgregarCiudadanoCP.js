@@ -536,7 +536,8 @@ export default function AgregarCiudadanoCP() {
   const [ubts, setUbts] = useState([]);
   const [secciones, setSecciones] = useState([]);
   const dependencias = ["DIF", "ODAPAS", "IMDEPORTE", "AYTTO"];
-
+  const [puesto, setPuesto] = useState();
+  const [seccion, setSeccion] = useState("");
   const [nuevoCiudadano, setNuevoCiudadano] = useState({
     curp: "",
     nombre: "",
@@ -576,42 +577,96 @@ export default function AgregarCiudadanoCP() {
   const CURP_REGEX =
     /^[A-Z]{1}[AEIOU]{1}[A-Z]{2}\d{2}(0[1-9]|1[0-2])(0[1-9]|[12]\d|3[01])[HM]{1}[A-Z]{2}[B-DF-HJ-NP-TV-Z]{3}[A-Z0-9]{1}\d{1}$/;
 
+  // const validarCurp = async () => {
+  //   const curp = nuevoCiudadano.curp.trim().toUpperCase();
+  //   if (!CURP_REGEX.test(curp)) {
+  //     alert("El CURP ingresado no es válido.");
+  //     return;
+  //   }
+
+  //   setLoading(true);
+  //   try {
+  //     // ✅ Buscar si ya existe en Supabase
+  //     const { data, error } = await supabase
+  //       .from("ciudadania")
+  //       .select("*")
+  //       .eq("poligono", user?.poligono || "")
+  //       .eq("curp", curp)
+  //       .single();
+
+  //     if (error && error.code !== "PGRST116") throw error;
+
+  //     if (data) {
+  //       // ✅ CURP EXISTE: Autocompletar datos
+  //       alert("CURP encontrado, los datos serán autocompletados.");
+  //       setNuevoCiudadano((prev) => ({ ...prev, ...data }));
+  //     } else {
+  //       alert("CURP válido, ingresa los datos del ciudadano.");
+  //     }
+
+  //     // ✅ Pasar al siguiente paso
+  //     setStep(2);
+  //   } catch (err) {
+  //     console.error("Error al validar CURP:", err);
+  //     alert("Error al validar CURP.");
+  //   } finally {
+  //     setLoading(false);
+  //   }
+  // };
+
   const validarCurp = async () => {
-    const curp = nuevoCiudadano.curp.trim().toUpperCase();
-    if (!CURP_REGEX.test(curp)) {
-      alert("El CURP ingresado no es válido.");
-      return;
-    }
+  const curp = nuevoCiudadano.curp.trim().toUpperCase();
+  if (!CURP_REGEX.test(curp)) {
+    alert("El CURP ingresado no es válido.");
+    return;
+  }
 
-    setLoading(true);
-    try {
-      // ✅ Buscar si ya existe en Supabase
-      const { data, error } = await supabase
-        .from("ciudadania")
-        .select("*")
-        .eq("poligono", user?.poligono || "")
-        .eq("curp", curp)
-        .single();
+  setLoading(true);
+  try {
+    // ✅ Buscar si ya existe en Supabase
+    const { data, error } = await supabase
+      .from("ciudadania")
+      .select("*")
+      .eq("poligono", user?.poligono || "")
+      .eq("curp", curp)
+      .single();
 
-      if (error && error.code !== "PGRST116") throw error;
+    if (error && error.code !== "PGRST116") throw error;
 
-      if (data) {
-        // ✅ CURP EXISTE: Autocompletar datos
-        alert("CURP encontrado, los datos serán autocompletados.");
-        setNuevoCiudadano((prev) => ({ ...prev, ...data }));
-      } else {
-        alert("CURP válido, ingresa los datos del ciudadano.");
+    if (data) {
+      // ✅ Si el ciudadano ya existe
+      alert("CURP encontrado, los datos serán autocompletados.");
+
+      // 🔄 Actualizar el estatus a "SOLICITUD DE ALTA" si no lo tiene ya
+      if (data.status !== "SOLICITUD DE ALTA") {
+        const { error: updateError } = await supabase
+          .from("ciudadania")
+          .update({ status: "SOLICITUD DE ALTA" })
+          .eq("id", data.id);
+
+        if (updateError) {
+          console.error("Error al actualizar estatus:", updateError);
+        } else {
+          console.log("Estatus actualizado a 'SOLICITUD DE ALTA'");
+        }
       }
 
-      // ✅ Pasar al siguiente paso
-      setStep(2);
-    } catch (err) {
-      console.error("Error al validar CURP:", err);
-      alert("Error al validar CURP.");
-    } finally {
-      setLoading(false);
+      // Autocompletar datos en el formulario
+      setNuevoCiudadano((prev) => ({ ...prev, ...data }));
+    } else {
+      alert("CURP válido, ingresa los datos del ciudadano.");
     }
-  };
+
+    // ✅ Pasar al siguiente paso
+    setStep(2);
+  } catch (err) {
+    console.error("Error al validar CURP:", err);
+    alert("Error al validar CURP.");
+  } finally {
+    setLoading(false);
+  }
+};
+
 
   // ================= CARGAR SECCIONES =================
   useEffect(() => {
@@ -629,24 +684,74 @@ export default function AgregarCiudadanoCP() {
   }, [step, user]);
 
   // ✅ Al seleccionar sección, buscar UBT y datos del polígono
-  const handleSeccionChange = async (sec) => {
-    setNuevoCiudadano((p) => ({ ...p, seccion: sec }));
+  // const handleSeccionChange = async (sec) => {
+  //   setNuevoCiudadano((p) => ({ ...p, seccion: sec }));
+  //   const { data, error } = await supabase
+  //     .from("ubt_catalogo")
+  //     .select("*")
+  //     .eq("seccion", sec);
+  //   if (!error && data?.length) {
+  //     const info = data[0];
+  //     setUbts(data.map((d) => d.ubt));
+  //     setNuevoCiudadano((prev) => ({
+  //       ...prev,
+  //       poligono: info.poligono,
+  //       municipio: info.nombre_municipio,
+  //       dtto_fed: info.dtto_fed,
+  //       dtto_loc: info.dtto_loc,
+  //     }));
+  //   }
+  // };
+// ✅ Al seleccionar sección, buscar UBT y datos del polígono
+const handleSeccionChange = async (sec) => {
+  setNuevoCiudadano((p) => ({ ...p, seccion: sec }));
+
+  const { data, error } = await supabase
+    .from("ubt_catalogo")
+    .select("*")
+    .eq("seccion", sec);
+
+  if (!error && data?.length) {
+    const info = data[0];
+    const listaUbts = data.map((d) => d.ubt);
+    setUbts(listaUbts);
+
+    // ✅ Mantener UBT previa si sigue siendo válida
+    setNuevoCiudadano((prev) => ({
+      ...prev,
+      poligono: info.poligono,
+      municipio: info.municipio,
+      nombre_municipio: info.nombre_municipio,
+      dtto_fed: info.dtto_fed,
+      dtto_loc: info.dtto_loc,
+      ubt: listaUbts.includes(prev.ubt) ? prev.ubt : "", // evita perder selección
+    }));
+  }
+};
+
+// ================= CARGAR SECCIONES =================
+useEffect(() => {
+  const cargarSecciones = async () => {
     const { data, error } = await supabase
-      .from("ubt_catalogo")
-      .select("*")
-      .eq("seccion", sec);
+      .from("ciudadania")
+      .select("seccion")
+      .eq("poligono", user?.poligono || "");
+
     if (!error && data?.length) {
-      const info = data[0];
-      setUbts(data.map((d) => d.ubt));
-      setNuevoCiudadano((prev) => ({
-        ...prev,
-        poligono: info.poligono,
-        municipio: info.nombre_municipio,
-        dtto_fed: info.dtto_fed,
-        dtto_loc: info.dtto_loc,
-      }));
+      const unicas = [...new Set(data.map((d) => d.seccion))];
+      setSecciones(unicas);
     }
   };
+  if (step === 2) cargarSecciones();
+}, [step, user]);
+
+// ✅ Cuando se carga un ciudadano existente, llenar automáticamente las UBT según su sección
+useEffect(() => {
+  if (step === 2 && nuevoCiudadano.seccion) {
+    handleSeccionChange(nuevoCiudadano.seccion);
+  }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+}, [step, nuevoCiudadano.seccion]);
 
   // ================= CARGAR IMÁGENES =================
   async function handleFileUpload(event, fieldName) {
@@ -665,27 +770,61 @@ export default function AgregarCiudadanoCP() {
   }
 
   // ================= GUARDAR REGISTRO =================
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    setLoading(true);
-    try {
-      if (nuevoCiudadano.puesto === "PROMOTORA-BIENESTAR") {
-        nuevoCiudadano.usuario = nuevoCiudadano.curp;
-        nuevoCiudadano.password = nuevoCiudadano.curp;
-      }
-      const { error } = await supabase
-        .from("ciudadania")
-        .upsert([nuevoCiudadano], { onConflict: "curp" });
-      if (error) throw error;
-      alert("Ciudadano guardado correctamente.");
-      navigate(-1);
-    } catch (err) {
-      console.error("Error al guardar:", err);
-      alert("Error al guardar los datos.");
-    } finally {
-      setLoading(false);
+  // const handleSubmit = async (e) => {
+  //   e.preventDefault();
+  //   setLoading(true);
+  //   try {
+  //     if (nuevoCiudadano.puesto === "PROMOTORA-BIENESTAR") {
+  //       nuevoCiudadano.usuario = nuevoCiudadano.curp;
+  //       nuevoCiudadano.password = nuevoCiudadano.curp;
+  //     }
+  //     const { error } = await supabase
+  //       .from("ciudadania")
+  //       .upsert([nuevoCiudadano], { onConflict: "curp" });
+  //     if (error) throw error;
+  //     alert("Ciudadano guardado correctamente.");
+  //     navigate(-1);
+  //   } catch (err) {
+  //     console.error("Error al guardar:", err);
+  //     alert("Error al guardar los datos.");
+  //   } finally {
+  //     setLoading(false);
+  //   }
+  // };
+
+const handleSubmit = async (e) => {
+  e.preventDefault();
+  setLoading(true);
+  try {
+    // Si es promotora, asignamos usuario y password
+    if (nuevoCiudadano.puesto === "PROMOTORA-BIENESTAR") {
+      nuevoCiudadano.usuario = nuevoCiudadano.curp;
+      nuevoCiudadano.password = nuevoCiudadano.curp;
     }
-  };
+
+    // ✅ Asegurarnos que el status siempre sea SOLICITUD DE ALTA
+    const dataToSave = { ...nuevoCiudadano, status: "SOLICITUD DE ALTA" };
+
+    // Eliminar campo id para evitar conflictos
+    const { id, ...dataSinId } = dataToSave;
+
+    const { error } = await supabase
+      .from("ciudadania")
+      .upsert([dataSinId], { onConflict: "curp" });
+
+    if (error) throw error;
+
+    alert("Ciudadano guardado correctamente con estatus 'SOLICITUD DE ALTA'.");
+    navigate(-1);
+  } catch (err) {
+    console.error("Error al guardar:", err);
+    alert("Error al guardar los datos.");
+  } finally {
+    setLoading(false);
+  }
+};
+
+
 
   // ==================== RENDER ====================
   return (
@@ -741,9 +880,11 @@ export default function AgregarCiudadanoCP() {
           </div>
 
           {/* =================== DATOS =================== */}
+
           <label>
             Sección:
             <select
+              key={nuevoCiudadano.seccion} // Forzar re-render al cambiar sección
               value={nuevoCiudadano.seccion}
               onChange={(e) => handleSeccionChange(e.target.value)}
               className="border p-2 w-full"
@@ -762,6 +903,7 @@ export default function AgregarCiudadanoCP() {
             <label>
               UBT:
               <select
+                key={nuevoCiudadano.ubt} // Forzar re-render al cambiar sección
                 value={nuevoCiudadano.ubt}
                 onChange={(e) =>
                   setNuevoCiudadano((p) => ({ ...p, ubt: e.target.value }))
@@ -779,6 +921,64 @@ export default function AgregarCiudadanoCP() {
             </label>
           )}
 
+          {/* Selector de Puesto */}
+         <div>
+           <label className="block text-sm font-medium">PUESTO</label>
+           <select
+            value={nuevoCiudadano.puesto}
+            onChange={(e) => setNuevoCiudadano({ ...nuevoCiudadano, puesto: e.target.value })}
+            className="w-full border rounded-lg p-2"
+            required
+          >
+            <option value="">Selecciona un puesto</option>
+            <option value="PROMOTORA-BIENESTAR">PROMOTORA-BIENESTAR</option>
+            <option value="SECCIONAL">SECCIONAL</option>
+          </select>
+        </div>
+
+        {/* Usuario y contraseña solo si es SECCIONAL */}
+        {nuevoCiudadano.puesto === "SECCIONAL" && (
+          <>
+            <div>
+              <label className="block text-sm font-medium">Usuario</label>
+              <input
+                type="text"
+                value={nuevoCiudadano.usuario}
+                onChange={(e) => setNuevoCiudadano({ ...nuevoCiudadano, usuario: e.target.value.trim()})}
+                className="w-full border rounded-lg p-2"
+                required={puesto === "SECCIONAL"}
+              />
+            </div>
+
+
+            <div>
+              <label className="block text-sm font-medium">Contraseña</label>
+              <input
+                type="password"
+                value={nuevoCiudadano.password} 
+                onChange={(e) => setNuevoCiudadano({ ...nuevoCiudadano, password: e.target.value.trim() })}
+                className="w-full border rounded-lg p-2"
+                required={puesto === "SECCIONAL"}
+              />
+            </div>
+          <label>DEPENDENCIA: 
+          <select id="dependen"
+          value={nuevoCiudadano.dependencia} 
+          onChange={(e) => setNuevoCiudadano({ ...nuevoCiudadano, dependencia: e.target.value })} 
+          className="border p-2 w-full" required>
+            <option>Selecionar</option>
+            {dependencias.map((dep, index) => (
+              <option key={index} value={dep}>
+                {dep}
+              </option>
+            ))}
+          </select>
+          </label>
+          <label>AREA: <input type="text" value={nuevoCiudadano.area_adscripcion} onChange={(e) => setNuevoCiudadano({ ...nuevoCiudadano, area_adscripcion: e.target.value.toUpperCase() })} className="border p-2 w-full" required/></label>
+        
+         </>
+        )}
+
           <label>
             Nombre:
             <input
@@ -794,7 +994,20 @@ export default function AgregarCiudadanoCP() {
               required
             />
           </label>
-
+         <label>Apellido Paterno: <input type="text" value={nuevoCiudadano.a_paterno} onChange={(e) => setNuevoCiudadano({ ...nuevoCiudadano, a_paterno: e.target.value.toUpperCase() })} className="border p-2 w-full" required/></label>
+         <label>Apellido Materno: <input type="text" value={nuevoCiudadano.a_materno} onChange={(e) => setNuevoCiudadano({ ...nuevoCiudadano, a_materno: e.target.value.toUpperCase() })} className="border p-2 w-full" required/></label>
+         <label>CURP: <input type="text" value={nuevoCiudadano.curp} onChange={(e) => setNuevoCiudadano({ ...nuevoCiudadano, curp: e.target.value.trim().toUpperCase() })} className="border p-2 w-full" required/></label>
+         <label>Calle: <input type="text" value={nuevoCiudadano.calle} onChange={(e) => setNuevoCiudadano({ ...nuevoCiudadano, calle: e.target.value.toUpperCase() })} className="border p-2 w-full" required/></label>
+         <label>N° Ext (MZ): <input type="text" value={nuevoCiudadano.n_ext_mz} onChange={(e) => setNuevoCiudadano({ ...nuevoCiudadano, n_ext_mz: e.target.value.toUpperCase() })} className="border p-2 w-full" required/></label>
+         <label>N° Int (LT): <input type="text" value={nuevoCiudadano.n_int_lt} onChange={(e) => setNuevoCiudadano({ ...nuevoCiudadano, n_int_lt: e.target.value.toUpperCase() })} className="border p-2 w-full" required/></label>
+         <label>N° Casa: <input type="text" value={nuevoCiudadano.n_casa} onChange={(e) => setNuevoCiudadano({ ...nuevoCiudadano, n_casa: e.target.value.toUpperCase() })} className="border p-2 w-full" required/></label>
+         <label>Código Postal: <input type="number" value={nuevoCiudadano.c_p} onChange={(e) => setNuevoCiudadano({ ...nuevoCiudadano, c_p: e.target.value})} className="border p-2 w-full" required/></label>
+         <label>Colonia: <input type="text" value={nuevoCiudadano.col_loc} onChange={(e) => setNuevoCiudadano({ ...nuevoCiudadano, col_loc: e.target.value})} className="border p-2 w-full" required/></label>
+         <label>Teléfono 1: <input type="text" value={nuevoCiudadano.telefono_1} onChange={(e) => setNuevoCiudadano({ ...nuevoCiudadano, telefono_1: e.target.value })} className="border p-2 w-full" required/></label>
+         <label>Teléfono 2: <input type="text" value={nuevoCiudadano.telefono_2} onChange={(e) => setNuevoCiudadano({ ...nuevoCiudadano, telefono_2: e.target.value })} className="border p-2 w-full" required/></label>
+         <label>INSTAGRAM: <input type="text" value={nuevoCiudadano.cuenta_inst} onChange={(e) => setNuevoCiudadano({ ...nuevoCiudadano, cuenta_inst: e.target.value })} className="border p-2 w-full" required/></label>
+         <label>FACEBOOK 1: <input type="text" value={nuevoCiudadano.cuenta_fb} onChange={(e) => setNuevoCiudadano({ ...nuevoCiudadano, cuenta_fb: e.target.value })} className="border p-2 w-full" required/></label>
+         <label>X: <input type="text" value={nuevoCiudadano.cuenta_x} onChange={(e) => setNuevoCiudadano({ ...nuevoCiudadano, cuenta_x: e.target.value })} className="border p-2 w-full" required/></label>
           {/* ... 🔑 Aquí puedes mantener el resto de inputs igual que en tu código original ... */}
 
           <button
