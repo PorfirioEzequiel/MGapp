@@ -11,9 +11,7 @@ const ExcelDownloader = () => {
   const [loading, setLoading] = useState(false);
 
   // 👉 Carga inicial para mostrar datos
-  useEffect(() => {
-    fetchData();
-  }, []);
+  
 
   const fetchData = async () => {
     setLoading(true);
@@ -29,7 +27,10 @@ const ExcelDownloader = () => {
     else setData(data || []);
     setLoading(false);
   };
-
+   useEffect(() => {
+    fetchData();
+  }, []);
+  
   const exportToExcel = () => {
     if (!data.length) {
       alert("No hay datos para exportar");
