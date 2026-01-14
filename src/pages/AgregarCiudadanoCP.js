@@ -565,7 +565,7 @@ export default function AgregarCiudadanoCP() {
     password: "",
     dependencia: "",
     area_adscripcion: "",
-    ingreso_estructura: "",
+    ingreso_estructura: new Date().toISOString(),
     observaciones: "",
     status: "SOLICITUD DE ALTA",
     url_foto_perfil: "",
