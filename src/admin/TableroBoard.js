@@ -184,7 +184,7 @@ const fetchRs = async (seccion) => {
       {/* Polígonos */}
       {selectedDistrito && (
         <div>
-          <h2 className="font-semibold">Polígonos</h2>
+          <h2 className="font-semibold">Sectores</h2>
           <div className="flex flex-wrap gap-2">
             {poligonos.map(p => (
               <button key={p}
@@ -208,7 +208,7 @@ const fetchRs = async (seccion) => {
       {selectedPoligono && (
         <div>
           <h1 className="font-semibold">
-            Coordinador@ de Polígono: {cp ? `${cp.nombre} ${cp.a_paterno} ${cp.a_materno}` : "—"}
+            Coordinador@ de Sector: {cp ? `${cp.nombre} ${cp.a_paterno} ${cp.a_materno}` : "—"}
           </h1>
           {/* <MapComponent2 key={selectedPoligono} mapa={selectedPoligono}/> */}
           <h2 className="font-semibold">Secciones</h2>
@@ -244,7 +244,7 @@ const fetchRs = async (seccion) => {
       <table className="w-auto border-collapse border border-gray-300 mt-4">
       <thead>
         <tr>
-          <th>UBT</th>
+          <th>Fracción</th>
           <th>PB</th>
         </tr>
       </thead>
@@ -279,7 +279,7 @@ const fetchRs = async (seccion) => {
       <div className="rounded-lg p-6 flex flex-col">
       {ficha && (
         <div className="p-4 border rounded bg-gray-100 mt-4">
-          <h3 className="text-lg font-bold">UBT: {ficha.ubt}</h3>
+          <h3 className="text-lg font-bold">Fracción: {ficha.ubt}</h3>
           <p><b>Promotor@ del Bienestar:</b> {promotores.find(p => p.ubt === ficha.ubt)
                 ? `${promotores.find(p => p.ubt === ficha.ubt).nombre} ${promotores.find(p => p.ubt === ficha.ubt).a_paterno} ${promotores.find(p => p.ubt === ficha.ubt).a_materno}`
                 : "—"}</p>

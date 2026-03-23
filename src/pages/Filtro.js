@@ -83,7 +83,7 @@ const Filtro = () => {
     <div className="p-4">
       <div className="flex flex-wrap gap-2 mb-4">
         <label>
-          Polígono:
+          Sector:
           <select
             value={poligono}
             onChange={(e) => setPoligono(e.target.value)}
@@ -178,7 +178,7 @@ const Filtro = () => {
             onClick={() => navigate("/agregar")}
             className="bg-green-500 text-white px-4 py-2 rounded"
           >
-            Agregar Ciudadano
+            Agregar Ciudadano SM
           </button>
         </div>
       </div>
@@ -191,9 +191,9 @@ const Filtro = () => {
         <table className="w-full border-collapse border border-gray-300">
           <thead>
             <tr className="bg-gray-200">
-              <th className="border p-2">Polígono</th>
+              <th className="border p-2">Sector</th>
               <th className="border p-2">Sección</th>
-              <th className="border p-2">UBT</th>
+              <th className="border p-2">Fracción</th>
               <th className="border p-2">Nombre</th>
               <th className="border p-2">CURP</th>
               <th className="border p-2">Puesto</th>
