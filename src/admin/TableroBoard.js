@@ -37,35 +37,35 @@ const TableroBoard = () => {
   const fetchPoligonos = async (distrito) => {
     const { data } = await supabase
       .from("ubt_catalogo")
-      .select("poligono")
+      .select("sector")
       .eq("dtto_fed", distrito);
-    setPoligonos([...new Set(data.map(d => d.poligono))]);
+    setPoligonos([...new Set(data.map(d => d.sector))]);
   };
 
-  const fetchSecciones = async (poligono) => {
+  const fetchSecciones = async (sector) => {
     const { data } = await supabase
       .from("ubt_catalogo")
       .select("seccion")
       .eq("dtto_fed", selectedDistrito)
-      .eq("poligono", poligono);
+      .eq("sector", sector);
     setSecciones([...new Set(data.map(d => d.seccion))]);
   };
 
   const fetchUbts = async (seccion) => {
     const { data } = await supabase
       .from("ubt_catalogo")
-      .select("ubt")
+      .select("fraccion")
       .eq("dtto_fed", selectedDistrito)
-      .eq("poligono", selectedPoligono)
+      .eq("sector", selectedPoligono)
       .eq("seccion", seccion);
-    setUbts(data.map(d => d.ubt));
+    setUbts(data.map(d => d.fraccion));
   };
 
-  const fetchFicha = async (ubt) => {
+  const fetchFicha = async (fraccion) => {
     const { data } = await supabase
       .from("ubt_catalogo")
       .select("*")
-      .eq("ubt", ubt)
+      .eq("fraccion", fraccion)
       .single();
     setFicha(data);
   };
@@ -74,7 +74,7 @@ const TableroBoard = () => {
   const { data, error } = await supabase
     .from("ciudadania")
     .select("nombre, a_paterno, a_materno") // solo los campos necesarios
-    .eq("puesto", "COORDINADOR DE POLIGONO")
+    .eq("puesto", "SP")
     .eq("poligono", poligono)
     .eq("status", "ACTIVO")
     .maybeSingle(); // evita error si no hay registro
@@ -98,7 +98,7 @@ const fetchRs = async (seccion) => {
         .from('ciudadania')
         .select('*')
         .eq("seccion", seccion)
-        .eq("puesto", "PROMOTORA-BIENESTAR")
+        .eq("puesto", "SM")
         .eq("status", "ACTIVO")
         .order('ubt', { ascending: true });
 
@@ -238,14 +238,14 @@ const fetchRs = async (seccion) => {
           <h1 className="font-semibold">
             Responsable de Sección: {rs ? `${rs.nombre} ${rs.a_paterno} ${rs.a_materno}` : "—"}
           </h1>
-          <h2 className="font-semibold">UBT</h2>
+          <h2 className="font-semibold">Fracción</h2>
         </div>
       
       <table className="w-auto border-collapse border border-gray-300 mt-4">
       <thead>
         <tr>
           <th>Fracción</th>
-          <th>PB</th>
+          <th>SM</th>
         </tr>
       </thead>
       <tbody>
@@ -260,7 +260,7 @@ const fetchRs = async (seccion) => {
               </button>
             </td>
             <td>
-              {promotores.find(p => p.ubt === u)
+              {promotores.find(p => p.ubt === u) 
                 ? `${promotores.find(p => p.ubt === u).nombre} ${promotores.find(p => p.ubt === u).a_paterno} ${promotores.find(p => p.ubt === u).a_materno}`
                 : "—"}
             </td>
@@ -279,9 +279,9 @@ const fetchRs = async (seccion) => {
       <div className="rounded-lg p-6 flex flex-col">
       {ficha && (
         <div className="p-4 border rounded bg-gray-100 mt-4">
-          <h3 className="text-lg font-bold">Fracción: {ficha.ubt}</h3>
-          <p><b>Promotor@ del Bienestar:</b> {promotores.find(p => p.ubt === ficha.ubt)
-                ? `${promotores.find(p => p.ubt === ficha.ubt).nombre} ${promotores.find(p => p.ubt === ficha.ubt).a_paterno} ${promotores.find(p => p.ubt === ficha.ubt).a_materno}`
+          <h3 className="text-lg font-bold">Fracción: {ficha.fraccion}</h3>
+          <p><b>SM:</b> {promotores.find(p => p.ubt === ficha.fraccion)
+                ? `${promotores.find(p => p.ubt === ficha.fraccion).nombre} ${promotores.find(p => p.ubt === ficha.fraccion).a_paterno} ${promotores.find(p => p.ubt === ficha.fraccion).a_materno}`
                 : "—"}</p>
         </div>
       )}</div>

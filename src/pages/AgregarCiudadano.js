@@ -91,7 +91,7 @@ export default function AgregarCiudadano() {
       if (error) throw error;
 
       if (seccionData && seccionData.length > 0) {
-        setPoligono(seccionData[0].poligono);
+        setPoligono(seccionData[0].sector);
         // setNuevoCiudadano({ ...nuevoCiudadano, poligono: seccionData[0].poligono })}
         setMunicipio(seccionData[0].nombre_municipio);
         setDfed(seccionData[0].dtto_fed);
@@ -110,12 +110,12 @@ export default function AgregarCiudadano() {
         // Buscar las UBT correspondientes a la sección
         const { data: ubtData, error: ubtError } = await supabase
           .from('ubt_catalogo') // Cambia por el nombre de tu tabla
-          .select('ubt')
+          .select('fraccion')
           .eq('seccion', seccion);
 
         if (ubtError) throw ubtError;
 
-        setUbts(ubtData.map((item) => item.ubt));
+        setUbts(ubtData.map((item) => item.fraccion));
       } else {
         setPoligono(0);
         setDfed(0);
