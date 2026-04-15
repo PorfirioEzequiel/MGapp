@@ -109,7 +109,7 @@
 //     cargarPuestos();
 //   }, []);
 
-//   //  setPuestos(["SECCIONAL","PROMOTORA-BIENESTAR"]);
+//   //  setPuestos(["SECCIONAL","SM"]);
 //   // Función para buscar los datos de la sección
 //   const buscarDatosSeccion = async (seccion) => {
 //     setLoading(true);
@@ -191,7 +191,7 @@
 //       return;
 //     }
 
-//     if (nuevoCiudadano.puesto === "PROMOTORA-BIENESTAR") {
+//     if (nuevoCiudadano.puesto === "SM") {
 //       nuevoCiudadano.usuario = curp;
 //       nuevoCiudadano.password = curp
 //     }
@@ -405,7 +405,7 @@
 //             required
 //           >
 //             <option value="">Selecciona un puesto</option>
-//             <option value="PROMOTORA-BIENESTAR">PROMOTORA-BIENESTAR</option>
+//             <option value="SM">SM</option>
 //             <option value="SECCIONAL">SECCIONAL</option>
 //           </select>
 //         </div>
@@ -713,13 +713,13 @@ const handleSeccionChange = async (sec) => {
 
   if (!error && data?.length) {
     const info = data[0];
-    const listaUbts = data.map((d) => d.ubt);
+    const listaUbts = data.map((d) => d.fraccion);
     setUbts(listaUbts);
 
     // ✅ Mantener UBT previa si sigue siendo válida
     setNuevoCiudadano((prev) => ({
       ...prev,
-      poligono: info.poligono,
+      poligono: info.sector,
       municipio: info.municipio,
       nombre_municipio: info.nombre_municipio,
       dtto_fed: info.dtto_fed,
@@ -774,7 +774,7 @@ useEffect(() => {
   //   e.preventDefault();
   //   setLoading(true);
   //   try {
-  //     if (nuevoCiudadano.puesto === "PROMOTORA-BIENESTAR") {
+  //     if (nuevoCiudadano.puesto === "SM") {
   //       nuevoCiudadano.usuario = nuevoCiudadano.curp;
   //       nuevoCiudadano.password = nuevoCiudadano.curp;
   //     }
@@ -797,7 +797,7 @@ const handleSubmit = async (e) => {
   setLoading(true);
   try {
     // Si es promotora, asignamos usuario y password
-    if (nuevoCiudadano.puesto === "PROMOTORA-BIENESTAR") {
+    if (nuevoCiudadano.puesto === "SM") {
       nuevoCiudadano.usuario = nuevoCiudadano.curp;
       nuevoCiudadano.password = nuevoCiudadano.curp;
     }
@@ -931,7 +931,7 @@ const handleSubmit = async (e) => {
             required
           >
             <option value="">Selecciona un puesto</option>
-            <option value="PROMOTORA-BIENESTAR">PROMOTORA-BIENESTAR</option>
+            <option value="SM">SM</option>
             <option value="SECCIONAL">SECCIONAL</option>
           </select>
         </div>

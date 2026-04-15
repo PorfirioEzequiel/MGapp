@@ -55,7 +55,7 @@ const Coordinador = () => {
   const manejarFiltro = async () => {
     try {
       // Construir filtros dinámicos
-      let query = supabase.from('ciudadania').select('*').eq('poligono',user.poligono).eq('puesto',"PROMOTORA-BIENESTAR").in('status', ['ACTIVO', 'SOLICITUD DE ALTA']).order('ubt', { ascending: true });
+      let query = supabase.from('ciudadania').select('*').eq('poligono',user.poligono).eq('puesto',"SM").in('status', ['ACTIVO', 'SOLICITUD DE ALTA']).order('ubt', { ascending: true });
 
       if (seccion) query = query.eq('seccion', seccion);
       if (nombre) query = query.ilike('nombre', `%${nombre}%`);
@@ -89,7 +89,7 @@ const Coordinador = () => {
     try {
       const { data, error } = await supabase
         .from('ciudadania') // Nombre de la tabla
-        .select('*').eq('poligono',user.poligono).eq('puesto',"PROMOTORA-BIENESTAR").eq('status',"ACTIVO");
+        .select('*').eq('poligono',user.poligono).eq('puesto',"SM").eq('status',"ACTIVO");
         // .eq('seccion', user.seccion); // Consulta todos los campos
 
       if (error1) throw error;
@@ -137,13 +137,13 @@ const Coordinador = () => {
     <div className='mx-auto'>
       {/* <h1>Perfil de {usuario}</h1> */}
       <h1 className="border p-2">Bienvenid@: {user.nombre} {user.a_paterno} {user.a_materno}</h1>
-      <p className="border p-2"><strong>Polígono:</strong> {user.poligono}</p>
+      <p className="border p-2"><strong>Sector:</strong> {user.poligono}</p>
       {/* <p className="border p-2"><strong>Sección:</strong> {user.seccion}</p> */}
       <p className="border p-2"><strong>Puesto:</strong> {user.puesto}</p>
       {/* <p className="border p-2"><strong>Lista nominal:</strong> {section.lista_nominal}</p> */}
 
-      <p className="border p-2"><strong>Seccionales:</strong> {seccionales.length}</p>
-      <p className="border p-2"><strong>Promotor@s del Bienestar:</strong> {promotores.length}</p>
+      {/* <p className="border p-2"><strong>Seccionales:</strong> {seccionales.length}</p> */}
+      <p className="border p-2"><strong>SM´s:</strong> {promotores.length}</p>
       <button 
         onClick={() => navigate(`/coordinador/agregar/${user.usuario}`, {state: { user }})} 
         className="bg-pink-500 hover:bg-pink-600 text-white px-4 py-2 rounded mb-6 mt-6"
@@ -151,7 +151,7 @@ const Coordinador = () => {
         Agregar Colaborador
       </button>
 
-      <table className="w-full border-collapse border border-gray-300">
+      {/* <table className="w-full border-collapse border border-gray-300">
         <thead>
           <tr className="bg-gray-200">
             <th className="border p-2">Polígono</th>
@@ -182,8 +182,9 @@ const Coordinador = () => {
         ) : (
           <p>No se encontraron resultados.</p>
         )}
-      </table>
-      <label>
+      </table> */}
+      <br/>
+      <label className='p-2 w-full'>
           Sección:
           <select 
           value={seccion} 
@@ -219,9 +220,9 @@ const Coordinador = () => {
         <table className="w-full border-collapse border border-gray-300">
         <thead>
           <tr className="bg-gray-200">
-            <th className="border p-2">Polígono</th>
+            <th className="border p-2">Sector</th>
             <th className="border p-2">Sección</th>
-            <th className="border p-2">UBT</th>
+            <th className="border p-2">Fracción</th>
             <th className="border p-2">Nombre</th>
             <th className="border p-2">Puesto</th>
             <th className="border p-2">Estatus</th>
@@ -266,7 +267,7 @@ const Coordinador = () => {
 
 
 
-      <p className="border p-2"><strong>Promotor@s del Bienestar:</strong> {promotores.length}</p>
+      <p className="border p-2"><strong>SM´s:</strong> {promotores.length}</p>
       
 
 

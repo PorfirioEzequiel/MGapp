@@ -37,9 +37,9 @@ const Login = () => {
       // Redirigir según el puesto
       const rutas = {
         administrador: `/menu/${data.usuario}`/*`/admin/${data.usuario}`*/,
-        'coordinador de poligono': `/coordinador/${data.usuario}`,
+        'sp': `/coordinador/${data.usuario}`,
         seccional: `/perfil/${data.usuario}`,
-        'promotora-bienestar': `/reporte/${data.usuario}`,
+        'sm': `/reporte/${data.usuario}`,
         enlace: `/enlace/${data.usuario}`
       };
 
