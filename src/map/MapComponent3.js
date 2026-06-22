@@ -68,7 +68,8 @@ const MapComponent2 = (props) => {
     const fetchCiudadanos = async () => {
         const { data, error } = await supabase
             .from('ciudadania')
-            .select('*');
+            .select('*')
+            .eq('seccion', props.seccion);
 
         if (error) {
             console.error(error);
@@ -82,7 +83,7 @@ const MapComponent2 = (props) => {
             const { data, error } = await supabase
                 .from('secciones')
                 .select('*')
-                .eq("pologono", parseInt(props.mapa));
+                .eq("seccion", parseInt(props.seccion));
 
             if (error) throw error;
 
@@ -205,8 +206,9 @@ const MapComponent2 = (props) => {
                     
                     return (
                         <React.Fragment key={seccion.id}>
-
-                            {ciudadanos.map((persona) => (
+                            console.log("Sección:", seccion.seccion, "Latitud:", seccion.latitud, "Longitud:", seccion.longitud),
+                            {/* {ciudadanos.filter(p => p.seccion === seccion.id).map((persona) => (
+                            console.log(persona.latitud, persona.longitud),
                             <Marker
                                 key={persona.id}
                                 position={{
@@ -215,8 +217,21 @@ const MapComponent2 = (props) => {
                                 }}
                                 onClick={() => setSelectedCiudadano(persona)}
                             />
-))}
-                            <Polygon
+                                
+                            ))} */}
+
+                            {ciudadanos.map((persona) => (
+                                <Marker
+                                    key={persona.id}
+                                    position={{
+                                        lat: Number(persona.latitud),
+                                        lng: Number(persona.longitud)
+                                    }}
+                                    onClick={() => setSelectedCiudadano(persona)}
+                                />
+                            ))}
+
+                             <Polygon
                                 paths={parseMultipolygon(seccion.geometry)}
                                 onClick={() => handlePolygonClick(seccion)}
                                 onMouseOver={() => handleMouseOver(seccion)}

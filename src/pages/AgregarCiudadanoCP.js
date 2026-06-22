@@ -674,7 +674,8 @@ export default function AgregarCiudadanoCP() {
       const { data, error } = await supabase
         .from("ciudadania")
         .select("seccion")
-        .eq("poligono", user?.poligono || "");
+        .eq("poligono", user?.poligono || "")
+        .order('seccion', { ascending: true });
       if (!error) {
         const unicas = [...new Set(data.map((d) => d.seccion))];
         setSecciones(unicas);

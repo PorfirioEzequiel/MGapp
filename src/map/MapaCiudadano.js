@@ -44,13 +44,10 @@ const getColorByIndex = (index) => {
 
 const containerStyle = {
     width: '100%',
-    height: '400px'
+    height: '600px'
 };
 
-const center = {
-    lat: 19.66,
-    lng: -98.99
-};
+
 
 const MapComponent2 = (props) => {
     const { state } = useLocation();
@@ -59,30 +56,18 @@ const MapComponent2 = (props) => {
     const [selectedPolygon, setSelectedPolygon] = useState(null);
     const [hoveredPolygon, setHoveredPolygon] = useState(null);
     
-    const [selectedCiudadano, setSelectedCiudadano] = useState(null);
-    const [ciudadanos, setCiudadanos] = useState([]);
-    
     // Estado para controlar colores personalizados
     const [customColors, setCustomColors] = useState({});
-    
-    const fetchCiudadanos = async () => {
-        const { data, error } = await supabase
-            .from('ciudadania')
-            .select('*');
-
-        if (error) {
-            console.error(error);
-            return;
-        }
-
-        setCiudadanos(data);
+    const center = {
+        lat: props.latitud,
+        lng: props.longitud
     };
     const fetchSecciones = async () => {
         try {
             const { data, error } = await supabase
                 .from('secciones')
                 .select('*')
-                .eq("pologono", parseInt(props.mapa));
+                .eq("seccion", parseInt(props.mapa));
 
             if (error) throw error;
 
@@ -149,7 +134,23 @@ const MapComponent2 = (props) => {
         // Color por defecto según el índice
         return getColorByIndex(index);
     };
-
+    // Función auxiliar para calcular el centro de un polígono
+    const getPolygonCenter = (paths) => {
+        if (!paths || paths.length === 0) return center;
+        
+        let latSum = 0;
+        let lngSum = 0;
+        
+        paths.forEach(point => {
+            latSum += point.lat;
+            lngSum += point.lng;
+        });
+        
+        return {
+            lat: latSum / paths.length,
+            lng: lngSum / paths.length
+        };
+    };
     const { isLoaded } = useJsApiLoader({
         googleMapsApiKey: 'AIzaSyCq9lepK0chTwx6vDjQlCftmP-IpCSBuPM'
         //googleMapsApiKey: 'AIzaSyD0ZPIg4fiV9cQTESVzIrPXYEaXNpw7G3Q'
@@ -198,24 +199,23 @@ const MapComponent2 = (props) => {
             <GoogleMap
                 mapContainerStyle={containerStyle}
                 center={center}
-                zoom={10}
+                zoom={15}
             >
                 {section.map((seccion, index) => {
                     const colors = getCurrentColor(seccion, index);
                     
                     return (
                         <React.Fragment key={seccion.id}>
-
-                            {ciudadanos.map((persona) => (
                             <Marker
-                                key={persona.id}
+                                key={props.key}
                                 position={{
-                                lat: parseFloat(persona.latitud),
-                                lng: parseFloat(persona.longitud)
+                                lat: parseFloat(props.latitud),
+                                lng: parseFloat(props.longitud)
                                 }}
-                                onClick={() => setSelectedCiudadano(persona)}
+                                // onClick={() => setSelectedCiudadano(persona)}
                             />
-))}
+                            
+                            
                             <Polygon
                                 paths={parseMultipolygon(seccion.geometry)}
                                 onClick={() => handlePolygonClick(seccion)}
@@ -228,6 +228,8 @@ const MapComponent2 = (props) => {
                                     fillOpacity: hoveredPolygon === seccion.id || selectedPolygon === seccion.id ? 0.6 : 0.4,
                                 }}
                             />
+                            
+
                             
                             {/* InfoWindow para mostrar información al hacer clic */}
                             {selectedPolygon === seccion.id && (
@@ -274,22 +276,6 @@ const MapComponent2 = (props) => {
     );
 };
 
-// Función auxiliar para calcular el centro de un polígono
-const getPolygonCenter = (paths) => {
-    if (!paths || paths.length === 0) return center;
-    
-    let latSum = 0;
-    let lngSum = 0;
-    
-    paths.forEach(point => {
-        latSum += point.lat;
-        lngSum += point.lng;
-    });
-    
-    return {
-        lat: latSum / paths.length,
-        lng: lngSum / paths.length
-    };
-};
+
 
 export default MapComponent2;

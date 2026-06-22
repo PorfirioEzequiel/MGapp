@@ -143,6 +143,7 @@ const Coordinador = () => {
       {/* <p className="border p-2"><strong>Lista nominal:</strong> {section.lista_nominal}</p> */}
 
       {/* <p className="border p-2"><strong>Seccionales:</strong> {seccionales.length}</p> */}
+      <p className="border p-2"><strong>FRACCIONES:</strong> {promotores.length}</p>
       <p className="border p-2"><strong>SM´s:</strong> {promotores.length}</p>
       <button 
         onClick={() => navigate(`/coordinador/agregar/${user.usuario}`, {state: { user }})} 

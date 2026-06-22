@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import supabase from "../supabase/client";
 import MapComponent2 from "../map/MapComponent2";
+import MapComponent3 from "../map/MapComponent3";
 
 const TableroBoard = () => {
   const [distritos, setDistritos] = useState([]);
@@ -261,7 +262,7 @@ const fetchRs = async (seccion) => {
             </td>
             <td>
               {promotores.find(p => p.ubt === u) 
-                ? `${promotores.find(p => p.ubt === u).nombre} ${promotores.find(p => p.ubt === u).a_paterno} ${promotores.find(p => p.ubt === u).a_materno}`
+                ? `${promotores.find(p => p.ubt === u).nombre} ${promotores.find(p => p.ubt === u).a_paterno} ${promotores.find(p => p.ubt === u).a_materno} ${promotores.find(p => p.ubt === u).latitud}`
                 : "—"}
             </td>
           </tr>
@@ -274,14 +275,24 @@ const fetchRs = async (seccion) => {
       }
 </div>
 
-<div className="rounded-lg p-6 flex flex-col"><MapComponent2 key={selectedPoligono} mapa={selectedPoligono}/></div>
+  {selectedPoligono && (
+    <div className="rounded-lg p-6 flex flex-col">
+      <MapComponent2 key={selectedPoligono} mapa={selectedPoligono}/>
+    </div>
+  && !selectedSeccion)}
+  {selectedSeccion && (
+    <div className="rounded-lg p-6 flex flex-col">
+      <MapComponent3 key={selectedSeccion} seccion={selectedSeccion}/>
+    </div>)
+    }
+
       {/* Ficha */}
       <div className="rounded-lg p-6 flex flex-col">
       {ficha && (
         <div className="p-4 border rounded bg-gray-100 mt-4">
           <h3 className="text-lg font-bold">Fracción: {ficha.fraccion}</h3>
           <p><b>SM:</b> {promotores.find(p => p.ubt === ficha.fraccion)
-                ? `${promotores.find(p => p.ubt === ficha.fraccion).nombre} ${promotores.find(p => p.ubt === ficha.fraccion).a_paterno} ${promotores.find(p => p.ubt === ficha.fraccion).a_materno}`
+                ? `${promotores.find(p => p.ubt === ficha.fraccion).nombre} ${promotores.find(p => p.ubt === ficha.fraccion).a_paterno} ${promotores.find(p => p.ubt === ficha.fraccion).a_materno}  ${promotores.find(p => p.ubt === ficha.fraccion).latitud}`
                 : "—"}</p>
         </div>
       )}</div>

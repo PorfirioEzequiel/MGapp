@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import supabase from "../supabase/client";
+import MapaCiudadano from "../map/MapaCiudadano";
 
 const FichaCiudadano = () => {
   const { id } = useParams();
@@ -135,6 +136,10 @@ const FichaCiudadano = () => {
         dark:file:bg-blue-500
         dark:hover:file:bg-blue-400 mt-6" />
         </div>
+      </div>
+
+      <div className="rounded-lg p-6 flex flex-col">
+        <MapaCiudadano key={ciudadano.seccion} mapa={ciudadano.seccion} latitud={ciudadano.latitud} longitud={ciudadano.longitud}/>
       </div>
 
       {/* Formulario en dos columnas */}
