@@ -42,12 +42,13 @@ const TableroBoard = () => {
   const [selectedSeccion,  setSelectedSeccion]  = useState(null);
 
   // Datos del nivel actual
-  const [sp,          setSp]          = useState(null);
-  const [seccional,   setSeccional]   = useState(null);
-  const [promotores,  setPromotores]  = useState([]);
-  const [fracciones,  setFracciones]  = useState([]);
-  const [regCount,    setRegCount]    = useState(null);
-  const [loadingInfo, setLoadingInfo] = useState(false);
+  const [sp,           setSp]           = useState(null);
+  const [seccional,    setSeccional]    = useState(null);
+  const [promotores,   setPromotores]   = useState([]);
+  const [fracciones,   setFracciones]   = useState([]);
+  const [regCount,     setRegCount]     = useState(null);
+  const [ciudadanosGeo, setCiudadanosGeo] = useState([]);
+  const [loadingInfo,  setLoadingInfo]  = useState(false);
 
   // ── Fetch inicial: todas las secciones ───────────────────────────────────
   useEffect(() => {
@@ -100,18 +101,22 @@ const TableroBoard = () => {
 
   // ── Fetch al seleccionar sector ───────────────────────────────────────────
   useEffect(() => {
-    if (!selectedSector) { setSp(null); return; }
-    const fetch = async () => {
-      const { data } = await supabase
-        .from('ciudadania')
-        .select('nombre, a_paterno, a_materno')
-        .eq('puesto', 'SP')
-        .eq('poligono', selectedSector)
-        .eq('status', 'ACTIVO')
-        .maybeSingle();
-      setSp(data);
+    if (!selectedSector) { setSp(null); setCiudadanosGeo([]); return; }
+    const fetchSector = async () => {
+      const [spRes, geoRes] = await Promise.all([
+        supabase.from('ciudadania')
+          .select('nombre, a_paterno, a_materno')
+          .eq('puesto', 'SP').eq('poligono', selectedSector).eq('status', 'ACTIVO').maybeSingle(),
+        // Ciudadanos con ubicación en este sector
+        supabase.from('ciudadania')
+          .select('id, nombre, a_paterno, a_materno, latitud, longitud, puesto, ubt, seccion, geometry')
+          .eq('poligono', selectedSector).eq('status', 'ACTIVO')
+          .not('latitud', 'is', null),
+      ]);
+      setSp(spRes.data ?? null);
+      setCiudadanosGeo(geoRes.data ?? []);
     };
-    fetch();
+    fetchSector();
   }, [selectedSector]);
 
   // ── Fetch al seleccionar sección ──────────────────────────────────────────
@@ -122,7 +127,7 @@ const TableroBoard = () => {
     }
     const fetchSeccion = async () => {
       setLoadingInfo(true);
-      const [rsRes, smRes, fracRes, regRes] = await Promise.all([
+      const [rsRes, smRes, fracRes, regRes, geoRes] = await Promise.all([
         supabase.from('ciudadania')
           .select('nombre, a_paterno, a_materno')
           .eq('puesto', 'SECCIONAL').eq('seccion', selectedSeccion).eq('status', 'ACTIVO').maybeSingle(),
@@ -137,11 +142,17 @@ const TableroBoard = () => {
         supabase.from('ciudadania')
           .select('id', { count: 'exact', head: true })
           .eq('seccion', selectedSeccion).eq('status', 'ACTIVO'),
+        // Ciudadanos con ubicación y/o geometría de fracción
+        supabase.from('ciudadania')
+          .select('id, nombre, a_paterno, a_materno, latitud, longitud, puesto, ubt, seccion, geometry')
+          .eq('seccion', selectedSeccion).eq('status', 'ACTIVO')
+          .not('latitud', 'is', null),
       ]);
       setSeccional(rsRes.data ?? null);
       setPromotores(smRes.data ?? []);
       setFracciones(fracRes.data?.map(f => f.fraccion) ?? []);
       setRegCount(regRes.count ?? 0);
+      setCiudadanosGeo(geoRes.data ?? []);
       setLoadingInfo(false);
     };
     fetchSeccion();
@@ -286,128 +297,128 @@ const TableroBoard = () => {
 
   // ── Render ────────────────────────────────────────────────────────────────
   return (
-    <div className="min-h-screen bg-gray-50 p-4 md:p-6">
+    <div className="min-h-screen bg-gray-50">
 
-      {/* Header */}
-      <div className="mb-5">
-        <h1 className="text-2xl font-bold text-gray-800">Tablero Territorial</h1>
-        {/* Breadcrumb */}
-        <nav className="flex items-center gap-1.5 mt-1 flex-wrap">
-          {crumbs.map((c, i) => (
-            <React.Fragment key={i}>
-              {i > 0 && <span className="text-gray-300 text-sm">/</span>}
-              {c.onClick ? (
-                <button
-                  onClick={c.onClick}
-                  className="text-sm text-blue-600 hover:text-blue-800 hover:underline font-medium"
-                >
-                  {c.label}
-                </button>
-              ) : (
-                <span className="text-sm text-gray-600 font-semibold">{c.label}</span>
-              )}
-            </React.Fragment>
-          ))}
-        </nav>
-      </div>
+      {/* Header pegado arriba */}
+      <div className="bg-white border-b border-gray-200 px-4 md:px-6 py-3 flex items-center gap-4 flex-wrap">
+        <div>
+          <h1 className="text-lg font-bold text-gray-800 leading-tight">Tablero Territorial</h1>
+          <nav className="flex items-center gap-1.5 flex-wrap mt-0.5">
+            {crumbs.map((c, i) => (
+              <React.Fragment key={i}>
+                {i > 0 && <span className="text-gray-300 text-xs">/</span>}
+                {c.onClick ? (
+                  <button onClick={c.onClick} className="text-xs text-blue-600 hover:underline font-medium">
+                    {c.label}
+                  </button>
+                ) : (
+                  <span className="text-xs text-gray-700 font-semibold">{c.label}</span>
+                )}
+              </React.Fragment>
+            ))}
+          </nav>
+        </div>
 
-      <div className="flex flex-col lg:flex-row gap-5">
-
-        {/* ── Panel izquierdo: filtros ──────────────────────────────────── */}
-        <aside className="w-full lg:w-72 xl:w-80 flex-shrink-0 space-y-4">
-
-          {/* Distritos */}
-          <div className="bg-white rounded-xl border border-gray-200 p-4">
-            <SectionTitle>Distrito Federal</SectionTitle>
-            {loadingMap ? (
-              <p className="text-xs text-gray-400">Cargando...</p>
-            ) : (
-              <div className="flex flex-wrap gap-2">
-                {distritos.map(d => (
-                  <Pill
-                    key={d}
-                    label={`Dto. ${d}`}
-                    active={selectedDistrito === d}
-                    color="blue"
-                    onClick={() => selectDistrito(d)}
-                  />
-                ))}
+        {/* Stats rápidas en el header */}
+        {!loadingMap && (
+          <div className="flex gap-4 ml-auto flex-wrap">
+            <div className="text-center">
+              <p className="text-xs text-gray-400">Secciones visibles</p>
+              <p className="text-base font-bold text-gray-700">{mapStats.secciones}</p>
+            </div>
+            <div className="text-center">
+              <p className="text-xs text-gray-400">Lista nominal</p>
+              <p className="text-base font-bold text-blue-600">{mapStats.listaNominal.toLocaleString()}</p>
+            </div>
+            {ciudadanosGeo.length > 0 && (
+              <div className="text-center">
+                <p className="text-xs text-gray-400">Ubicados</p>
+                <p className="text-base font-bold text-emerald-600">
+                  {ciudadanosGeo.filter(c => c.latitud && c.longitud).length}
+                </p>
               </div>
             )}
           </div>
+        )}
+      </div>
 
-          {/* Sectores */}
-          {selectedDistrito && (
-            <div className="bg-white rounded-xl border border-gray-200 p-4">
-              <SectionTitle>Sectores</SectionTitle>
-              <div className="flex flex-wrap gap-2">
-                {sectores.map(s => (
-                  <Pill
-                    key={s}
-                    label={`Sector ${s}`}
-                    active={selectedSector === s}
-                    color="green"
-                    onClick={() => selectSector(s)}
-                  />
-                ))}
-              </div>
-            </div>
-          )}
+      <div className="flex flex-col lg:flex-row" style={{ height: 'calc(100vh - 72px)' }}>
 
-          {/* Secciones */}
-          {selectedSector && (
-            <div className="bg-white rounded-xl border border-gray-200 p-4">
-              <SectionTitle>Secciones</SectionTitle>
-              <div className="flex flex-wrap gap-2">
-                {seccionesDeNivel.map(s => (
-                  <Pill
-                    key={s}
-                    label={`${s}`}
-                    active={selectedSeccion === s}
-                    color="violet"
-                    onClick={() => selectSeccion(s)}
-                  />
-                ))}
-              </div>
+        {/* ── Sidebar izquierdo: filtros ──────────────────────────────── */}
+        <aside className="w-full lg:w-64 xl:w-72 flex-shrink-0 bg-white border-b lg:border-b-0 lg:border-r border-gray-200 overflow-y-auto">
+          <div className="p-4 space-y-4">
+
+            {/* Distritos */}
+            <div>
+              <SectionTitle>Distrito Federal</SectionTitle>
+              {loadingMap ? (
+                <p className="text-xs text-gray-400">Cargando...</p>
+              ) : (
+                <div className="flex flex-wrap gap-2">
+                  {distritos.map(d => (
+                    <Pill key={d} label={`Dto. ${d}`} active={selectedDistrito === d} color="blue" onClick={() => selectDistrito(d)} />
+                  ))}
+                </div>
+              )}
             </div>
-          )}
+
+            {/* Sectores */}
+            {selectedDistrito && (
+              <div>
+                <SectionTitle>Sectores</SectionTitle>
+                <div className="flex flex-wrap gap-2">
+                  {sectores.map(s => (
+                    <Pill key={s} label={`Sector ${s}`} active={selectedSector === s} color="green" onClick={() => selectSector(s)} />
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Secciones */}
+            {selectedSector && (
+              <div>
+                <SectionTitle>Secciones</SectionTitle>
+                <div className="flex flex-wrap gap-2">
+                  {seccionesDeNivel.map(s => (
+                    <Pill key={s} label={`${s}`} active={selectedSeccion === s} color="violet" onClick={() => selectSeccion(s)} />
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Panel de info debajo de los filtros */}
+            {!loadingMap && (
+              <div className="pt-2 border-t border-gray-100">
+                <SectionTitle>
+                  {selectedSeccion != null ? `Sección ${selectedSeccion}` :
+                   selectedSector   != null ? `Sector ${selectedSector}` :
+                   selectedDistrito != null ? `Distrito ${selectedDistrito}` :
+                   'Municipio'}
+                </SectionTitle>
+                {loadingInfo ? (
+                  <p className="text-xs text-gray-400">Cargando...</p>
+                ) : (
+                  renderInfoPanel()
+                )}
+              </div>
+            )}
+          </div>
         </aside>
 
-        {/* ── Panel derecho: mapa + info ────────────────────────────────── */}
-        <div className="flex-1 min-w-0 space-y-4">
-
-          {/* Mapa */}
+        {/* ── Área principal: mapa ──────────────────────────────────────── */}
+        <div className="flex-1 min-w-0 relative">
           {loadingMap ? (
-            <div className="flex items-center justify-center h-64 bg-white rounded-xl border border-gray-200">
+            <div className="flex items-center justify-center h-full bg-gray-100">
               <p className="text-gray-400 text-sm">Cargando datos territoriales...</p>
             </div>
           ) : (
-            <MapTerritorial
-              secciones={mapSecciones}
-              selectedSeccion={selectedSeccion}
-              onSelectSeccion={selectSeccionFromMap}
-            />
-          )}
-
-          {/* Estadísticas del nivel actual */}
-          {!loadingMap && (
-            <div className="bg-white rounded-xl border border-gray-200 p-4">
-              <div className="flex items-center justify-between mb-3">
-                <p className="font-semibold text-gray-700 text-sm">
-                  {selectedSeccion != null ? `Detalle — Sección ${selectedSeccion}` :
-                   selectedSector   != null ? `Sector ${selectedSector}` :
-                   selectedDistrito != null ? `Distrito ${selectedDistrito}` :
-                   'Municipio completo'}
-                </p>
-                <span className="text-xs text-gray-400">
-                  {mapStats.secciones} sección{mapStats.secciones !== 1 ? 'es' : ''} visibles
-                </span>
-              </div>
-              {loadingInfo ? (
-                <p className="text-xs text-gray-400">Cargando información...</p>
-              ) : (
-                renderInfoPanel()
-              )}
+            <div className="h-full">
+              <MapTerritorial
+                secciones={mapSecciones}
+                ciudadanos={ciudadanosGeo}
+                selectedSeccion={selectedSeccion}
+                onSelectSeccion={selectSeccionFromMap}
+              />
             </div>
           )}
         </div>
