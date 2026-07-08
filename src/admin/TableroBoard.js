@@ -193,24 +193,80 @@ const TableroBoard = () => {
   const renderInfoPanel = () => {
     if (selectedSeccion != null) {
       const secData = allSecciones.find(s => s.seccion === selectedSeccion);
+      const padronTotal = secData?.padron ?? secData?.padron_electoral;
+
+      const DataRow = ({ label, value }) => value != null ? (
+        <div className="flex justify-between items-center py-0.5">
+          <span className="text-xs text-gray-500">{label}</span>
+          <span className="text-xs font-semibold text-gray-700 tabular-nums">{value}</span>
+        </div>
+      ) : null;
+
       return (
-        <div className="space-y-4">
-          <div className="grid grid-cols-2 gap-3">
-            <StatCard label="Lista Nominal" value={secData?.lista_nominal ? Number(secData.lista_nominal).toLocaleString() : '—'} accent />
-            <StatCard label="Registrados" value={regCount != null ? regCount.toLocaleString() : '…'} sub="ciudadanos activos" />
-            <StatCard label="Fracciones" value={fracciones.length} sub="en esta sección" />
-            <StatCard label="Promotores SM" value={promotores.length} sub="activos asignados" />
+        <div className="space-y-3">
+          {/* Datos electorales */}
+          <div className="bg-white border border-gray-200 rounded-lg p-3">
+            <p className="text-xs text-gray-400 uppercase tracking-wide font-semibold mb-2">Datos electorales</p>
+            {secData?.nombre_distrito_federal && (
+              <p className="text-xs font-medium text-gray-800 mb-1.5">{secData.nombre_distrito_federal}</p>
+            )}
+            <div className="space-y-0.5">
+              <DataRow label="Lista nominal"    value={secData?.lista_nominal != null ? Number(secData.lista_nominal).toLocaleString() : null} />
+              <DataRow label="Padrón electoral" value={padronTotal            != null ? Number(padronTotal).toLocaleString()            : null} />
+              <DataRow label="Ciudadanos reg."  value={regCount               != null ? regCount.toLocaleString()                       : null} />
+            </div>
+
+            {/* Desglose lista nominal */}
+            {(secData?.hombres || secData?.mujeres) && (
+              <div className="mt-2 pt-2 border-t border-gray-100">
+                <p className="text-xs text-gray-400 mb-1">Lista nominal por género</p>
+                <div className="w-full h-1.5 rounded-full overflow-hidden flex bg-gray-200">
+                  {secData.hombres && <div className="h-full bg-blue-400" style={{ width: `${(secData.hombres / secData.lista_nominal) * 100}%` }} />}
+                  {secData.mujeres && <div className="h-full bg-pink-400" style={{ width: `${(secData.mujeres / secData.lista_nominal) * 100}%` }} />}
+                </div>
+                <div className="flex justify-between mt-1">
+                  <span className="text-xs text-gray-500">♂ {Number(secData.hombres).toLocaleString()}</span>
+                  <span className="text-xs text-gray-500">♀ {Number(secData.mujeres).toLocaleString()}</span>
+                </div>
+              </div>
+            )}
+
+            {/* Desglose padrón */}
+            {(secData?.padron_hombres || secData?.padron_mujeres) && (
+              <div className="mt-2 pt-2 border-t border-gray-100">
+                <p className="text-xs text-gray-400 mb-1">Padrón por género</p>
+                <div className="space-y-0.5">
+                  <DataRow label="♂ Hombres"   value={secData.padron_hombres    != null ? Number(secData.padron_hombres).toLocaleString()    : null} />
+                  <DataRow label="♀ Mujeres"   value={secData.padron_mujeres    != null ? Number(secData.padron_mujeres).toLocaleString()    : null} />
+                  <DataRow label="⚧ No binario" value={secData.padron_no_binario != null ? Number(secData.padron_no_binario).toLocaleString() : null} />
+                </div>
+                {padronTotal && (secData.padron_hombres || secData.padron_mujeres) && (
+                  <div className="mt-1 w-full h-1.5 rounded-full overflow-hidden flex bg-gray-200">
+                    {secData.padron_hombres  && <div className="h-full bg-blue-400"   style={{ width: `${(secData.padron_hombres  / padronTotal) * 100}%` }} />}
+                    {secData.padron_mujeres  && <div className="h-full bg-pink-400"   style={{ width: `${(secData.padron_mujeres  / padronTotal) * 100}%` }} />}
+                    {secData.padron_no_binario > 0 && <div className="h-full bg-violet-400" style={{ width: `${(secData.padron_no_binario / padronTotal) * 100}%` }} />}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
 
-          <div className="bg-white border border-gray-200 rounded-lg p-3 space-y-1">
-            <p className="text-xs text-gray-400 uppercase tracking-wide font-semibold mb-2">Responsables</p>
+          {/* Stats rápidas */}
+          <div className="grid grid-cols-2 gap-2">
+            <StatCard label="Fracciones"    value={fracciones.length}  sub="en esta sección" />
+            <StatCard label="Promotores SM" value={promotores.length}  sub="activos" accent />
+          </div>
+
+          {/* Responsables */}
+          <div className="bg-white border border-gray-200 rounded-lg p-3 space-y-1.5">
+            <p className="text-xs text-gray-400 uppercase tracking-wide font-semibold mb-1">Responsables</p>
             <div className="flex items-start gap-2">
-              <span className="text-xs bg-violet-100 text-violet-700 rounded px-2 py-0.5 font-medium mt-0.5">SP</span>
-              <p className="text-sm text-gray-700">{fullName(sp) || 'Sin asignar'}</p>
+              <span className="text-xs bg-violet-100 text-violet-700 rounded px-2 py-0.5 font-medium mt-0.5 flex-shrink-0">SP</span>
+              <p className="text-xs text-gray-700 leading-snug">{fullName(sp) || 'Sin asignar'}</p>
             </div>
             <div className="flex items-start gap-2">
-              <span className="text-xs bg-pink-100 text-pink-700 rounded px-2 py-0.5 font-medium mt-0.5">RS</span>
-              <p className="text-sm text-gray-700">{fullName(seccional) || 'Sin asignar'}</p>
+              <span className="text-xs bg-pink-100 text-pink-700 rounded px-2 py-0.5 font-medium mt-0.5 flex-shrink-0">RS</span>
+              <p className="text-xs text-gray-700 leading-snug">{fullName(seccional) || 'Sin asignar'}</p>
             </div>
           </div>
 
@@ -420,6 +476,8 @@ const TableroBoard = () => {
                 ciudadanos={ciudadanosGeo}
                 selectedSeccion={selectedSeccion}
                 onSelectSeccion={selectSeccionFromMap}
+                seccionalName={fullName(seccional)}
+                spName={fullName(sp)}
               />
             </div>
           )}

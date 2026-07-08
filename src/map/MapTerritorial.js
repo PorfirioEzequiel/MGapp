@@ -122,13 +122,33 @@ const getCenter = (pathGroups) => {
 const fmt = (v) => (v != null && v !== '' ? Number(v).toLocaleString() : null);
 
 // ── Tooltip de hover ──────────────────────────────────────────────────────────
-const HoverTooltip = ({ data, pos, containerRef, isDark, tipo = 'seccion' }) => {
+const GenderBar = ({ total, hombres, mujeres, noBinario, sub, isDark }) => {
+  if (!total || (!hombres && !mujeres)) return null;
+  const pct = (n) => n ? `${((n / total) * 100).toFixed(1)}%` : null;
+  const nb = noBinario || 0;
+  return (
+    <div className="mt-1.5">
+      <div className="w-full h-2 rounded-full overflow-hidden flex" style={{ backgroundColor: isDark ? '#374151' : '#e5e7eb' }}>
+        {hombres  && <div className="h-full bg-blue-400"   style={{ width: `${(hombres  / total) * 100}%` }} />}
+        {mujeres  && <div className="h-full bg-pink-400"   style={{ width: `${(mujeres  / total) * 100}%` }} />}
+        {nb > 0   && <div className="h-full bg-violet-400" style={{ width: `${(nb / total) * 100}%` }} />}
+      </div>
+      <div className="flex flex-wrap gap-x-3 mt-1">
+        {hombres  && <span className={`text-xs ${sub}`}>♂ {Number(hombres).toLocaleString()} <span className="opacity-60">({pct(hombres)})</span></span>}
+        {mujeres  && <span className={`text-xs ${sub}`}>♀ {Number(mujeres).toLocaleString()} <span className="opacity-60">({pct(mujeres)})</span></span>}
+        {nb > 0   && <span className={`text-xs ${sub}`}>⚧ {Number(nb).toLocaleString()} <span className="opacity-60">({pct(nb)})</span></span>}
+      </div>
+    </div>
+  );
+};
+
+const HoverTooltip = ({ data, pos, containerRef, isDark, tipo = 'seccion', seccional, sp }) => {
   if (!data || !containerRef.current) return null;
 
   const containerW = containerRef.current.offsetWidth;
   const containerH = containerRef.current.offsetHeight;
-  const tooltipW   = 240;
-  const tooltipH   = 220;
+  const tooltipW   = 268;
+  const tooltipH   = 320;
 
   const flipX = pos.x + tooltipW + 20 > containerW;
   const flipY = pos.y + tooltipH + 10 > containerH;
@@ -142,96 +162,95 @@ const HoverTooltip = ({ data, pos, containerRef, isDark, tipo = 'seccion' }) => 
     width: tooltipW,
   };
 
-  const bg     = isDark ? 'bg-gray-900 border-gray-700'   : 'bg-white border-gray-200';
-  const title  = isDark ? 'text-white'                    : 'text-gray-900';
-  const sub    = isDark ? 'text-gray-400'                 : 'text-gray-500';
-  const val    = isDark ? 'text-gray-100'                 : 'text-gray-800';
+  const bg    = isDark ? 'bg-gray-900 border-gray-700' : 'bg-white border-gray-200';
+  const title = isDark ? 'text-white'   : 'text-gray-900';
+  const sub   = isDark ? 'text-gray-400' : 'text-gray-500';
+  const val   = isDark ? 'text-gray-100' : 'text-gray-800';
+  const divider = isDark ? 'border-gray-700' : 'border-gray-100';
 
   const Row = ({ label, value, accent }) => {
     if (value == null) return null;
     return (
       <div className="flex justify-between items-center gap-2 py-0.5">
         <span className={`text-xs ${sub}`}>{label}</span>
-        <span className={`text-xs font-semibold tabular-nums ${accent ? 'text-blue-500' : val}`}>
-          {value}
-        </span>
+        <span className={`text-xs font-semibold tabular-nums ${accent ? 'text-blue-500' : val}`}>{value}</span>
       </div>
     );
   };
 
-  // Datos electorales disponibles en la sección
-  const listaNominal = fmt(data.lista_nominal);
-  const padron       = fmt(data.padron ?? data.padron_electoral);
-  const hombres      = fmt(data.hombres ?? data.total_hombres);
-  const mujeres      = fmt(data.mujeres ?? data.total_mujeres);
-  const pctH = (data.hombres && data.lista_nominal)
-    ? `${((data.hombres / data.lista_nominal) * 100).toFixed(1)}%` : null;
-  const pctM = (data.mujeres && data.lista_nominal)
-    ? `${((data.mujeres / data.lista_nominal) * 100).toFixed(1)}%` : null;
-
   if (tipo === 'fraccion') {
+    const smName = [data.nombre, data.a_paterno, data.a_materno].filter(Boolean).join(' ');
     return (
       <div style={style} className={`rounded-xl border shadow-2xl p-3 ${bg}`}>
         <p className={`text-sm font-bold mb-1.5 ${title}`}>Fracción {data.ubt}</p>
         <div className="space-y-0.5">
-          <Row label="Sección"  value={data.seccion} />
-          <Row label="Promotor SM" value={[data.nombre, data.a_paterno, data.a_materno].filter(Boolean).join(' ') || '—'} />
+          <Row label="Sección"     value={data.seccion} />
+          <Row label="Promotor SM" value={smName || '—'} />
         </div>
       </div>
     );
   }
 
+  // Datos electorales de la sección
+  const listaNominal     = data.lista_nominal;
+  const padronTotal      = data.padron ?? data.padron_electoral;
+  const nombreDistrito   = data.nombre_distrito_federal;
+  const padronH          = data.padron_hombres;
+  const padronM          = data.padron_mujeres;
+  const padronNB         = data.padron_no_binario;
+  const listaNomH        = data.hombres ?? data.total_hombres;
+  const listaNomM        = data.mujeres ?? data.total_mujeres;
+
   return (
     <div style={style} className={`rounded-xl border shadow-2xl p-3 ${bg}`}>
-      {/* Encabezado */}
-      <div className="flex items-start justify-between mb-2 pb-2 border-b border-gray-200/30">
-        <div>
-          <p className={`text-sm font-bold leading-tight ${title}`}>Sección {data.seccion}</p>
-          <p className={`text-xs ${sub}`}>Sector {data.pologono} · Distrito {data.distrito_federal}</p>
-        </div>
-        <span className="text-xs bg-blue-100 text-blue-700 rounded-full px-2 py-0.5 font-medium flex-shrink-0">
-          Sec. {data.seccion}
-        </span>
-      </div>
 
-      {/* Datos electorales */}
-      <div className="space-y-0.5">
-        <Row label="Lista nominal"       value={listaNominal} accent />
-        <Row label="Padrón electoral"    value={padron} />
-        {hombres && mujeres ? (
-          <>
-            <div className="mt-1.5 mb-0.5">
-              <div className={`text-xs font-medium ${sub} mb-1`}>Distribución por género</div>
-              {/* Barra de progreso hombres/mujeres */}
-              <div className="w-full h-2 rounded-full overflow-hidden flex bg-gray-200">
-                {data.hombres && data.lista_nominal && (
-                  <>
-                    <div
-                      className="h-full bg-blue-400"
-                      style={{ width: `${(data.hombres / data.lista_nominal) * 100}%` }}
-                    />
-                    <div
-                      className="h-full bg-pink-400"
-                      style={{ width: `${(data.mujeres / data.lista_nominal) * 100}%` }}
-                    />
-                  </>
-                )}
-              </div>
-              <div className="flex justify-between mt-1">
-                <span className={`text-xs ${sub}`}>♂ {hombres} <span className="text-gray-400">({pctH})</span></span>
-                <span className={`text-xs ${sub}`}>♀ {mujeres} <span className="text-gray-400">({pctM})</span></span>
-              </div>
-            </div>
-          </>
-        ) : (
-          <>
-            <Row label="Hombres" value={hombres} />
-            <Row label="Mujeres" value={mujeres} />
-          </>
+      {/* Encabezado */}
+      <div className={`mb-2 pb-2 border-b ${divider}`}>
+        <div className="flex items-start justify-between gap-2">
+          <div>
+            <p className={`text-sm font-bold leading-tight ${title}`}>Sección {data.seccion}</p>
+            <p className={`text-xs ${sub} mt-0.5`}>Sector {data.pologono}</p>
+          </div>
+          <span className="text-xs bg-blue-100 text-blue-700 rounded-full px-2 py-0.5 font-medium flex-shrink-0 mt-0.5">
+            Dto. {data.distrito_federal}
+          </span>
+        </div>
+        {nombreDistrito && (
+          <p className={`text-xs ${val} font-medium mt-1`}>{nombreDistrito}</p>
         )}
       </div>
 
-      <p className={`text-xs mt-2 pt-1.5 border-t border-gray-200/30 ${sub}`}>
+      {/* Lista nominal */}
+      <div className="space-y-0.5">
+        <Row label="Lista nominal"    value={listaNominal != null ? Number(listaNominal).toLocaleString() : null} accent />
+        <Row label="Padrón electoral" value={padronTotal  != null ? Number(padronTotal).toLocaleString()  : null} />
+      </div>
+
+      {/* Barra lista nominal (hombres/mujeres) */}
+      {(listaNomH || listaNomM) && (
+        <div className={`mt-2 pt-2 border-t ${divider}`}>
+          <p className={`text-xs font-medium ${sub} mb-1`}>Lista nominal por género</p>
+          <GenderBar total={listaNominal} hombres={listaNomH} mujeres={listaNomM} sub={sub} isDark={isDark} />
+        </div>
+      )}
+
+      {/* Padrón desglosado */}
+      {(padronH || padronM) && (
+        <div className={`mt-2 pt-2 border-t ${divider}`}>
+          <p className={`text-xs font-medium ${sub} mb-1`}>Padrón por género</p>
+          <GenderBar total={padronTotal} hombres={padronH} mujeres={padronM} noBinario={padronNB} sub={sub} isDark={isDark} />
+        </div>
+      )}
+
+      {/* Responsables (solo si disponibles) */}
+      {(sp || seccional) && (
+        <div className={`mt-2 pt-2 border-t ${divider} space-y-0.5`}>
+          {sp       && <Row label="Coordinador SP" value={sp} />}
+          {seccional && <Row label="Seccional RS"  value={seccional} />}
+        </div>
+      )}
+
+      <p className={`text-xs mt-2 pt-1.5 border-t ${divider} ${sub}`}>
         Clic para seleccionar sección
       </p>
     </div>
@@ -244,6 +263,8 @@ const MapTerritorial = ({
   ciudadanos = [],
   selectedSeccion,
   onSelectSeccion,
+  seccionalName = null,
+  spName = null,
 }) => {
   const mapRef        = useRef(null);
   const containerRef  = useRef(null);
@@ -470,6 +491,8 @@ const MapTerritorial = ({
             pos={tooltipPos}
             containerRef={containerRef}
             isDark={isDark}
+            seccional={hovered.data?.seccion === selectedSeccion ? seccionalName : null}
+            sp={spName}
           />
         )}
       </div>
