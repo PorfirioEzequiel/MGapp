@@ -132,7 +132,7 @@ const TableroBoard = () => {
           .select('nombre, a_paterno, a_materno')
           .eq('puesto', 'SECCIONAL').eq('seccion', selectedSeccion).eq('status', 'ACTIVO').maybeSingle(),
         supabase.from('ciudadania')
-          .select('nombre, a_paterno, a_materno, ubt, telefono')
+          .select('nombre, a_paterno, a_materno, ubt, telefono_1')
           .eq('puesto', 'SM').eq('seccion', selectedSeccion).eq('status', 'ACTIVO')
           .order('ubt', { ascending: true }),
         supabase.from('ubt_catalogo')
@@ -223,6 +223,7 @@ const TableroBoard = () => {
                     <tr>
                       <th className="text-left px-3 py-2">Fracción</th>
                       <th className="text-left px-3 py-2">Promotor SM</th>
+                      <th className="text-left px-3 py-2">Teléfono</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100">
@@ -232,6 +233,7 @@ const TableroBoard = () => {
                         <tr key={f} className="hover:bg-gray-50">
                           <td className="px-3 py-2 font-medium text-gray-700">{f}</td>
                           <td className="px-3 py-2 text-gray-600">{fullName(sm) || <span className="text-gray-300">—</span>}</td>
+                          <td className="px-3 py-2 text-gray-500 tabular-nums">{sm?.telefono_1 || <span className="text-gray-300">—</span>}</td>
                         </tr>
                       );
                     })}
