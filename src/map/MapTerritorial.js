@@ -142,13 +142,13 @@ const GenderBar = ({ total, hombres, mujeres, noBinario, sub, isDark }) => {
   );
 };
 
-const HoverTooltip = ({ data, pos, containerRef, isDark, tipo = 'seccion', seccional, sp }) => {
+const HoverTooltip = ({ data, pos, containerRef, isDark, tipo = 'seccion', seccional, sp, sms = [], afil = null }) => {
   if (!data || !containerRef.current) return null;
 
   const containerW = containerRef.current.offsetWidth;
   const containerH = containerRef.current.offsetHeight;
   const tooltipW   = 268;
-  const tooltipH   = 320;
+  const tooltipH   = tipo === 'fraccion' ? 170 : sms.length > 0 ? (afil ? 440 : 400) : (afil ? 370 : 330);
 
   const flipX = pos.x + tooltipW + 20 > containerW;
   const flipY = pos.y + tooltipH + 10 > containerH;
@@ -179,13 +179,29 @@ const HoverTooltip = ({ data, pos, containerRef, isDark, tipo = 'seccion', secci
   };
 
   if (tipo === 'fraccion') {
-    const smName = [data.nombre, data.a_paterno, data.a_materno].filter(Boolean).join(' ');
+    const smName = data.sm
+      ? [data.sm.nombre, data.sm.a_paterno, data.sm.a_materno].filter(Boolean).join(' ')
+      : null;
+    const smLat = Number(data.sm?.latitud);
+    const smLng = Number(data.sm?.longitud);
+    const smHasCoords = data.sm && data.sm.latitud && !isNaN(smLat) && smLat !== 0;
+    const statusColor = smHasCoords
+      ? (isDark ? 'text-emerald-400' : 'text-emerald-600')
+      : data.sm
+        ? (isDark ? 'text-blue-400' : 'text-blue-600')
+        : (isDark ? 'text-amber-400' : 'text-amber-600');
+    const statusLabel = smHasCoords ? '📍 SM ubicada' : data.sm ? '● SM sin ubicación' : '⚠ Sin SM asignada';
+
     return (
       <div style={style} className={`rounded-xl border shadow-2xl p-3 ${bg}`}>
-        <p className={`text-sm font-bold mb-1.5 ${title}`}>Fracción {data.ubt}</p>
+        <div className={`mb-2 pb-2 border-b ${divider} flex items-start justify-between gap-2`}>
+          <p className={`text-sm font-bold ${title}`}>Fracción {data.fraccion}</p>
+          <span className={`text-xs font-semibold ${statusColor} flex-shrink-0`}>{statusLabel}</span>
+        </div>
         <div className="space-y-0.5">
           <Row label="Sección"     value={data.seccion} />
           <Row label="Promotor SM" value={smName || '—'} />
+          {data.sm?.telefono_1 && <Row label="Teléfono" value={data.sm.telefono_1} />}
         </div>
       </div>
     );
@@ -250,6 +266,48 @@ const HoverTooltip = ({ data, pos, containerRef, isDark, tipo = 'seccion', secci
         </div>
       )}
 
+      {/* SMs ubicados */}
+      <div className={`mt-2 pt-2 border-t ${divider}`}>
+        <div className="flex items-center justify-between mb-1">
+          <span className={`text-xs font-semibold ${sub}`}>Promotores SM</span>
+          <span className={`text-xs font-bold tabular-nums px-1.5 py-0.5 rounded-full ${
+            isDark ? 'bg-blue-900/60 text-blue-300' : 'bg-blue-100 text-blue-700'
+          }`}>
+            {sms.length > 0 ? sms.length : '—'}
+          </span>
+        </div>
+        {sms.length > 0 && (
+          <div className="space-y-0.5 max-h-[72px] overflow-y-auto">
+            {sms.map((c, i) => (
+              <p key={i} className={`text-xs truncate ${val}`}>
+                {[c.nombre, c.a_paterno, c.a_materno].filter(Boolean).join(' ')}
+              </p>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Afiliación (discreto) */}
+      {afil && (
+        <div className={`mt-2 pt-1.5 border-t ${divider}`}>
+          <div className="flex items-center justify-between mb-1">
+            <span className={`text-xs font-semibold ${sub}`}>Afiliación</span>
+            <span className={`text-[10px] tabular-nums font-bold ${isDark ? 'text-teal-400' : 'text-teal-600'}`}>
+              {afil.credenciales_entregadas}<span className={`font-normal ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>/{afil.afiliados}</span>
+              <span className={`ml-1 ${isDark ? 'text-teal-500' : 'text-teal-500'}`}>
+                {afil.afiliados ? `${((afil.credenciales_entregadas / afil.afiliados) * 100).toFixed(0)}%` : '—'}
+              </span>
+            </span>
+          </div>
+          <div className={`h-1 rounded-full overflow-hidden ${isDark ? 'bg-gray-700' : 'bg-gray-100'}`}>
+            <div
+              className="h-full bg-teal-500 rounded-full"
+              style={{ width: afil.afiliados ? `${Math.min((afil.credenciales_entregadas / afil.afiliados) * 100, 100)}%` : '0%' }}
+            />
+          </div>
+        </div>
+      )}
+
       <p className={`text-xs mt-2 pt-1.5 border-t ${divider} ${sub}`}>
         Clic para seleccionar sección
       </p>
@@ -261,10 +319,14 @@ const HoverTooltip = ({ data, pos, containerRef, isDark, tipo = 'seccion', secci
 const MapTerritorial = ({
   secciones = [],
   ciudadanos = [],
+  fraccionesGeo = [],
   selectedSeccion,
   onSelectSeccion,
   seccionalName = null,
   spName = null,
+  focusCoords = null,
+  onClearFocus,
+  afiliacionBySec = {},
 }) => {
   const mapRef        = useRef(null);
   const containerRef  = useRef(null);
@@ -301,6 +363,13 @@ const MapTerritorial = ({
 
   useEffect(() => { setActiveMarker(null); setHovered(null); }, [selectedSeccion]);
 
+  // Pan + zoom al enfocar una SM
+  useEffect(() => {
+    if (!focusCoords || !mapRef.current || !window.google) return;
+    mapRef.current.panTo({ lat: focusCoords.lat, lng: focusCoords.lng });
+    mapRef.current.setZoom(17);
+  }, [focusCoords]);
+
   const onLoad = useCallback((map) => { mapRef.current = map; }, []);
 
   // Seguimiento de mouse sobre el contenedor del mapa
@@ -312,8 +381,12 @@ const MapTerritorial = ({
 
   // Handlers de polígono
   const onPolyMouseOver = useCallback((sec) => {
-    setHovered({ data: sec, tipo: 'seccion' });
-  }, []);
+    const smsInSec = ciudadanos.filter(c =>
+      c.puesto?.toUpperCase() === 'SM' &&
+      Number(c.seccion) === Number(sec.seccion)
+    );
+    setHovered({ data: sec, tipo: 'seccion', sms: smsInSec });
+  }, [ciudadanos]);
 
   const onPolyMouseMove = useCallback((e) => {
     if (!containerRef.current) return;
@@ -345,11 +418,24 @@ const MapTerritorial = ({
     </div>
   );
 
-  const markers          = ciudadanos.filter(c =>
+  const markers = ciudadanos.filter(c =>
     c.latitud && c.longitud && !isNaN(Number(c.latitud)) && !isNaN(Number(c.longitud)) &&
-    Number(c.latitud) !== 0 && Number(c.longitud) !== 0
+    Number(c.latitud) !== 0 && Number(c.longitud) !== 0 &&
+    !(focusCoords &&
+      Number(c.latitud) === focusCoords.lat &&
+      Number(c.longitud) === focusCoords.lng)
   );
-  const fraccionPolygons = ciudadanos.filter(c => c.geometry);
+
+  // Colores por estado de asignación de fracción
+  const fracColor = (f) => {
+    const lat = Number(f.sm?.latitud);
+    const lng = Number(f.sm?.longitud);
+    const smHasCoords = f.sm && f.sm.latitud && f.sm.longitud &&
+      !isNaN(lat) && !isNaN(lng) && lat !== 0 && lng !== 0;
+    if (smHasCoords)  return { fill: '#10B981', stroke: '#059669' }; // SM ubicada
+    if (f.sm)         return { fill: '#3B82F6', stroke: '#1D4ED8' }; // SM sin coords
+    return              { fill: '#F59E0B', stroke: '#D97706' };       // sin SM
+  };
 
   return (
     <div className="flex flex-col h-full rounded-xl overflow-hidden shadow-lg border border-gray-200">
@@ -394,56 +480,68 @@ const MapTerritorial = ({
           }}
         >
           {/* ── Polígonos de secciones ──────────────────────────────── */}
-          {secciones.map((sec, idx) => {
-            const paths     = parseWKT(sec.geometry);
-            if (!paths.length) return null;
-            const color     = sectorColorMap[sec.pologono] || SECTOR_COLORS[0];
-            const isSelected = selectedSeccion != null && selectedSeccion === sec.seccion;
-            const isHovered  = hovered?.tipo === 'seccion' && hovered?.data?.seccion === sec.seccion;
-
-            return (
-              <React.Fragment key={sec.id ?? idx}>
-                {paths.map((ring, ri) => (
-                  <Polygon
-                    key={`sec-${sec.id}-${ri}`}
-                    paths={ring}
-                    onMouseOver={() => onPolyMouseOver(sec)}
-                    onMouseMove={onPolyMouseMove}
-                    onMouseOut={onPolyMouseOut}
-                    onClick={() => onSelectSeccion?.(sec)}
-                    options={{
-                      fillColor:    isSelected ? '#FBBF24' : color.fill,
-                      strokeColor:  isSelected ? '#92400E' : isHovered ? '#1e1e1e' : color.stroke,
-                      fillOpacity:  isSelected ? 0.75 : isHovered ? 0.65 : isDark ? 0.50 : 0.38,
-                      strokeWeight: isSelected ? 3     : isHovered ? 2.5 : 1.5,
-                      zIndex:       isSelected ? 20    : isHovered ? 10  : 1,
-                    }}
-                  />
-                ))}
-              </React.Fragment>
+          {(() => {
+            // Solo ceder el protagonismo a las fracciones si hay geometrías reales
+            const hasFracGeom = fraccionesGeo.some(
+              f => f.geometry && parseWKT(f.geometry).length > 0
             );
-          })}
+            return secciones.map((sec, idx) => {
+              const paths      = parseWKT(sec.geometry);
+              if (!paths.length) return null;
+              const color      = sectorColorMap[sec.pologono] || SECTOR_COLORS[0];
+              const isSelected = selectedSeccion != null && selectedSeccion === sec.seccion;
+              // Modo "fondo": seleccionada Y con fracciones mapeadas
+              const isBg       = isSelected && hasFracGeom;
+              const isHovered  = hovered?.tipo === 'seccion' && hovered?.data?.seccion === sec.seccion;
 
-          {/* ── Polígonos de fracciones (desde ciudadania) ──────────── */}
-          {fraccionPolygons.map((c) => {
-            const paths = parseWKT(c.geometry);
+              return (
+                <React.Fragment key={sec.id ?? idx}>
+                  {paths.map((ring, ri) => (
+                    <Polygon
+                      key={`sec-${sec.id}-${ri}`}
+                      paths={ring}
+                      onMouseOver={isBg ? undefined : () => onPolyMouseOver(sec)}
+                      onMouseMove={isBg ? undefined : onPolyMouseMove}
+                      onMouseOut={isBg ? undefined : onPolyMouseOut}
+                      onClick={isBg ? undefined : () => onSelectSeccion?.(sec)}
+                      options={{
+                        fillColor:    isSelected ? '#FBBF24' : color.fill,
+                        strokeColor:  isSelected ? '#B45309' : isHovered ? '#1e1e1e' : color.stroke,
+                        fillOpacity:  isBg ? 0.05 : isSelected ? 0.75 : isHovered ? 0.65 : isDark ? 0.50 : 0.38,
+                        strokeWeight: isBg ? 3    : isSelected ? 3    : isHovered ? 2.5 : 1.5,
+                        zIndex:       isBg ? 1    : isSelected ? 20   : isHovered ? 10  : 2,
+                        clickable:    !isBg,
+                      }}
+                    />
+                  ))}
+                </React.Fragment>
+              );
+            });
+          })()}
+
+          {/* ── Polígonos de fracciones (desde tabla fracciones) ───── */}
+          {fraccionesGeo.map((f) => {
+            const paths = parseWKT(f.geometry);
             if (!paths.length) return null;
+            const { fill, stroke } = fracColor(f);
+            const isFocused = focusCoords?.ubt === f.fraccion;
+            const isHovered = hovered?.tipo === 'fraccion' && hovered?.data?.fraccion === f.fraccion;
             return (
-              <React.Fragment key={`frac-${c.id}`}>
+              <React.Fragment key={`frac-${f.fraccion}`}>
                 {paths.map((ring, ri) => (
                   <Polygon
-                    key={`frac-${c.id}-${ri}`}
+                    key={`frac-${f.fraccion}-${ri}`}
                     paths={ring}
-                    onMouseOver={() => onFracMouseOver(c)}
+                    onMouseOver={() => onFracMouseOver(f)}
                     onMouseMove={onPolyMouseMove}
                     onMouseOut={onPolyMouseOut}
                     options={{
-                      fillColor:    '#34D399',
-                      strokeColor:  '#059669',
-                      fillOpacity:  0.22,
-                      strokeWeight: 2,
-                      strokeOpacity: 0.85,
-                      zIndex: 5,
+                      fillColor:    fill,
+                      strokeColor:  isFocused ? '#92400E' : isHovered ? '#111827' : stroke,
+                      fillOpacity:  isFocused ? 0.65 : isHovered ? 0.70 : 0.48,
+                      strokeWeight: isFocused ? 3.5  : isHovered ? 3    : 2.2,
+                      strokeOpacity: 1,
+                      zIndex:       isFocused ? 30   : isHovered ? 25   : 12,
                     }}
                   />
                 ))}
@@ -481,6 +579,23 @@ const MapTerritorial = ({
               )}
             </Marker>
           ))}
+
+          {/* ── Marcador de enfoque SM seleccionada ─────────────────── */}
+          {focusCoords && window.google && (
+            <Marker
+              position={{ lat: focusCoords.lat, lng: focusCoords.lng }}
+              icon={{
+                path: window.google.maps.SymbolPath.CIRCLE,
+                scale: 16,
+                fillColor: '#F59E0B',
+                fillOpacity: 0.85,
+                strokeColor: '#92400E',
+                strokeWeight: 3,
+              }}
+              zIndex={50}
+              onClick={() => onClearFocus?.()}
+            />
+          )}
         </GoogleMap>
 
         {/* ── Tooltip dinámico de hover ───────────────────────────────── */}
@@ -493,6 +608,8 @@ const MapTerritorial = ({
             isDark={isDark}
             seccional={hovered.data?.seccion === selectedSeccion ? seccionalName : null}
             sp={spName}
+            sms={hovered.sms ?? []}
+            afil={hovered.tipo === 'seccion' ? afiliacionBySec[hovered.data?.seccion] : null}
           />
         )}
       </div>
@@ -513,21 +630,46 @@ const MapTerritorial = ({
           ))}
         </div>
 
-        {(markers.length > 0 || fraccionPolygons.length > 0) && (
-          <div className="flex gap-3 ml-auto">
+        {(markers.length > 0 || fraccionesGeo.length > 0) && (
+          <div className="flex flex-wrap gap-3 ml-auto items-center">
+            {fraccionesGeo.length > 0 && (() => {
+              const conUbicacion = fraccionesGeo.filter(f => {
+                const lat = Number(f.sm?.latitud); const lng = Number(f.sm?.longitud);
+                return f.sm && f.sm.latitud && !isNaN(lat) && lat !== 0;
+              }).length;
+              const sinUbicacion = fraccionesGeo.filter(f => f.sm && !(() => {
+                const lat = Number(f.sm?.latitud);
+                return f.sm.latitud && !isNaN(lat) && lat !== 0;
+              })()).length;
+              const sinSM = fraccionesGeo.filter(f => !f.sm).length;
+              return (
+                <>
+                  {conUbicacion > 0 && (
+                    <div className="flex items-center gap-1.5">
+                      <div className="w-4 h-3 rounded-sm border-2 border-emerald-500 bg-emerald-200" />
+                      <span className={`text-xs ${isDark ? 'text-gray-300' : 'text-gray-500'}`}>{conUbicacion} SM ubicada</span>
+                    </div>
+                  )}
+                  {sinUbicacion > 0 && (
+                    <div className="flex items-center gap-1.5">
+                      <div className="w-4 h-3 rounded-sm border-2 border-blue-500 bg-blue-200" />
+                      <span className={`text-xs ${isDark ? 'text-gray-300' : 'text-gray-500'}`}>{sinUbicacion} SM sin ubicación</span>
+                    </div>
+                  )}
+                  {sinSM > 0 && (
+                    <div className="flex items-center gap-1.5">
+                      <div className="w-4 h-3 rounded-sm border-2 border-amber-400 bg-amber-100" />
+                      <span className={`text-xs ${isDark ? 'text-gray-300' : 'text-gray-500'}`}>{sinSM} sin SM</span>
+                    </div>
+                  )}
+                </>
+              );
+            })()}
             {markers.length > 0 && (
               <div className="flex items-center gap-1.5">
                 <div className="w-3 h-3 rounded-full bg-blue-500 border-2 border-white shadow-sm" />
                 <span className={`text-xs ${isDark ? 'text-gray-300' : 'text-gray-500'}`}>
-                  {markers.length} ub. registradas
-                </span>
-              </div>
-            )}
-            {fraccionPolygons.length > 0 && (
-              <div className="flex items-center gap-1.5">
-                <div className="w-5 h-3 rounded-sm border-2 border-emerald-500 bg-emerald-100" />
-                <span className={`text-xs ${isDark ? 'text-gray-300' : 'text-gray-500'}`}>
-                  {fraccionPolygons.length} fracc. mapeadas
+                  {markers.length} ubicaciones
                 </span>
               </div>
             )}
