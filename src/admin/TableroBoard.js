@@ -56,7 +56,7 @@ const TableroBoard = () => {
       setLoadingMap(true);
       const { data } = await supabase
         .from('secciones')
-        .select('id, seccion, pologono, distrito_federal, lista_nominal, geometry');
+        .select('*');
       setAllSecciones(data ?? []);
       setLoadingMap(false);
     };
