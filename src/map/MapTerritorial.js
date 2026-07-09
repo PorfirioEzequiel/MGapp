@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { GoogleMap, useJsApiLoader, Polygon, Marker, InfoWindow } from '@react-google-maps/api';
+import { GoogleMap, useJsApiLoader, Polygon, Marker, InfoWindow, OverlayView } from '@react-google-maps/api';
 
 const GOOGLE_API_KEY = 'AIzaSyCq9lepK0chTwx6vDjQlCftmP-IpCSBuPM';
 const DEFAULT_CENTER = { lat: 19.66, lng: -98.99 };
@@ -643,6 +643,46 @@ const MapTerritorial = ({
             });
           })()}
 
+          {/* ── Etiquetas de sección (watermark) ───────────────────── */}
+          {secciones.map((sec, idx) => {
+            const paths = parseWKT(sec.geometry);
+            if (!paths.length) return null;
+            const center = getCenter(paths);
+            const isSelected = selectedSeccion != null && selectedSeccion === sec.seccion;
+            return (
+              <OverlayView
+                key={`lbl-sec-${sec.id ?? idx}`}
+                position={center}
+                mapPaneName="overlayMouseTarget"
+              >
+                <div style={{ position: 'absolute', transform: 'translate(-50%,-50%)', pointerEvents: 'none', userSelect: 'none' }}>
+                  <span style={{
+                    display: 'inline-block',
+                    fontSize: 9,
+                    fontWeight: 800,
+                    fontFamily: 'system-ui,-apple-system,sans-serif',
+                    letterSpacing: '.03em',
+                    lineHeight: 1.35,
+                    whiteSpace: 'nowrap',
+                    padding: '1.5px 4px',
+                    borderRadius: 3,
+                    color: isSelected
+                      ? '#78350f'
+                      : isDark ? 'rgba(248,250,252,0.85)' : 'rgba(15,23,42,0.72)',
+                    background: isSelected
+                      ? 'rgba(251,191,36,0.75)'
+                      : isDark ? 'rgba(15,23,42,0.62)' : 'rgba(255,255,255,0.72)',
+                    border: isSelected
+                      ? '0.5px solid rgba(120,53,15,0.4)'
+                      : isDark ? '0.5px solid rgba(255,255,255,0.1)' : '0.5px solid rgba(0,0,0,0.1)',
+                  }}>
+                    {sec.seccion}
+                  </span>
+                </div>
+              </OverlayView>
+            );
+          })}
+
           {/* ── Polígonos de fracciones (desde tabla fracciones) ───── */}
           {fraccionesGeo.map((f) => {
             const paths = parseWKT(f.geometry);
@@ -670,6 +710,67 @@ const MapTerritorial = ({
                   />
                 ))}
               </React.Fragment>
+            );
+          })}
+
+          {/* ── Etiquetas de fracción ───────────────────────────────── */}
+          {fraccionesGeo.map((f) => {
+            const paths = parseWKT(f.geometry);
+            if (!paths.length) return null;
+            const center  = getCenter(paths);
+            const { fill } = fracColor(f);
+            const smName  = f.sm
+              ? [f.sm.nombre, f.sm.a_paterno].filter(Boolean).join(' ')
+              : null;
+            return (
+              <OverlayView
+                key={`lbl-frac-${f.fraccion}`}
+                position={center}
+                mapPaneName="overlayMouseTarget"
+              >
+                <div style={{ position: 'absolute', transform: 'translate(-50%,-50%)', pointerEvents: 'none', userSelect: 'none', textAlign: 'center' }}>
+                  <div style={{
+                    display: 'inline-flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    gap: 1,
+                  }}>
+                    <span style={{
+                      fontSize: 10,
+                      fontWeight: 800,
+                      fontFamily: 'system-ui,-apple-system,sans-serif',
+                      letterSpacing: '.04em',
+                      lineHeight: 1.3,
+                      whiteSpace: 'nowrap',
+                      padding: '1.5px 5px',
+                      borderRadius: 4,
+                      color: '#fff',
+                      background: fill + 'cc',
+                      border: '0.5px solid rgba(0,0,0,0.15)',
+                    }}>
+                      F-{f.fraccion}
+                    </span>
+                    {smName && (
+                      <span style={{
+                        fontSize: 8,
+                        fontWeight: 600,
+                        fontFamily: 'system-ui,-apple-system,sans-serif',
+                        whiteSpace: 'nowrap',
+                        padding: '1px 4px',
+                        borderRadius: 3,
+                        color: isDark ? 'rgba(248,250,252,0.8)' : 'rgba(15,23,42,0.65)',
+                        background: isDark ? 'rgba(15,23,42,0.65)' : 'rgba(255,255,255,0.78)',
+                        border: isDark ? '0.5px solid rgba(255,255,255,0.1)' : '0.5px solid rgba(0,0,0,0.08)',
+                        maxWidth: 80,
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                      }}>
+                        {smName}
+                      </span>
+                    )}
+                  </div>
+                </div>
+              </OverlayView>
             );
           })}
 
