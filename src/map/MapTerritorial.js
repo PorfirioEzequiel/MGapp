@@ -437,6 +437,7 @@ const MapTerritorial = ({
   const [currentStyle,    setCurrentStyle]    = useState('claro');
   const [hovered,         setHovered]         = useState(null);  // { data, tipo }
   const [tooltipPos,      setTooltipPos]      = useState({ x: 0, y: 0 });
+  const [generating,      setGenerating]      = useState(false);
 
   const isDark     = currentStyle === 'oscuro';
   const styleDef   = MAP_STYLE_DEFS[currentStyle];
@@ -472,6 +473,163 @@ const MapTerritorial = ({
   }, [focusCoords]);
 
   const onLoad = useCallback((map) => { mapRef.current = map; }, []);
+
+  // ── Generar PDF con formato ───────────────────────────────────────────────
+  const generatePDF = useCallback(async () => {
+    if (!mapRef.current || !window.google || !containerRef.current) return;
+    setGenerating(true);
+    try {
+      // 1. Fit bounds al contenido actual
+      const bounds = new window.google.maps.LatLngBounds();
+      let hasBounds = false;
+      const hasFracGeo = fraccionesGeo.some(f => f.geometry && parseWKT(f.geometry).length > 0);
+      const geoSource  = hasFracGeo ? fraccionesGeo : secciones;
+      geoSource.forEach(item => {
+        parseWKT(item.geometry ?? '').flat().forEach(p => { bounds.extend(p); hasBounds = true; });
+      });
+      if (hasBounds) mapRef.current.fitBounds(bounds, { top: 55, right: 55, bottom: 55, left: 55 });
+
+      // 2. Esperar que el mapa termine de mover/cargar tiles
+      await new Promise(resolve => {
+        const listener = window.google.maps.event.addListenerOnce(mapRef.current, 'idle', resolve);
+        setTimeout(() => { window.google.maps.event.removeListener(listener); resolve(); }, 3000);
+      });
+      await new Promise(r => setTimeout(r, 350)); // extra para OverlayView labels
+
+      // 3. Capturar mapa con html2canvas
+      const html2canvas = (await import('html2canvas')).default;
+      const canvas = await html2canvas(containerRef.current, {
+        allowTaint: true,
+        useCORS: false,
+        scale: 1.5,
+        logging: false,
+        ignoreElements: el => el.classList?.contains('no-print'),
+      });
+
+      // 4. Construir PDF con jsPDF
+      const { jsPDF } = await import('jspdf');
+      const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+      const W = 297, H = 210, M = 10, CW = W - M * 2;
+
+      // ── Header ──────────────────────────────────────────────────────────
+      doc.setFillColor(15, 42, 74);
+      doc.rect(0, 0, W, 21, 'F');
+      doc.setFillColor(245, 158, 11);
+      doc.rect(0, 21, W, 2, 'F');
+
+      // Logo pill
+      doc.setFillColor(29, 78, 216);
+      doc.roundedRect(M, 5, 13, 11, 1.5, 1.5, 'F');
+      doc.setFontSize(6.5);
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(255, 255, 255);
+      doc.text('MG', M + 6.5, 12, { align: 'center' });
+
+      // Título
+      doc.setFontSize(13);
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(255, 255, 255);
+      doc.text('TABLERO TERRITORIAL', M + 17, 10.5);
+
+      // Breadcrumb
+      if (printContext?.breadcrumb) {
+        doc.setFontSize(7);
+        doc.setFont('helvetica', 'normal');
+        doc.setTextColor(148, 180, 230);
+        doc.text(printContext.breadcrumb, M + 17, 17);
+      }
+
+      // Fecha + nivel (derecha)
+      const fecha = new Date().toLocaleDateString('es-MX', { day: '2-digit', month: 'long', year: 'numeric' });
+      doc.setFontSize(7);
+      doc.setFont('helvetica', 'normal');
+      doc.setTextColor(148, 180, 230);
+      doc.text(fecha, W - M, 9, { align: 'right' });
+
+      if (printContext?.levelValue) {
+        doc.setFontSize(10);
+        doc.setFont('helvetica', 'bold');
+        doc.setTextColor(253, 224, 120);
+        doc.text(printContext.levelValue, W - M, 18, { align: 'right' });
+      }
+
+      // ── Imagen del mapa ──────────────────────────────────────────────────
+      const mapImg = canvas.toDataURL('image/jpeg', 0.88);
+      const mapY = 25, mapH = 132;
+      doc.setDrawColor(203, 213, 225);
+      doc.setLineWidth(0.3);
+      doc.rect(M, mapY, CW, mapH);
+      doc.addImage(mapImg, 'JPEG', M, mapY, CW, mapH);
+
+      // ── Barra de estadísticas ────────────────────────────────────────────
+      const statsY = mapY + mapH + 3;
+      doc.setFillColor(248, 250, 252);
+      doc.rect(0, statsY, W, 30, 'F');
+      doc.setDrawColor(226, 232, 240);
+      doc.setLineWidth(0.3);
+      doc.line(0, statsY, W, statsY);
+
+      const afPct = printContext?.afiliados && printContext?.credenciales
+        ? ` (${((printContext.credenciales / printContext.afiliados) * 100).toFixed(0)}%)`
+        : '';
+
+      const items = [
+        printContext?.listaNominal && { label: 'Lista Nominal', value: Number(printContext.listaNominal).toLocaleString('es-MX'), rgb: [29, 78, 216] },
+        { label: 'Secciones', value: String(printContext?.secciones ?? '—'), rgb: [30, 64, 175] },
+        printContext?.ubicados    && { label: 'Ubicados', value: String(printContext.ubicados), rgb: [5, 150, 105] },
+        printContext?.promotores  && { label: 'Promotores SM', value: String(printContext.promotores), rgb: [37, 99, 235] },
+        printContext?.fracciones  && { label: 'Fracciones', value: String(printContext.fracciones), rgb: [79, 70, 229] },
+        printContext?.afiliados   && { label: 'Afiliados', value: Number(printContext.afiliados).toLocaleString('es-MX'), rgb: [15, 118, 110] },
+        printContext?.credenciales && { label: 'Credenciales', value: `${Number(printContext.credenciales).toLocaleString('es-MX')}${afPct}`, rgb: [15, 118, 110] },
+      ].filter(Boolean);
+
+      const colW = CW / items.length;
+      items.forEach((item, i) => {
+        const x = M + i * colW + colW / 2;
+        if (i > 0) {
+          doc.setDrawColor(226, 232, 240);
+          doc.setLineWidth(0.25);
+          doc.line(M + i * colW, statsY + 3, M + i * colW, statsY + 23);
+        }
+        doc.setFontSize(5.5);
+        doc.setFont('helvetica', 'bold');
+        doc.setTextColor(100, 116, 139);
+        doc.text(item.label.toUpperCase(), x, statsY + 6, { align: 'center' });
+
+        doc.setFontSize(12);
+        doc.setFont('helvetica', 'bold');
+        doc.setTextColor(...item.rgb);
+        doc.text(item.value, x, statsY + 17, { align: 'center' });
+      });
+
+      // ── Pie ──────────────────────────────────────────────────────────────
+      const footY = statsY + 29;
+      doc.setDrawColor(226, 232, 240);
+      doc.setLineWidth(0.25);
+      doc.line(M, footY, W - M, footY);
+
+      doc.setFontSize(7);
+      doc.setFont('helvetica', 'normal');
+      doc.setTextColor(71, 85, 105);
+      const respParts = [];
+      if (printContext?.sp)       respParts.push(`SP: ${printContext.sp}`);
+      if (printContext?.seccional) respParts.push(`RS: ${printContext.seccional}`);
+      if (respParts.length) doc.text(respParts.join('   ·   '), M, footY + 5);
+
+      doc.setFontSize(6);
+      doc.setTextColor(148, 163, 184);
+      doc.text('Documento informativo para operaciones en campo · Sistema de Gestión Electoral', W - M, footY + 5, { align: 'right' });
+
+      // ── Guardar ───────────────────────────────────────────────────────────
+      const name = (printContext?.levelValue ?? 'municipio').toLowerCase().replace(/[\s/]+/g, '-').replace(/[^a-z0-9-]/g, '');
+      doc.save(`tablero-${name}-${new Date().toISOString().split('T')[0]}.pdf`);
+
+    } catch (err) {
+      console.error('Error generando PDF:', err);
+    } finally {
+      setGenerating(false);
+    }
+  }, [secciones, fraccionesGeo, printContext]);
 
   // Inject print CSS once on mount
   useEffect(() => {
@@ -577,16 +735,49 @@ const MapTerritorial = ({
           ))}
         </div>
 
-        {/* Botón imprimir PDF */}
-        <button
-          onClick={() => window.print()}
-          className="no-print absolute top-3 right-3 z-10 flex items-center gap-1.5 px-3 py-1.5 bg-white/90 backdrop-blur-sm rounded-lg shadow-md border border-gray-200 text-xs font-semibold text-gray-700 hover:bg-gray-50 hover:border-gray-300 transition-all"
-        >
-          <svg width="13" height="13" viewBox="0 0 16 16" fill="none">
-            <path d="M4 6V2h8v4M4 12H2a1 1 0 01-1-1V6.5a1 1 0 011-1h12a1 1 0 011 1V11a1 1 0 01-1 1h-2M4 9h8v5H4V9z" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/>
-          </svg>
-          Imprimir PDF
-        </button>
+        {/* Botones de exportación */}
+        <div className="no-print absolute top-3 right-3 z-10 flex items-center gap-1.5">
+          {/* Imprimir (browser print) */}
+          <button
+            onClick={() => window.print()}
+            className="flex items-center gap-1.5 px-2.5 py-1.5 bg-white/90 backdrop-blur-sm rounded-lg shadow-md border border-gray-200 text-xs font-semibold text-gray-600 hover:bg-gray-50 hover:border-gray-300 transition-all"
+            title="Imprimir lo que se ve en pantalla"
+          >
+            <svg width="12" height="12" viewBox="0 0 16 16" fill="none">
+              <path d="M4 6V2h8v4M4 12H2a1 1 0 01-1-1V6.5a1 1 0 011-1h12a1 1 0 011 1V11a1 1 0 01-1 1h-2M4 9h8v5H4V9z" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
+            Imprimir
+          </button>
+
+          {/* Generar PDF con formato */}
+          <button
+            onClick={generatePDF}
+            disabled={generating}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg shadow-md border text-xs font-semibold transition-all ${
+              generating
+                ? 'bg-blue-50 border-blue-200 text-blue-400 cursor-wait'
+                : 'bg-blue-600 border-blue-700 text-white hover:bg-blue-700 shadow-blue-200'
+            }`}
+            title="Generar PDF centrado en el área seleccionada"
+          >
+            {generating ? (
+              <>
+                <svg className="animate-spin" width="12" height="12" viewBox="0 0 16 16" fill="none">
+                  <circle cx="8" cy="8" r="6" stroke="currentColor" strokeWidth="2" strokeDasharray="20 10" />
+                </svg>
+                Generando…
+              </>
+            ) : (
+              <>
+                <svg width="12" height="12" viewBox="0 0 16 16" fill="none">
+                  <path d="M3 12l5-5 5 5M8 7V2" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/>
+                  <path d="M1 14h14" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/>
+                </svg>
+                Generar PDF
+              </>
+            )}
+          </button>
+        </div>
 
         <GoogleMap
           mapContainerStyle={{ width: '100%', height: '100%' }}
