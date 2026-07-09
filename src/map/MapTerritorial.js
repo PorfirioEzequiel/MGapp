@@ -121,6 +121,106 @@ const getCenter = (pathGroups) => {
 
 const fmt = (v) => (v != null && v !== '' ? Number(v).toLocaleString() : null);
 
+// ── Print ─────────────────────────────────────────────────────────────────────
+
+const PRINT_STYLE = `
+  @media print {
+    @page { size: A4 landscape; margin: 8mm 12mm; }
+    * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+    body * { visibility: hidden; }
+    .mp-root, .mp-root * { visibility: visible; }
+    .mp-root {
+      position: fixed !important; top: 0 !important; left: 0 !important;
+      width: 100% !important; height: 100% !important;
+      background: white !important;
+      display: flex !important; flex-direction: column !important;
+      z-index: 99999 !important;
+    }
+    .no-print { display: none !important; visibility: hidden !important; }
+    .print-only { display: block !important; visibility: visible !important; }
+    .print-flex { display: flex !important; visibility: visible !important; }
+  }
+  .print-only, .print-flex { display: none; }
+`;
+
+const PrintHeader = ({ ctx }) => {
+  const dt = new Date().toLocaleDateString('es-MX', { day: '2-digit', month: 'long', year: 'numeric' });
+  return (
+    <div className="print-flex" style={{
+      flexShrink: 0,
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      padding: '8px 16px',
+      background: 'linear-gradient(135deg, #0f2a4a 0%, #1d4ed8 100%)',
+      color: '#fff',
+      borderBottom: '3px solid #f59e0b',
+    }}>
+      <div>
+        <div style={{ fontSize: 17, fontWeight: 800, letterSpacing: '.06em', textTransform: 'uppercase', lineHeight: 1.1 }}>
+          Tablero Territorial
+          {ctx?.levelValue && (
+            <span style={{ marginLeft: 12, fontSize: 12, fontWeight: 500, opacity: .75, letterSpacing: '.04em' }}>
+              · {ctx.levelValue}
+            </span>
+          )}
+        </div>
+        {ctx?.breadcrumb && (
+          <div style={{ fontSize: 10, marginTop: 3, opacity: .65, letterSpacing: '.03em' }}>{ctx.breadcrumb}</div>
+        )}
+      </div>
+      <div style={{ textAlign: 'right' }}>
+        <div style={{ fontSize: 12, fontWeight: 700, opacity: .9 }}>{dt}</div>
+        <div style={{ fontSize: 9, marginTop: 2, opacity: .6, letterSpacing: '.05em', textTransform: 'uppercase' }}>
+          Informe operativo de campo
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const PrintFooter = ({ ctx }) => {
+  if (!ctx) return null;
+  const afPct = ctx.afiliados && ctx.credenciales
+    ? `${((ctx.credenciales / ctx.afiliados) * 100).toFixed(0)}%`
+    : null;
+  const items = [
+    { label: 'Lista Nominal', value: Number(ctx.listaNominal || 0).toLocaleString('es-MX'), accent: '#1d4ed8' },
+    { label: 'Secciones', value: ctx.secciones },
+    ctx.ubicados   && { label: 'Ubicados', value: ctx.ubicados },
+    ctx.promotores && { label: 'Promotores SM', value: ctx.promotores, accent: '#2563eb' },
+    ctx.fracciones && { label: 'Fracciones', value: ctx.fracciones },
+    ctx.afiliados  && { label: 'Afiliados', value: Number(ctx.afiliados).toLocaleString('es-MX'), accent: '#0f766e' },
+    ctx.credenciales && {
+      label: 'Credenciales entregadas',
+      value: `${Number(ctx.credenciales).toLocaleString('es-MX')}${afPct ? ` · ${afPct}` : ''}`,
+      accent: '#0f766e',
+    },
+  ].filter(Boolean);
+
+  return (
+    <div className="print-only" style={{ flexShrink: 0, background: '#f8fafc', borderTop: '2px solid #e2e8f0', padding: '7px 16px' }}>
+      <div className="print-flex" style={{ gap: 22, marginBottom: 5, flexWrap: 'wrap', alignItems: 'flex-start' }}>
+        {items.map((it, i) => (
+          <div key={i}>
+            <div style={{ fontSize: 7, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.1em', color: '#64748b', lineHeight: 1 }}>{it.label}</div>
+            <div style={{ fontSize: 16, fontWeight: 800, color: it.accent ?? '#0f172a', fontVariantNumeric: 'tabular-nums', lineHeight: 1.2, marginTop: 2 }}>{it.value}</div>
+          </div>
+        ))}
+      </div>
+      <div className="print-flex" style={{ justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid #e2e8f0', paddingTop: 5, marginTop: 3 }}>
+        <div style={{ fontSize: 9, color: '#475569' }}>
+          {ctx.sp && <span><strong>Coordinador SP:</strong> {ctx.sp}</span>}
+          {ctx.sp && ctx.seccional && <span style={{ margin: '0 10px', color: '#cbd5e1' }}>|</span>}
+          {ctx.seccional && <span><strong>Seccional RS:</strong> {ctx.seccional}</span>}
+        </div>
+        <div style={{ fontSize: 8, color: '#94a3b8' }}>
+          Documento informativo para operaciones en campo · Sistema de Gestión Electoral
+        </div>
+      </div>
+    </div>
+  );
+};
+
 // ── Tooltip de hover ──────────────────────────────────────────────────────────
 const GenderBar = ({ total, hombres, mujeres, noBinario, sub, isDark }) => {
   if (!total || (!hombres && !mujeres)) return null;
@@ -327,6 +427,7 @@ const MapTerritorial = ({
   focusCoords = null,
   onClearFocus,
   afiliacionBySec = {},
+  printContext = null,
 }) => {
   const mapRef        = useRef(null);
   const containerRef  = useRef(null);
@@ -371,6 +472,15 @@ const MapTerritorial = ({
   }, [focusCoords]);
 
   const onLoad = useCallback((map) => { mapRef.current = map; }, []);
+
+  // Inject print CSS once on mount
+  useEffect(() => {
+    const el = document.createElement('style');
+    el.id = 'map-print-style';
+    el.textContent = PRINT_STYLE;
+    document.head.appendChild(el);
+    return () => document.getElementById('map-print-style')?.remove();
+  }, []);
 
   // Seguimiento de mouse sobre el contenedor del mapa
   const handleContainerMouseMove = useCallback((e) => {
@@ -438,7 +548,10 @@ const MapTerritorial = ({
   };
 
   return (
-    <div className="flex flex-col h-full rounded-xl overflow-hidden shadow-lg border border-gray-200">
+    <div className="mp-root flex flex-col h-full">
+      <PrintHeader ctx={printContext} />
+
+      <div className="flex flex-col flex-1 overflow-hidden rounded-xl shadow-lg border border-gray-200">
 
       {/* ── Área del mapa ───────────────────────────────────────────────── */}
       <div
@@ -448,7 +561,7 @@ const MapTerritorial = ({
         onMouseLeave={() => setHovered(null)}
       >
         {/* Selector de capa flotante */}
-        <div className="absolute top-3 left-3 z-10 flex gap-1 bg-white/90 backdrop-blur-sm rounded-lg shadow-md p-1 border border-gray-200">
+        <div className="no-print absolute top-3 left-3 z-10 flex gap-1 bg-white/90 backdrop-blur-sm rounded-lg shadow-md p-1 border border-gray-200">
           {Object.entries(MAP_STYLE_DEFS).map(([key, def]) => (
             <button
               key={key}
@@ -463,6 +576,17 @@ const MapTerritorial = ({
             </button>
           ))}
         </div>
+
+        {/* Botón imprimir PDF */}
+        <button
+          onClick={() => window.print()}
+          className="no-print absolute top-3 right-3 z-10 flex items-center gap-1.5 px-3 py-1.5 bg-white/90 backdrop-blur-sm rounded-lg shadow-md border border-gray-200 text-xs font-semibold text-gray-700 hover:bg-gray-50 hover:border-gray-300 transition-all"
+        >
+          <svg width="13" height="13" viewBox="0 0 16 16" fill="none">
+            <path d="M4 6V2h8v4M4 12H2a1 1 0 01-1-1V6.5a1 1 0 011-1h12a1 1 0 011 1V11a1 1 0 01-1 1h-2M4 9h8v5H4V9z" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/>
+          </svg>
+          Imprimir PDF
+        </button>
 
         <GoogleMap
           mapContainerStyle={{ width: '100%', height: '100%' }}
@@ -615,7 +739,7 @@ const MapTerritorial = ({
       </div>
 
       {/* ── Pie: leyenda ────────────────────────────────────────────────── */}
-      <div className={`flex-shrink-0 px-4 py-2.5 border-t flex flex-wrap items-center gap-x-4 gap-y-1.5 ${
+      <div className={`no-print flex-shrink-0 px-4 py-2.5 border-t flex flex-wrap items-center gap-x-4 gap-y-1.5 ${
         isDark ? 'bg-gray-900 border-gray-700' : 'bg-white border-gray-100'
       }`}>
         <div className="flex flex-wrap gap-3">
@@ -676,6 +800,9 @@ const MapTerritorial = ({
           </div>
         )}
       </div>
+      </div>
+
+      <PrintFooter ctx={printContext} />
     </div>
   );
 };
