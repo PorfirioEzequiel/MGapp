@@ -1,14 +1,22 @@
 import { useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import supabase from "../supabase/client";
-import MapaCiudadano from "../map/MapaCiudadano";
+import MapTerritorial from "../map/MapTerritorial";
 
 const FichaCiudadano = () => {
   const { id } = useParams();
   const navigate = useNavigate();
   const [ciudadano, setCiudadano] = useState(null);
   const [loading, setLoading] = useState(true);
-  
+  const [seccionGeo, setSeccionGeo] = useState(null);
+  const [fracciones, setFracciones] = useState([]);
+
+  // Quién está viendo la ficha: admin/coordinador ven el mapa editable,
+  // el usuario SM solo ve sector/sección/fracción en texto.
+  let viewer = null;
+  try { viewer = JSON.parse(sessionStorage.getItem("user")); } catch { viewer = null; }
+  const viewerEsSM = viewer?.puesto?.toUpperCase() === "SM";
+
   useEffect(() => {
     async function fetchCiudadano() {
       const { data, error } = await supabase
@@ -23,6 +31,42 @@ const FichaCiudadano = () => {
     }
     fetchCiudadano();
   }, [id]);
+
+  // Polígono de la sección y sus fracciones, para dibujar el mapa dividido por fracciones
+  useEffect(() => {
+    if (!ciudadano?.seccion) {
+      setSeccionGeo(null);
+      setFracciones([]);
+      return;
+    }
+    async function fetchMapa() {
+      const seccionNum = Number(ciudadano.seccion);
+      const [secRes, fracRes] = await Promise.all([
+        supabase.from("secciones").select("*").eq("seccion", seccionNum).maybeSingle(),
+        supabase.from("fracciones").select("fraccion, seccion, geometry").eq("seccion", seccionNum),
+      ]);
+      setSeccionGeo(secRes.data ?? null);
+      setFracciones(fracRes.data ?? []);
+    }
+    fetchMapa();
+  }, [ciudadano?.seccion]);
+
+  function handleObtenerUbicacion() {
+    if (!navigator.geolocation) {
+      alert("Geolocalización no disponible en este dispositivo.");
+      return;
+    }
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        setCiudadano((prev) => ({
+          ...prev,
+          latitud: position.coords.latitude,
+          longitud: position.coords.longitude,
+        }));
+      },
+      (error) => alert("Error al obtener ubicación: " + error.message)
+    );
+  }
 
   async function handleSave() {
     const { error } = await supabase
@@ -50,6 +94,8 @@ const FichaCiudadano = () => {
         movilizador: ciudadano.movilizador,
         c_p: ciudadano.c_p,
         col_loc: ciudadano.col_loc,
+        latitud: ciudadano.latitud,
+        longitud: ciudadano.longitud,
         url_foto_perfil: ciudadano.url_foto_perfil,
         url_foto_ine1: ciudadano.url_foto_ine1,
         url_foto_ine2: ciudadano.url_foto_ine2,
@@ -138,10 +184,6 @@ const FichaCiudadano = () => {
         </div>
       </div>
 
-      <div className="rounded-lg p-6 flex flex-col">
-        <MapaCiudadano key={ciudadano.seccion} mapa={ciudadano.seccion} latitud={ciudadano.latitud} longitud={ciudadano.longitud}/>
-      </div>
-
       {/* Formulario en dos columnas */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
       <label>
@@ -199,7 +241,7 @@ const FichaCiudadano = () => {
             required
           />
         </label>
-        
+
         <label>
           Area:
           <input
@@ -342,67 +384,110 @@ const FichaCiudadano = () => {
           />
         </label>
 
-        
-        <label>
-          Calle:
-          <input
-            type="text"
-            value={ciudadano.calle}
-            onChange={(e) => setCiudadano({ ...ciudadano, calle: e.target.value })}
-            className="border p-2 w-full"
-          />
-        </label>
 
-        <label>
-          N° Ext (MZ):
-          <input
-            type="text"
-            value={ciudadano.n_ext_mz}
-            onChange={(e) => setCiudadano({ ...ciudadano, n_ext_mz: e.target.value })}
-            className="border p-2 w-full"
-          />
-        </label>
+        <div className="md:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-4 items-start">
+          <div className="space-y-4">
+            <label>
+              Calle:
+              <input
+                type="text"
+                value={ciudadano.calle}
+                onChange={(e) => setCiudadano({ ...ciudadano, calle: e.target.value })}
+                className="border p-2 w-full"
+              />
+            </label>
 
-        <label>
-          N° Int (LT):
-          <input
-            type="text"
-            value={ciudadano.n_int_lt}
-            onChange={(e) => setCiudadano({ ...ciudadano, n_int_lt: e.target.value })}
-            className="border p-2 w-full"
-          />
-        </label>
+            <label>
+              N° Ext (MZ):
+              <input
+                type="text"
+                value={ciudadano.n_ext_mz}
+                onChange={(e) => setCiudadano({ ...ciudadano, n_ext_mz: e.target.value })}
+                className="border p-2 w-full"
+              />
+            </label>
 
-        <label>
-          N° Casa:
-          <input
-            type="text"
-            value={ciudadano.n_casa}
-            onChange={(e) => setCiudadano({ ...ciudadano, n_casa: e.target.value })}
-            className="border p-2 w-full"
-          />
-        </label>
+            <label>
+              N° Int (LT):
+              <input
+                type="text"
+                value={ciudadano.n_int_lt}
+                onChange={(e) => setCiudadano({ ...ciudadano, n_int_lt: e.target.value })}
+                className="border p-2 w-full"
+              />
+            </label>
 
+            <label>
+              N° Casa:
+              <input
+                type="text"
+                value={ciudadano.n_casa}
+                onChange={(e) => setCiudadano({ ...ciudadano, n_casa: e.target.value })}
+                className="border p-2 w-full"
+              />
+            </label>
 
-        <label>
-          Codigo Postal:
-          <input
-            type="text"
-            value={ciudadano.c_p}
-            onChange={(e) => setCiudadano({ ...ciudadano, c_p: e.target.value })}
-            className="border p-2 w-full"
-          />
-        </label>
+            <label>
+              Codigo Postal:
+              <input
+                type="text"
+                value={ciudadano.c_p}
+                onChange={(e) => setCiudadano({ ...ciudadano, c_p: e.target.value })}
+                className="border p-2 w-full"
+              />
+            </label>
 
-        <label>
-          Localidad o Colonia:
-          <input
-            type="text"
-            value={ciudadano.col_loc}
-            onChange={(e) => setCiudadano({ ...ciudadano, col_loc: e.target.value })}
-            className="border p-2 w-full"
-          />
-        </label>
+            <label>
+              Localidad o Colonia:
+              <input
+                type="text"
+                value={ciudadano.col_loc}
+                onChange={(e) => setCiudadano({ ...ciudadano, col_loc: e.target.value })}
+                className="border p-2 w-full"
+              />
+            </label>
+
+            {!viewerEsSM && (
+              <button
+                type="button"
+                onClick={handleObtenerUbicacion}
+                className="bg-slate-600 hover:bg-slate-700 text-white px-4 py-2 rounded text-sm"
+              >
+                📍 Usar mi ubicación actual
+              </button>
+            )}
+          </div>
+
+          {viewerEsSM ? (
+            <div className="rounded-lg border bg-slate-50 p-4 space-y-2">
+              <p className="text-xs font-bold uppercase tracking-widest text-slate-400">Ubicación territorial</p>
+              <p className="text-sm"><span className="font-semibold text-slate-500">Sector:</span> {ciudadano.poligono || "—"}</p>
+              <p className="text-sm"><span className="font-semibold text-slate-500">Sección:</span> {ciudadano.seccion || "—"}</p>
+              <p className="text-sm"><span className="font-semibold text-slate-500">Fracción:</span> {ciudadano.ubt || "—"}</p>
+            </div>
+          ) : (
+            <div className="rounded-lg overflow-hidden border" style={{ height: "300px" }}>
+              <MapTerritorial
+                secciones={seccionGeo ? [seccionGeo] : []}
+                fraccionesGeo={fracciones}
+                selectedSeccion={seccionGeo?.seccion}
+                editableLocation={
+                  ciudadano.latitud && ciudadano.longitud
+                    ? { lat: Number(ciudadano.latitud), lng: Number(ciudadano.longitud) }
+                    : null
+                }
+                onEditableLocationChange={(lat, lng, fraccion) =>
+                  setCiudadano((prev) => ({
+                    ...prev,
+                    latitud: lat,
+                    longitud: lng,
+                    ...(fraccion != null ? { ubt: fraccion } : {}),
+                  }))
+                }
+              />
+            </div>
+          )}
+        </div>
 
         <label>
           INSTAGRAM:

@@ -1,12 +1,13 @@
 import React, { useState } from "react";
 import supabase from '../supabase/client';
-import { useLocation, useParams } from "react-router-dom";
+import { useLocation, useNavigate, useParams } from "react-router-dom";
 import localidadesData from "../codigospostales.json";
 
 const WaterSurveyForm = () => {
   const { state } = useLocation();
   const { user } = state || {};
   const { usuario } = useParams();
+  const navigate = useNavigate();
 
   const [location, setLocation] = useState(null);
   const [quality, setQuality] = useState("");
@@ -125,9 +126,18 @@ const WaterSurveyForm = () => {
   return (
     <div class="max-w-md mx-auto mt-10 bg-white shadow-lg rounded-lg overflow-hidden">
       <div class="text-2xl py-4 px-6 bg-blue-600 text-white text-center font-bold uppercase">
-        REPORTE DE CALIDAD DEL AGUA
+        SM
     </div>
-    <form onSubmit={handleSubmit} class="py-4 px-6">
+    <div class="px-6 pt-4">
+      <button
+        type="button"
+        onClick={() => navigate(`/apoyos/${usuario}`, { state: { user } })}
+        class="w-full bg-emerald-600 hover:bg-emerald-700 text-white py-2 px-4 rounded font-semibold"
+      >
+        🎁 Apoyos y Programas Sociales
+      </button>
+    </div>
+    {/* <form onSubmit={handleSubmit} class="py-4 px-6">
       
         <div class="mb-4">
           
@@ -250,7 +260,7 @@ const WaterSurveyForm = () => {
 
         {message && <p>{message}</p>}
       
-    </form>
+    </form> */}
 
     </div>
   );

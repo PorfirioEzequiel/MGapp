@@ -24,7 +24,7 @@ const Login = () => {
         .eq('usuario', formData.usuario)
         .eq('password', formData.contraseña)
         .eq('status', 'ACTIVO')
-        .single();
+        .maybeSingle();
 
       if (error || !data) {
         setError('Usuario o contraseña incorrectos');

@@ -21,6 +21,8 @@ import TableroBoard from './admin/TableroBoard';
 import SolicitudesAdmin from './admin/SolicitudesAdmin';
 import ReportePoligonos from './admin/ReportePoligonos';
 import ExcelDownloader from './admin/ExcelDownloader';
+import ProgramasSociales from './admin/ProgramasSociales';
+import Apoyos from './pages/Apoyos';
 
 // Componente para proteger rutas privadas
 const PrivateRoute = ({ children }) => {
@@ -42,6 +44,8 @@ function App() {
         <Route path="/solicitudes" element={<PrivateRoute><SolicitudesAdmin /></PrivateRoute>} />
         <Route path="/admin/reporte" element={<PrivateRoute><ReportePoligonos /></PrivateRoute>} />
         <Route path="/admin/base" element={<PrivateRoute><ExcelDownloader /></PrivateRoute>} />
+        <Route path="/admin/programas" element={<PrivateRoute><ProgramasSociales /></PrivateRoute>} />
+        <Route path="/apoyos/:usuario" element={<PrivateRoute><Apoyos /></PrivateRoute>} />
         <Route path="/menu/:usuario" element={<PrivateRoute><MeniAdmin /></PrivateRoute>} />
         <Route path="/perfil/:usuario" element={<PrivateRoute><Perfil /></PrivateRoute>} />
         <Route path="/enlace/:usuario" element={<PrivateRoute><Enlace /></PrivateRoute>} />

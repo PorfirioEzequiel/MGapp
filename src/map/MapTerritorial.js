@@ -1,8 +1,22 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { GoogleMap, useJsApiLoader, Polygon, Marker, InfoWindow } from '@react-google-maps/api';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { GoogleMap, useJsApiLoader, Polygon, Marker, InfoWindow, Autocomplete } from '@react-google-maps/api';
 
 const GOOGLE_API_KEY = 'AIzaSyCq9lepK0chTwx6vDjQlCftmP-IpCSBuPM';
+const GOOGLE_LIBRARIES = ['places'];
 const DEFAULT_CENTER = { lat: 19.66, lng: -98.99 };
+
+// ── Punto dentro de polígono (ray casting) ───────────────────────────────────
+const pointInPolygon = (point, ring) => {
+  let inside = false;
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+    const xi = ring[i].lng, yi = ring[i].lat;
+    const xj = ring[j].lng, yj = ring[j].lat;
+    const intersect = ((yi > point.lat) !== (yj > point.lat)) &&
+      (point.lng < ((xj - xi) * (point.lat - yi)) / (yj - yi) + xi);
+    if (intersect) inside = !inside;
+  }
+  return inside;
+};
 
 // ── Paleta de sectores ───────────────────────────────────────────────────────
 const SECTOR_COLORS = [
@@ -327,6 +341,8 @@ const MapTerritorial = ({
   focusCoords = null,
   onClearFocus,
   afiliacionBySec = {},
+  editableLocation = null,
+  onEditableLocationChange = null,
 }) => {
   const mapRef        = useRef(null);
   const containerRef  = useRef(null);
@@ -340,7 +356,26 @@ const MapTerritorial = ({
   const isDark     = currentStyle === 'oscuro';
   const styleDef   = MAP_STYLE_DEFS[currentStyle];
 
-  const { isLoaded } = useJsApiLoader({ googleMapsApiKey: GOOGLE_API_KEY });
+  const { isLoaded } = useJsApiLoader({ googleMapsApiKey: GOOGLE_API_KEY, libraries: GOOGLE_LIBRARIES });
+
+  // Anillos de las fracciones ya parseados, para detectar en cuál cae un punto
+  const fraccionRings = useMemo(
+    () => fraccionesGeo
+      .map(f => ({ fraccion: f.fraccion, rings: parseWKT(f.geometry) }))
+      .filter(f => f.rings.length),
+    [fraccionesGeo]
+  );
+
+  const findFraccionAt = useCallback((lat, lng) => {
+    const point = { lat, lng };
+    const hit = fraccionRings.find(f => f.rings.some(ring => pointInPolygon(point, ring)));
+    return hit ? hit.fraccion : null;
+  }, [fraccionRings]);
+
+  // Fracción que contiene actualmente al marcador editable (para resaltarla)
+  const assignedFraccion = editableLocation
+    ? findFraccionAt(editableLocation.lat, editableLocation.lng)
+    : null;
 
   // Color por sector
   useEffect(() => {
@@ -370,7 +405,45 @@ const MapTerritorial = ({
     mapRef.current.setZoom(17);
   }, [focusCoords]);
 
+  // Pan al marcador editable cuando se coloca o se actualiza (p.ej. escribiendo lat/lng a mano)
+  useEffect(() => {
+    if (!editableLocation || !mapRef.current || !window.google) return;
+    mapRef.current.panTo(editableLocation);
+  }, [editableLocation]);
+
   const onLoad = useCallback((map) => { mapRef.current = map; }, []);
+
+  // Clic en el mapa: coloca o mueve el marcador editable y, si cae dentro de
+  // una fracción, la reporta para que el formulario reasigne esa fracción.
+  const handleMapClick = useCallback((e) => {
+    if (!onEditableLocationChange) return;
+    const lat = e.latLng.lat();
+    const lng = e.latLng.lng();
+    onEditableLocationChange(lat, lng, findFraccionAt(lat, lng));
+  }, [onEditableLocationChange, findFraccionAt]);
+
+  const handleEditableMarkerDragEnd = useCallback((e) => {
+    if (!onEditableLocationChange) return;
+    const lat = e.latLng.lat();
+    const lng = e.latLng.lng();
+    onEditableLocationChange(lat, lng, findFraccionAt(lat, lng));
+  }, [onEditableLocationChange, findFraccionAt]);
+
+  // ── Buscador de calle (Google Places Autocomplete) ──────────────────────
+  const autocompleteRef = useRef(null);
+  const onAutocompleteLoad = useCallback((ac) => { autocompleteRef.current = ac; }, []);
+  const onPlaceChanged = useCallback(() => {
+    const place = autocompleteRef.current?.getPlace();
+    const loc = place?.geometry?.location;
+    if (!loc) return;
+    const lat = loc.lat();
+    const lng = loc.lng();
+    if (mapRef.current) {
+      mapRef.current.panTo({ lat, lng });
+      mapRef.current.setZoom(18);
+    }
+    onEditableLocationChange?.(lat, lng, findFraccionAt(lat, lng));
+  }, [onEditableLocationChange, findFraccionAt]);
 
   // Seguimiento de mouse sobre el contenedor del mapa
   const handleContainerMouseMove = useCallback((e) => {
@@ -464,11 +537,39 @@ const MapTerritorial = ({
           ))}
         </div>
 
+        {onEditableLocationChange && (
+          <div className={`absolute top-3 right-3 z-10 rounded-lg shadow-md px-3 py-1.5 text-xs font-medium border ${
+            isDark ? 'bg-gray-900/90 text-gray-200 border-gray-700' : 'bg-white/90 text-gray-700 border-gray-200'
+          }`}>
+            {editableLocation ? '✥ Arrastra el marcador para ajustar la ubicación' : '📍 Haz clic en el mapa para marcar la ubicación'}
+          </div>
+        )}
+
+        {/* Buscador de calle / dirección (solo en mapas editables) */}
+        {onEditableLocationChange && isLoaded && (
+          <div className="absolute top-14 left-1/2 -translate-x-1/2 z-10 w-[85%] max-w-xs">
+            <Autocomplete
+              onLoad={onAutocompleteLoad}
+              onPlaceChanged={onPlaceChanged}
+              options={{ componentRestrictions: { country: 'mx' } }}
+            >
+              <input
+                type="text"
+                placeholder="🔎 Buscar calle o dirección..."
+                className={`w-full px-3 py-1.5 rounded-lg shadow-md border text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 ${
+                  isDark ? 'bg-gray-900/90 text-gray-100 border-gray-700 placeholder-gray-500' : 'bg-white/95 text-gray-700 border-gray-200'
+                }`}
+              />
+            </Autocomplete>
+          </div>
+        )}
+
         <GoogleMap
           mapContainerStyle={{ width: '100%', height: '100%' }}
           center={DEFAULT_CENTER}
           zoom={11}
           onLoad={onLoad}
+          onClick={handleMapClick}
           options={{
             mapTypeId: styleDef.mapTypeId,
             styles: styleDef.styles,
@@ -524,8 +625,9 @@ const MapTerritorial = ({
             const paths = parseWKT(f.geometry);
             if (!paths.length) return null;
             const { fill, stroke } = fracColor(f);
-            const isFocused = focusCoords?.ubt === f.fraccion;
-            const isHovered = hovered?.tipo === 'fraccion' && hovered?.data?.fraccion === f.fraccion;
+            const isFocused  = focusCoords?.ubt === f.fraccion;
+            const isHovered  = hovered?.tipo === 'fraccion' && hovered?.data?.fraccion === f.fraccion;
+            const isAssigned = editableLocation != null && assignedFraccion === f.fraccion;
             return (
               <React.Fragment key={`frac-${f.fraccion}`}>
                 {paths.map((ring, ri) => (
@@ -536,12 +638,12 @@ const MapTerritorial = ({
                     onMouseMove={onPolyMouseMove}
                     onMouseOut={onPolyMouseOut}
                     options={{
-                      fillColor:    fill,
-                      strokeColor:  isFocused ? '#92400E' : isHovered ? '#111827' : stroke,
-                      fillOpacity:  isFocused ? 0.65 : isHovered ? 0.70 : 0.48,
-                      strokeWeight: isFocused ? 3.5  : isHovered ? 3    : 2.2,
+                      fillColor:    isAssigned ? '#DC2626' : fill,
+                      strokeColor:  isAssigned ? '#7F1D1D' : isFocused ? '#92400E' : isHovered ? '#111827' : stroke,
+                      fillOpacity:  isAssigned ? 0.55 : isFocused ? 0.65 : isHovered ? 0.70 : 0.48,
+                      strokeWeight: isAssigned ? 4    : isFocused ? 3.5  : isHovered ? 3    : 2.2,
                       strokeOpacity: 1,
-                      zIndex:       isFocused ? 30   : isHovered ? 25   : 12,
+                      zIndex:       isAssigned ? 35   : isFocused ? 30   : isHovered ? 25   : 12,
                     }}
                   />
                 ))}
@@ -596,6 +698,24 @@ const MapTerritorial = ({
               onClick={() => onClearFocus?.()}
             />
           )}
+
+          {/* ── Marcador editable (arrastrable) ─────────────────────── */}
+          {editableLocation && window.google && (
+            <Marker
+              position={editableLocation}
+              draggable={!!onEditableLocationChange}
+              onDragEnd={handleEditableMarkerDragEnd}
+              icon={{
+                path: window.google.maps.SymbolPath.CIRCLE,
+                scale: 10,
+                fillColor: '#DC2626',
+                fillOpacity: 0.95,
+                strokeColor: '#ffffff',
+                strokeWeight: 2,
+              }}
+              zIndex={60}
+            />
+          )}
         </GoogleMap>
 
         {/* ── Tooltip dinámico de hover ───────────────────────────────── */}
@@ -618,6 +738,15 @@ const MapTerritorial = ({
       <div className={`flex-shrink-0 px-4 py-2.5 border-t flex flex-wrap items-center gap-x-4 gap-y-1.5 ${
         isDark ? 'bg-gray-900 border-gray-700' : 'bg-white border-gray-100'
       }`}>
+        {onEditableLocationChange && (
+          <div className="flex items-center gap-1.5">
+            <div className="w-3 h-3 rounded-sm bg-red-600 border-2 border-red-900 flex-shrink-0" />
+            <span className={`text-xs font-semibold ${isDark ? 'text-gray-200' : 'text-gray-700'}`}>
+              {assignedFraccion != null ? `Fracción asignada: ${assignedFraccion}` : 'Sin fracción asignada'}
+            </span>
+          </div>
+        )}
+
         <div className="flex flex-wrap gap-3">
           {Object.entries(sectorColorMap).map(([sector, color]) => (
             <div key={sector} className="flex items-center gap-1.5">

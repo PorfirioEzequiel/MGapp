@@ -15,11 +15,11 @@ const MenuAdmin = () => {
     </header>
     <div class="flex flex-wrap -mb-4 -mx-2">
       <div class="flex items-center justify-center xl:w-1/3 sm:w-full mb-4 px-2">
-        <button onClick={() => navigate("/admin")} class="flex items-center flex-row w-full bg-transparent hover:bg-red-600 text-sm text-red-600 hover:text-white font-semibold py-2 px-4 border border-red-500 hover:border-transparent h-14 rounded-lg"><LiaBlackTie size={25}/>TRABAJADORES</button>
+        <button onClick={() => navigate("/admin")} class="flex items-center flex-row w-full bg-transparent hover:bg-red-600 text-sm text-red-600 hover:text-white font-semibold py-2 px-4 border border-red-500 hover:border-transparent h-14 rounded-lg"><LiaBlackTie size={25}/>CIUDADANOS</button>
       </div>
       <div class="flex items-center justify-center xl:w-1/3 sm:w-full mb-4 px-2">
       
-      <button onClick={() => navigate("/tablero")} class="flex items-center flex-row w-full bg-transparent hover:bg-blue-600 text-sm text-blue-600 hover:text-white font-semibold py-2 px-4 border border-blue-500 hover:border-transparent h-14 rounded-lg"><LiaUserFriendsSolid size={25}/>CIUDADANOS</button>
+      <button onClick={() => navigate("/tablero")} class="flex items-center flex-row w-full bg-transparent hover:bg-blue-600 text-sm text-blue-600 hover:text-white font-semibold py-2 px-4 border border-blue-500 hover:border-transparent h-14 rounded-lg"><LiaUserFriendsSolid size={25}/>MAPA TERRITORIAL</button>
       </div>
       <div class="flex items-center justify-center xl:w-1/3 sm:w-full mb-4 px-2">
       <button onClick={() => navigate("/territorio")} class="flex items-center flex-row w-full bg-transparent hover:bg-blue-600 text-sm text-blue-600 hover:text-white font-semibold py-2 px-4 border border-blue-500 hover:border-transparent h-14 rounded-lg"><LiaMapMarkedAltSolid size={25}/>TERRITORIO</button>
@@ -31,7 +31,7 @@ const MenuAdmin = () => {
       <button onClick={() => navigate("/solicitudes")} class="flex items-center flex-row w-full bg-transparent hover:bg-blue-600 text-sm text-blue-600 hover:text-white font-semibold py-2 px-4 border border-blue-500 hover:border-transparent h-14 rounded-lg"><LiaFileContractSolid  size={25}/>ALTAS/BAJAS</button>
       </div>
       <div class="flex items-center justify-center xl:w-1/3 sm:w-full mb-4 px-2">
-      <button class="flex items-center flex-row w-full bg-transparent hover:bg-blue-600 text-sm text-blue-600 hover:text-white font-semibold py-2 px-4 border border-blue-500 hover:border-transparent h-14 rounded-lg"><LiaUsersSolid size={25}/>APOYOS</button>
+      <button onClick={() => navigate("/admin/programas")} class="flex items-center flex-row w-full bg-transparent hover:bg-blue-600 text-sm text-blue-600 hover:text-white font-semibold py-2 px-4 border border-blue-500 hover:border-transparent h-14 rounded-lg"><LiaUsersSolid size={25}/>APOYOS</button>
       </div>
       <div class="flex items-center justify-center xl:w-1/3 sm:w-full mb-4 px-2">
       <button class="flex items-center flex-row w-full bg-transparent hover:bg-blue-600 text-sm text-blue-600 hover:text-white font-semibold py-2 px-4 border border-blue-500 hover:border-transparent h-14 rounded-lg"><LiaWalletSolid size={25}/>BAJA DE INFORMACION</button>

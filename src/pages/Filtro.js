@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import supabase from '../supabase/client';
 import ToggleStatusButton from './ToggleStatusButton';
 import { useNavigate } from 'react-router-dom';
@@ -11,7 +11,8 @@ const Filtro = () => {
   const [nombre, setNombre] = useState('');
   const [resultados, setResultados] = useState([]);
   const [loading, setLoading] = useState(false);
-  const [opciones, setOpciones] = useState({ poligonos: [], secciones: [], puestos: [], status: [] });
+  const [opciones, setOpciones] = useState({ poligonos: [], puestos: [], status: [] });
+  const [poligonoSecciones, setPoligonoSecciones] = useState({});
   const navigate = useNavigate();
 
   // Cargar datos iniciales para los selectores
@@ -27,11 +28,22 @@ const Filtro = () => {
         if (error) throw error;
 
         const poligonos = [...new Set(data.map((item) => item.poligono))];
-        const secciones = [...new Set(data.map((item) => item.seccion))];
         const puestos = [...new Set(data.map((item) => item.puesto))];
         const status = [...new Set(data.map((item) => item.status))];
 
-        setOpciones({ poligonos, secciones, puestos, status });
+        // Mapa polígono -> secciones que le pertenecen
+        const mapa = {};
+        data.forEach((item) => {
+          if (!item.poligono) return;
+          if (!mapa[item.poligono]) mapa[item.poligono] = new Set();
+          if (item.seccion) mapa[item.poligono].add(item.seccion);
+        });
+        const mapaOrdenado = Object.fromEntries(
+          Object.entries(mapa).map(([poli, secs]) => [poli, [...secs].sort()])
+        );
+
+        setOpciones({ poligonos, puestos, status });
+        setPoligonoSecciones(mapaOrdenado);
       } catch (err) {
         console.error('Error al cargar opciones:', err.message);
       }
@@ -39,6 +51,21 @@ const Filtro = () => {
 
     cargarOpciones();
   }, []);
+
+  // Secciones disponibles según el polígono seleccionado
+  const seccionesDisponibles = useMemo(() => {
+    if (!poligono) {
+      return [...new Set(Object.values(poligonoSecciones).flat())].sort();
+    }
+    return poligonoSecciones[poligono] || [];
+  }, [poligono, poligonoSecciones]);
+
+  // Si cambia el polígono y la sección elegida ya no pertenece a él, se limpia
+  useEffect(() => {
+    if (seccion && !seccionesDisponibles.includes(seccion)) {
+      setSeccion('');
+    }
+  }, [seccionesDisponibles, seccion]);
 
   // Manejar búsqueda en Supabase
   const manejarFiltro = async () => {
@@ -106,7 +133,7 @@ const Filtro = () => {
             className="border p-2 w-full"
           >
             <option value="">Todas</option>
-            {opciones.secciones.map((sec) => (
+            {seccionesDisponibles.map((sec) => (
               <option key={sec} value={sec}>
                 {sec}
               </option>
