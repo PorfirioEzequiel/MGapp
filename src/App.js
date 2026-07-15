@@ -23,6 +23,8 @@ import ReportePoligonos from './admin/ReportePoligonos';
 import ExcelDownloader from './admin/ExcelDownloader';
 import ProgramasSociales from './admin/ProgramasSociales';
 import Apoyos from './pages/Apoyos';
+import RegistroCertificadoMedico from './pages/RegistroCertificadoMedico';
+import ReagendarCertificado from './pages/ReagendarCertificado';
 
 // Componente para proteger rutas privadas
 const PrivateRoute = ({ children }) => {
@@ -35,6 +37,10 @@ function App() {
     <Router>
       <Routes>
         <Route path="/" element={<Login />} />
+
+        {/* Registro público del beneficio de Certificado Médico: sin login a propósito */}
+        <Route path="/registro-certificado-medico" element={<RegistroCertificadoMedico />} />
+        <Route path="/registro-certificado-medico/reagendar" element={<ReagendarCertificado />} />
         {/* <Route path="/movilizadores" element={<Movilizadores />} /> */}
 
         {/* Rutas protegidas */}
