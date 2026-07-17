@@ -1,10 +1,54 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import supabase from '../supabase/client';
 import MapComponent from '../map/MapComponent';
-import MapComponent2 from '../map/MapComponent2';
+import MapTerritorial from '../map/MapTerritorial';
 import ToggleStatusButton from './ToggleStatusButton';
 import ToggleStatusButtonCP from './ToggleStatusButtonCP';
+
+const fullName = (p) => (p ? `${p.nombre} ${p.a_paterno} ${p.a_materno}`.trim() : null);
+const MESES = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
+const mesLabel = (mes) => {
+  const [y, m] = mes.split('-');
+  return `${MESES[Number(m) - 1]} ${y.slice(2)}`;
+};
+
+// Barras de crecimiento acumulado de SM por mes, contra la meta (fracciones del catálogo)
+const CrecimientoChart = ({ data, meta }) => {
+  if (!data.length) {
+    return <p className="text-sm text-slate-400 italic">Aún no hay fechas de ingreso registradas para graficar.</p>;
+  }
+  const maxVal = Math.max(meta || 0, ...data.map((d) => d.total));
+  return (
+    <div className="overflow-x-auto">
+      <div className="relative flex items-end gap-2 h-40 min-w-max px-1">
+        {meta > 0 && (
+          <div
+            className="absolute left-0 right-0 border-t border-slate-400 flex justify-end pointer-events-none"
+            style={{ bottom: `${Math.min((meta / maxVal) * 100, 100)}%` }}
+          >
+            <span className="text-[10px] text-slate-500 bg-white px-1 -mt-2">Meta: {meta}</span>
+          </div>
+        )}
+        {data.map((d, i) => {
+          const h = maxVal ? (d.total / maxVal) * 100 : 0;
+          const isLast = i === data.length - 1;
+          return (
+            <div
+              key={d.mes}
+              className="flex flex-col items-center justify-end h-full w-7"
+              title={`${mesLabel(d.mes)}: ${d.total} SM`}
+            >
+              {isLast && <span className="text-[10px] font-bold text-blue-700 mb-0.5">{d.total}</span>}
+              <div className="w-6 bg-blue-500 rounded-t transition-all duration-500" style={{ height: `${h}%` }} />
+              <span className="text-[9px] text-slate-400 mt-1 whitespace-nowrap">{mesLabel(d.mes)}</span>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+};
 
 const Coordinador = () => {
   const { state } = useLocation();
@@ -17,6 +61,10 @@ const Coordinador = () => {
   const [error2, setError2] = useState(null);
   const [promotores, setPromotores] = useState([]);
   const [seccionales, setSeccionales] = useState([]);
+  const [seccionesSector, setSeccionesSector] = useState([]);
+  const [fraccionesGeo, setFraccionesGeo] = useState([]);
+  const [ciudadanosGeo, setCiudadanosGeo] = useState([]);
+  const [metaFracciones, setMetaFracciones] = useState(0);
 
 
   const [poligono, setPoligono] = useState('');
@@ -116,15 +164,85 @@ const Coordinador = () => {
       setError2(error2.message);
     }
   };
+
+  // Polígonos de las secciones del sector y sus fracciones, para el mapa dividido por fracciones
+  const fetchMapaSector = async () => {
+    try {
+      const { data: secData, error: secError } = await supabase
+        .from('secciones')
+        .select('*')
+        .eq('pologono', user.poligono);
+      if (secError) throw secError;
+      setSeccionesSector(secData ?? []);
+
+      const seccionNums = [...new Set((secData ?? []).map((s) => s.seccion))];
+      const { data: fracData, error: fracError } = await supabase
+        .from('fracciones')
+        .select('fraccion, seccion, geometry')
+        .in('seccion', seccionNums.length ? seccionNums : [-1]);
+      if (fracError) throw fracError;
+      setFraccionesGeo(fracData ?? []);
+
+      const { data: geoData, error: geoError } = await supabase
+        .from('ciudadania')
+        .select('id, nombre, a_paterno, a_materno, latitud, longitud, puesto, ubt, seccion')
+        .eq('poligono', user.poligono)
+        .eq('status', 'ACTIVO')
+        .not('latitud', 'is', null);
+      if (geoError) throw geoError;
+      setCiudadanosGeo(geoData ?? []);
+    } catch (err) {
+      console.error('Error cargando mapa del sector:', err.message);
+    }
+  };
+
+  // Meta: total de fracciones del catálogo (ubt_catalogo) para este sector
+  const fetchMeta = async () => {
+    try {
+      const { count, error } = await supabase
+        .from('ubt_catalogo')
+        .select('*', { count: 'exact', head: true })
+        .eq('poligono', user.poligono);
+      if (error) throw error;
+      setMetaFracciones(count ?? 0);
+    } catch (err) {
+      console.error('Error cargando meta de fracciones:', err.message);
+    }
+  };
+
+  const fraccionesConSM = useMemo(
+    () => fraccionesGeo.map((f) => ({ ...f, sm: promotores.find((p) => p.ubt === f.fraccion) ?? null })),
+    [fraccionesGeo, promotores]
+  );
+
+  // Crecimiento acumulado de SM activas por mes, según su fecha de ingreso
+  const crecimientoSM = useMemo(() => {
+    const porMes = {};
+    promotores.forEach((p) => {
+      if (!p.ingreso_estructura) return;
+      const d = new Date(p.ingreso_estructura);
+      if (isNaN(d)) return;
+      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+      porMes[key] = (porMes[key] ?? 0) + 1;
+    });
+    let acumulado = 0;
+    return Object.keys(porMes).sort().map((mes) => {
+      acumulado += porMes[mes];
+      return { mes, total: acumulado };
+    });
+  }, [promotores]);
+
     useEffect(() => {
     fetchSecciones(); // Llama a la función al montar el componente
     fetchPromotoras();
     fetchSeccionales();
+    fetchMapaSector();
+    fetchMeta();
   }, []);
 
-  
-  
-  
+
+
+
   if (error1) {
     return <p>Error d: {error}</p>;
   }
@@ -145,11 +263,42 @@ const Coordinador = () => {
       {/* <p className="border p-2"><strong>Seccionales:</strong> {seccionales.length}</p> */}
       <p className="border p-2"><strong>FRACCIONES:</strong> {promotores.length}</p>
       <p className="border p-2"><strong>SM´s:</strong> {promotores.length}</p>
-      <button 
-        onClick={() => navigate(`/coordinador/agregar/${user.usuario}`, {state: { user }})} 
-        className="bg-pink-500 hover:bg-pink-600 text-white px-4 py-2 rounded mb-6 mt-6"
+
+      {/* Crecimiento de SM vs. meta del sector */}
+      <div className="border rounded-lg p-3 mt-4 bg-white shadow-sm">
+        <div className="flex items-center justify-between mb-2">
+          <h2 className="font-semibold text-sm uppercase tracking-wide text-slate-500">Crecimiento de SM</h2>
+          <span className="text-xs text-slate-500">
+            {promotores.length} SM activas / {metaFracciones || '—'} fracciones (meta)
+          </span>
+        </div>
+        {metaFracciones > 0 && (
+          <div className="flex items-center gap-2 mb-3">
+            <div className="flex-1 h-2.5 bg-blue-100 rounded-full overflow-hidden">
+              <div
+                className="h-full bg-blue-500 rounded-full transition-all duration-500"
+                style={{ width: `${Math.min((promotores.length / metaFracciones) * 100, 100)}%` }}
+              />
+            </div>
+            <span className="text-xs font-semibold text-blue-700 tabular-nums w-10 text-right">
+              {Math.min((promotores.length / metaFracciones) * 100, 100).toFixed(0)}%
+            </span>
+          </div>
+        )}
+        <CrecimientoChart data={crecimientoSM} meta={metaFracciones} />
+      </div>
+
+      <button
+        onClick={() => navigate(`/coordinador/agregar/${user.usuario}`, {state: { user }})}
+        className="bg-pink-500 hover:bg-pink-600 text-white px-4 py-2 rounded mb-6 mt-6 mr-2"
       >
         Agregar Colaborador
+      </button>
+      <button
+        onClick={() => navigate(`/apoyos/${user.usuario}`, {state: { user }})}
+        className="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded mb-6 mt-6"
+      >
+        🎁 Apoyos y Programas Sociales
       </button>
 
       {/* <table className="w-full border-collapse border border-gray-300">
@@ -274,7 +423,16 @@ const Coordinador = () => {
 
 
       {/* <MapComponent mapa={section.geometry}/> */}
-      <MapComponent2 mapa={user.poligono}/>
+      <div className="mt-6" style={{ height: '520px' }}>
+        <MapTerritorial
+          secciones={seccionesSector}
+          fraccionesGeo={fraccionesConSM}
+          ciudadanos={ciudadanosGeo}
+          selectedSeccion={seccion ? Number(seccion) : null}
+          onSelectSeccion={(sec) => setSection(String(sec.seccion))}
+          spName={fullName(user)}
+        />
+      </div>
     </div>
   );
 };
