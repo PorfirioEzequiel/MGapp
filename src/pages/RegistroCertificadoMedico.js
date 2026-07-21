@@ -9,16 +9,18 @@ import codigosPostalesData from "../codigospostales.json";
 import { datosDesdeTextoQR } from "../utils/curp";
 
 // ── Constantes ─────────────────────────────────────────────────────────────────
-// Jornada única: jueves 23 de julio, 3 módulos de atención en paralelo (una
-// cita cada 10 min), tope de 80 citas en total. La ubicación es interna
-// (sector 6) y por eso nunca se muestra ese nombre en texto público — solo
-// el link del mapa.
-const FECHA_CITA_UNICA = "2026-07-23";
-const HORA_INICIO_CITAS = "09:30";
+// Dos jornadas (jueves 23 y viernes 24 de julio), cada una en una ubicación
+// distinta pero con el mismo esquema: 3 módulos de atención en paralelo, una
+// cita cada 10 min, tope de 80 citas en total por jornada. La ubicación real
+// es interna (sector) y por eso nunca se muestra ese nombre en texto público
+// — solo el link del mapa.
+const JORNADAS = [
+  { fecha: "2026-07-23", horaInicio: "09:30", ubicacionMapsUrl: "https://maps.app.goo.gl/pPw3DfKM8y18VrwF6" },
+  { fecha: "2026-07-24", horaInicio: "09:30", ubicacionMapsUrl: "https://maps.app.goo.gl/W4ibcZLkT7qthe32A?g_st=iw" },
+];
 const INTERVALO_MINUTOS = 10;
 const CUPO_POR_SLOT = 3;
 const CUPO_TOTAL_DIA = 80;
-const UBICACION_MAPS_URL = "https://maps.app.goo.gl/pPw3DfKM8y18VrwF6";
 
 // ── Helpers puros ────────────────────────────────────────────────────────────
 const generarFolio = () => {
@@ -28,13 +30,13 @@ const generarFolio = () => {
   return `CM-${s}`;
 };
 
-// Genera los horarios de la jornada: arranca en HORA_INICIO_CITAS y avanza de
+// Genera los horarios de una jornada: arranca en su horaInicio y avanza de
 // INTERVALO_MINUTOS en INTERVALO_MINUTOS hasta cubrir CUPO_TOTAL_DIA citas
 // (con CUPO_POR_SLOT citas por horario). El tope real de 80 se aplica aparte
 // como conteo global, así que el último horario puede quedar con menos cupo.
-const horariosDelDia = () => {
+const horariosDelDia = (jornada) => {
   const totalSlots = Math.ceil(CUPO_TOTAL_DIA / CUPO_POR_SLOT);
-  const [hh, mm] = HORA_INICIO_CITAS.split(":").map(Number);
+  const [hh, mm] = jornada.horaInicio.split(":").map(Number);
   const out = [];
   let minutos = hh * 60 + mm;
   for (let i = 0; i < totalSlots; i++) {
@@ -422,9 +424,10 @@ const RegistroCertificadoMedico = () => {
   const [menorForm, setMenorForm] = useState({ nombre: "", a_paterno: "", a_materno: "" });
   const [errorMenor, setErrorMenor] = useState("");
 
-  // Cita: fecha única (jueves 23 de julio), no seleccionable
-  const [fechaCita] = useState(FECHA_CITA_UNICA);
-  const horarios = useMemo(() => horariosDelDia(), []);
+  // Cita: se elige entre las jornadas disponibles (JORNADAS)
+  const [fechaCita, setFechaCita] = useState("");
+  const jornadaSeleccionada = useMemo(() => JORNADAS.find((j) => j.fecha === fechaCita) || null, [fechaCita]);
+  const horarios = useMemo(() => (jornadaSeleccionada ? horariosDelDia(jornadaSeleccionada) : []), [jornadaSeleccionada]);
   const [horaCita, setHoraCita] = useState("");
   const [ocupacion, setOcupacion] = useState({});
   const [totalOcupadosDia, setTotalOcupadosDia] = useState(0);
@@ -453,13 +456,13 @@ const RegistroCertificadoMedico = () => {
   useEffect(() => { if (menorCurpDatos)  setScannerMenorActivo(false); }, [menorCurpDatos]);
 
   useEffect(() => {
-    if (paso !== "cita") return;
+    if (paso !== "cita" || !fechaCita) return;
     const cargar = async () => {
       setCargandoOcupacion(true);
       const { data, error } = await supabase
         .from("beneficiarios_certificados")
         .select("fecha_cita, hora_cita")
-        .eq("fecha_cita", FECHA_CITA_UNICA)
+        .eq("fecha_cita", fechaCita)
         .in("status", ["AGENDADA", "REAGENDADA"]);
       if (!error) {
         const conteo = {};
@@ -473,8 +476,7 @@ const RegistroCertificadoMedico = () => {
       setCargandoOcupacion(false);
     };
     cargar();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [paso]);
+  }, [paso, fechaCita]);
 
   // El navegador sugiere el <title> como nombre de archivo al "Guardar como PDF"
   // desde el diálogo de impresión, así que en el comprobante lo cambiamos al
@@ -583,7 +585,7 @@ const RegistroCertificadoMedico = () => {
   };
 
   const handleSubmit = async () => {
-    if (!horaCita) { alert("Selecciona un horario para tu cita."); return; }
+    if (!fechaCita || !horaCita) { alert("Selecciona el día y el horario de tu cita."); return; }
     if (!comoSeEntero) { alert("Selecciona cómo te enteraste del beneficio."); return; }
     if (comoSeEntero === "OTRO" && !comoSeEnteroOtro.trim()) { alert("Describe cómo te enteraste."); return; }
     setEnviando(true);
@@ -715,7 +717,7 @@ const RegistroCertificadoMedico = () => {
             fechaCita,
             horaCita,
             comprobanteUrl: urlData.publicUrl,
-            ubicacionUrl: UBICACION_MAPS_URL,
+            ubicacionUrl: jornadaSeleccionada?.ubicacionMapsUrl,
           },
         });
         if (fnError) throw fnError;
@@ -748,7 +750,7 @@ const RegistroCertificadoMedico = () => {
           curpTutor={tutorCurpDatos?.curp ?? ""}
           menores={menores}
           generadoEn={generadoEn}
-          ubicacionUrl={UBICACION_MAPS_URL}
+          ubicacionUrl={jornadaSeleccionada?.ubicacionMapsUrl}
         />
       )}
 
@@ -1008,88 +1010,110 @@ const RegistroCertificadoMedico = () => {
         {paso === "cita" && (
           <div className="space-y-4 animate-fade-in-up">
             <div>
-              <h2 className="text-lg font-bold text-slate-900">Elige tu horario</h2>
+              <h2 className="text-lg font-bold text-slate-900">Elige tu jornada y horario</h2>
               <p className="text-sm text-slate-500 mt-1">
-                Jueves 23 de julio · Jornada desde las 9:30 am · Una cita cada 10 minutos · Cupo total: {CUPO_TOTAL_DIA} citas.
+                Jornada desde las 9:30 am · Una cita cada 10 minutos · Cupo total: {CUPO_TOTAL_DIA} citas por día.
               </p>
             </div>
 
             <Card className="px-4 py-3.5">
-              <div className="flex items-start gap-2.5">
-                <svg className="w-4 h-4 text-blue-700 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M17.657 16.657L13.414 20.9a2 2 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
-                </svg>
-                <div>
-                  <p className="text-xs font-bold text-slate-700">Ubicación de la jornada</p>
-                  <a href={UBICACION_MAPS_URL} target="_blank" rel="noreferrer"
-                    className="text-xs text-blue-700 hover:underline font-semibold">
-                    Ver ubicación en Google Maps →
-                  </a>
-                </div>
+              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2.5">Selecciona el día</p>
+              <div className="flex flex-wrap gap-1.5">
+                {JORNADAS.map((j) => (
+                  <button key={j.fecha} type="button"
+                    onClick={() => { setFechaCita(j.fecha); setHoraCita(""); }}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-bold border transition-all capitalize ${
+                      fechaCita === j.fecha
+                        ? "bg-blue-800 text-white border-blue-800 shadow-sm"
+                        : "bg-white text-slate-600 border-slate-200 hover:border-blue-400 hover:text-blue-700"
+                    }`}
+                  >
+                    {formatearFechaLarga(j.fecha)}
+                  </button>
+                ))}
               </div>
             </Card>
 
-            <Card className="divide-y divide-slate-100">
-              <div className="px-4 py-4">
-                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-3">
-                  Horarios disponibles · {formatearFechaLarga(fechaCita)}
-                </p>
-                {cargandoOcupacion ? (
-                  <div className="flex items-center gap-2.5 text-sm text-slate-400 py-3">
-                    <Spinner /> Verificando disponibilidad…
+            {jornadaSeleccionada && (
+              <Card className="px-4 py-3.5">
+                <div className="flex items-start gap-2.5">
+                  <svg className="w-4 h-4 text-blue-700 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M17.657 16.657L13.414 20.9a2 2 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+                  </svg>
+                  <div>
+                    <p className="text-xs font-bold text-slate-700">Ubicación de esta jornada</p>
+                    <a href={jornadaSeleccionada.ubicacionMapsUrl} target="_blank" rel="noreferrer"
+                      className="text-xs text-blue-700 hover:underline font-semibold">
+                      Ver ubicación en Google Maps →
+                    </a>
                   </div>
-                ) : totalOcupadosDia >= CUPO_TOTAL_DIA ? (
-                  <p className="text-sm text-red-600 font-bold py-3">
-                    Se agotaron las {CUPO_TOTAL_DIA} citas disponibles para este día.
+                </div>
+              </Card>
+            )}
+
+            {jornadaSeleccionada && (
+              <Card className="divide-y divide-slate-100">
+                <div className="px-4 py-4">
+                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-3">
+                    Horarios disponibles · {formatearFechaLarga(fechaCita)}
                   </p>
-                ) : (
-                  <div className="grid grid-cols-4 sm:grid-cols-5 gap-1.5">
-                    {horarios.map((h) => {
-                      const ocupados = ocupacion[h] ?? 0;
-                      const lleno = ocupados >= CUPO_POR_SLOT;
-                      const libres = CUPO_POR_SLOT - ocupados;
-                      return (
-                        <button key={h} type="button" disabled={lleno} onClick={() => setHoraCita(h)}
-                          className={`flex flex-col items-center px-1.5 py-2 rounded-xl text-xs font-bold border transition-all ${
-                            lleno
-                              ? "bg-slate-50 text-slate-300 border-slate-100 cursor-not-allowed"
-                              : horaCita === h
-                              ? "bg-emerald-600 text-white border-emerald-600 shadow-sm"
-                              : "bg-white text-slate-700 border-slate-200 hover:border-emerald-400 hover:text-emerald-700"
-                          }`}
-                        >
-                          <span>{h}</span>
-                          <span className={`text-[9px] font-normal mt-0.5 ${
-                            lleno ? "text-slate-300" : horaCita === h ? "text-emerald-100" : "text-slate-400"
-                          }`}>
-                            {lleno ? "Lleno" : `${libres} lib.`}
-                          </span>
-                        </button>
-                      );
-                    })}
+                  {cargandoOcupacion ? (
+                    <div className="flex items-center gap-2.5 text-sm text-slate-400 py-3">
+                      <Spinner /> Verificando disponibilidad…
+                    </div>
+                  ) : totalOcupadosDia >= CUPO_TOTAL_DIA ? (
+                    <p className="text-sm text-red-600 font-bold py-3">
+                      Se agotaron las {CUPO_TOTAL_DIA} citas disponibles para este día.
+                    </p>
+                  ) : (
+                    <div className="grid grid-cols-4 sm:grid-cols-5 gap-1.5">
+                      {horarios.map((h) => {
+                        const ocupados = ocupacion[h] ?? 0;
+                        const lleno = ocupados >= CUPO_POR_SLOT;
+                        const libres = CUPO_POR_SLOT - ocupados;
+                        return (
+                          <button key={h} type="button" disabled={lleno} onClick={() => setHoraCita(h)}
+                            className={`flex flex-col items-center px-1.5 py-2 rounded-xl text-xs font-bold border transition-all ${
+                              lleno
+                                ? "bg-slate-50 text-slate-300 border-slate-100 cursor-not-allowed"
+                                : horaCita === h
+                                ? "bg-emerald-600 text-white border-emerald-600 shadow-sm"
+                                : "bg-white text-slate-700 border-slate-200 hover:border-emerald-400 hover:text-emerald-700"
+                            }`}
+                          >
+                            <span>{h}</span>
+                            <span className={`text-[9px] font-normal mt-0.5 ${
+                              lleno ? "text-slate-300" : horaCita === h ? "text-emerald-100" : "text-slate-400"
+                            }`}>
+                              {lleno ? "Lleno" : `${libres} lib.`}
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+
+                {horaCita && (
+                  <div className="px-4 py-3">
+                    <div className="flex items-center gap-2.5 bg-emerald-50 border border-emerald-200 rounded-xl px-3.5 py-2.5">
+                      <IcoCheck className="w-4 h-4 text-emerald-600 flex-shrink-0" />
+                      <p className="text-sm font-bold text-emerald-800">
+                        {formatearFechaLarga(fechaCita)} · {horaCita} hrs
+                      </p>
+                    </div>
                   </div>
                 )}
-              </div>
 
-              {horaCita && (
                 <div className="px-4 py-3">
-                  <div className="flex items-center gap-2.5 bg-emerald-50 border border-emerald-200 rounded-xl px-3.5 py-2.5">
-                    <IcoCheck className="w-4 h-4 text-emerald-600 flex-shrink-0" />
-                    <p className="text-sm font-bold text-emerald-800">
-                      {formatearFechaLarga(fechaCita)} · {horaCita} hrs
-                    </p>
-                  </div>
+                  <Btn type="button" v="primary" disabled={!horaCita}
+                    onClick={() => setPaso("encuesta")} className="w-full justify-center">
+                    Continuar <IcoArrow />
+                  </Btn>
                 </div>
-              )}
-
-              <div className="px-4 py-3">
-                <Btn type="button" v="primary" disabled={!horaCita}
-                  onClick={() => setPaso("encuesta")} className="w-full justify-center">
-                  Continuar <IcoArrow />
-                </Btn>
-              </div>
-            </Card>
+              </Card>
+            )}
           </div>
         )}
 
@@ -1250,7 +1274,7 @@ const RegistroCertificadoMedico = () => {
                   </div>
                   <div>
                     <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wide mb-0.5">Ubicación</p>
-                    <a href={UBICACION_MAPS_URL} target="_blank" rel="noreferrer"
+                    <a href={jornadaSeleccionada?.ubicacionMapsUrl} target="_blank" rel="noreferrer"
                       className="text-sm font-bold text-blue-700 hover:underline">
                       Ver ubicación en Google Maps
                     </a>

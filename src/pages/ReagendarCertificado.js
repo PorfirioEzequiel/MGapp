@@ -2,17 +2,20 @@ import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import supabase from "../supabase/client";
 
-// Misma jornada única que el registro: jueves 23 de julio, 3 módulos en
-// paralelo, una cita cada 10 minutos, tope de 80 citas en total ese día.
-const FECHA_CITA_UNICA = "2026-07-23";
-const HORA_INICIO_CITAS = "09:30";
+// Misma configuración que el registro: dos jornadas (jueves 23 y viernes 24
+// de julio), 3 módulos en paralelo, una cita cada 10 minutos, tope de 80
+// citas en total por jornada.
+const JORNADAS = [
+  { fecha: "2026-07-23", horaInicio: "09:30" },
+  { fecha: "2026-07-24", horaInicio: "09:30" },
+];
 const INTERVALO_MINUTOS = 10;
 const CUPO_POR_SLOT = 3;
 const CUPO_TOTAL_DIA = 80;
 
-const horariosDelDia = () => {
+const horariosDelDia = (jornada) => {
   const totalSlots = Math.ceil(CUPO_TOTAL_DIA / CUPO_POR_SLOT);
-  const [hh, mm] = HORA_INICIO_CITAS.split(":").map(Number);
+  const [hh, mm] = jornada.horaInicio.split(":").map(Number);
   const out = [];
   let minutos = hh * 60 + mm;
   for (let i = 0; i < totalSlots; i++) {
@@ -32,7 +35,6 @@ const formatearFechaLarga = (isoDate) => {
 
 const ReagendarCertificado = () => {
   const navigate = useNavigate();
-  const horarios = useMemo(() => horariosDelDia(), []);
 
   const [folio, setFolio] = useState("");
   const [curp, setCurp] = useState("");
@@ -40,6 +42,9 @@ const ReagendarCertificado = () => {
   const [errorBusqueda, setErrorBusqueda] = useState("");
   const [registro, setRegistro] = useState(null);
 
+  const [fechaNueva, setFechaNueva] = useState("");
+  const jornadaSeleccionada = useMemo(() => JORNADAS.find((j) => j.fecha === fechaNueva) || null, [fechaNueva]);
+  const horarios = useMemo(() => (jornadaSeleccionada ? horariosDelDia(jornadaSeleccionada) : []), [jornadaSeleccionada]);
   const [horaNueva, setHoraNueva] = useState("");
   const [ocupacion, setOcupacion] = useState({});
   const [cargandoOcupacion, setCargandoOcupacion] = useState(false);
@@ -72,6 +77,7 @@ const ReagendarCertificado = () => {
         return;
       }
       setRegistro(data);
+      setFechaNueva(data.fecha_cita);
       setHoraNueva(String(data.hora_cita).slice(0, 5));
     } catch (err) {
       setErrorBusqueda("Error al buscar: " + err.message);
@@ -81,13 +87,13 @@ const ReagendarCertificado = () => {
   };
 
   useEffect(() => {
-    if (!registro) return;
+    if (!registro || !fechaNueva) return;
     const cargar = async () => {
       setCargandoOcupacion(true);
       const { data, error } = await supabase
         .from("beneficiarios_certificados")
         .select("hora_cita")
-        .eq("fecha_cita", FECHA_CITA_UNICA)
+        .eq("fecha_cita", fechaNueva)
         .in("status", ["AGENDADA", "REAGENDADA"])
         .neq("id", registro.id);
       if (!error) {
@@ -101,11 +107,11 @@ const ReagendarCertificado = () => {
       setCargandoOcupacion(false);
     };
     cargar();
-  }, [registro]);
+  }, [registro, fechaNueva]);
 
   const guardarNuevaCita = async () => {
-    if (!horaNueva) {
-      alert("Selecciona un horario.");
+    if (!fechaNueva || !horaNueva) {
+      alert("Selecciona el día y el horario.");
       return;
     }
     setGuardando(true);
@@ -114,7 +120,7 @@ const ReagendarCertificado = () => {
       const { count } = await supabase
         .from("beneficiarios_certificados")
         .select("*", { count: "exact", head: true })
-        .eq("fecha_cita", FECHA_CITA_UNICA)
+        .eq("fecha_cita", fechaNueva)
         .eq("hora_cita", horaNueva)
         .in("status", ["AGENDADA", "REAGENDADA"])
         .neq("id", registro.id);
@@ -125,7 +131,7 @@ const ReagendarCertificado = () => {
       }
       const { error } = await supabase
         .from("beneficiarios_certificados")
-        .update({ fecha_cita: FECHA_CITA_UNICA, hora_cita: horaNueva, status: "REAGENDADA" })
+        .update({ fecha_cita: fechaNueva, hora_cita: horaNueva, status: "REAGENDADA" })
         .eq("id", registro.id);
       if (error) throw error;
       setConfirmado(true);
@@ -166,41 +172,59 @@ const ReagendarCertificado = () => {
               Cita actual: <strong>{registro.fecha_cita}</strong> a las <strong>{String(registro.hora_cita).slice(0, 5)}</strong> hrs
             </p>
 
-            <p className="text-xs text-slate-500 mb-2">
-              Todas las citas son el <strong>{formatearFechaLarga(FECHA_CITA_UNICA)}</strong>. Elige un nuevo horario:
-            </p>
-            {cargandoOcupacion ? (
-              <p className="text-sm text-slate-400 mb-3">Cargando horarios...</p>
-            ) : (
-              <div className="grid grid-cols-3 sm:grid-cols-4 gap-1.5 mb-3">
-                {horarios.map((h) => {
-                  const ocupados = ocupacion[h] ?? 0;
-                  const lleno = ocupados >= CUPO_POR_SLOT;
-                  return (
-                    <button
-                      key={h}
-                      type="button"
-                      disabled={lleno}
-                      onClick={() => setHoraNueva(h)}
-                      className={`px-2 py-1.5 rounded-lg text-xs font-medium border ${
-                        lleno
-                          ? "bg-slate-100 text-slate-300 border-slate-100 cursor-not-allowed"
-                          : horaNueva === h
-                            ? "bg-emerald-600 text-white border-emerald-600"
-                            : "bg-white text-slate-600 border-slate-200 hover:bg-slate-50"
-                      }`}
-                    >
-                      {h} {lleno ? "· lleno" : `· ${CUPO_POR_SLOT - ocupados} lib.`}
-                    </button>
-                  );
-                })}
-              </div>
+            <p className="text-xs text-slate-500 mb-2">Elige el día:</p>
+            <div className="flex flex-wrap gap-1.5 mb-3">
+              {JORNADAS.map((j) => (
+                <button
+                  key={j.fecha}
+                  type="button"
+                  onClick={() => { setFechaNueva(j.fecha); setHoraNueva(""); }}
+                  className={`px-2.5 py-1.5 rounded-lg text-xs font-medium border capitalize ${
+                    fechaNueva === j.fecha ? "bg-blue-600 text-white border-blue-600" : "bg-white text-slate-600 border-slate-200 hover:bg-slate-50"
+                  }`}
+                >
+                  {formatearFechaLarga(j.fecha)}
+                </button>
+              ))}
+            </div>
+
+            {jornadaSeleccionada && (
+              <>
+                <p className="text-xs text-slate-500 mb-2">Elige el horario:</p>
+                {cargandoOcupacion ? (
+                  <p className="text-sm text-slate-400 mb-3">Cargando horarios...</p>
+                ) : (
+                  <div className="grid grid-cols-3 sm:grid-cols-4 gap-1.5 mb-3">
+                    {horarios.map((h) => {
+                      const ocupados = ocupacion[h] ?? 0;
+                      const lleno = ocupados >= CUPO_POR_SLOT;
+                      return (
+                        <button
+                          key={h}
+                          type="button"
+                          disabled={lleno}
+                          onClick={() => setHoraNueva(h)}
+                          className={`px-2 py-1.5 rounded-lg text-xs font-medium border ${
+                            lleno
+                              ? "bg-slate-100 text-slate-300 border-slate-100 cursor-not-allowed"
+                              : horaNueva === h
+                                ? "bg-emerald-600 text-white border-emerald-600"
+                                : "bg-white text-slate-600 border-slate-200 hover:bg-slate-50"
+                          }`}
+                        >
+                          {h} {lleno ? "· lleno" : `· ${CUPO_POR_SLOT - ocupados} lib.`}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </>
             )}
 
             {errorGuardar && <p className="text-sm text-red-600 mb-2">{errorGuardar}</p>}
             <button
               onClick={guardarNuevaCita}
-              disabled={guardando || !horaNueva}
+              disabled={guardando || !fechaNueva || !horaNueva}
               className="bg-emerald-600 text-white px-4 py-2 rounded text-sm disabled:opacity-40"
             >
               {guardando ? "Guardando..." : "Confirmar nuevo horario"}
@@ -213,7 +237,7 @@ const ReagendarCertificado = () => {
             <p className="text-emerald-600 text-3xl mb-2">✔</p>
             <h2 className="text-lg font-bold text-slate-800 mb-1">¡Cita reagendada!</h2>
             <p className="text-sm text-slate-600">
-              Nueva cita: <strong>{formatearFechaLarga(FECHA_CITA_UNICA)}</strong> a las <strong>{horaNueva}</strong> hrs.
+              Nueva cita: <strong>{formatearFechaLarga(fechaNueva)}</strong> a las <strong>{horaNueva}</strong> hrs.
             </p>
           </div>
         )}
