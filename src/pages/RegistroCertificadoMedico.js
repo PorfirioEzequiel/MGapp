@@ -441,6 +441,7 @@ const RegistroCertificadoMedico = () => {
   const ticketRef = useRef(null);
   const [generandoPDF, setGenerandoPDF] = useState(false);
   const comprobanteEnviadoRef = useRef(false);
+  const [estadoWhatsapp, setEstadoWhatsapp] = useState("enviando"); // enviando | ok | error
 
   // Cierra el scanner cuando hay un error de escaneo (UI: mostrar botón de nuevo)
   useEffect(() => {
@@ -693,11 +694,12 @@ const RegistroCertificadoMedico = () => {
     if (paso !== "confirmacion" || !folioFinal || comprobanteEnviadoRef.current) return;
     comprobanteEnviadoRef.current = true;
     const enviar = async () => {
+      setEstadoWhatsapp("enviando");
       try {
         const canvas = await generarCanvasTicket();
-        if (!canvas) return;
+        if (!canvas) throw new Error("No se pudo generar la imagen del comprobante.");
         const blob = await new Promise((resolve) => canvas.toBlob(resolve, "image/png"));
-        if (!blob) return;
+        if (!blob) throw new Error("No se pudo generar la imagen del comprobante.");
         const filePath = `${folioFinal}.png`;
         const { error: upErr } = await supabase.storage
           .from("comprobantes_certificados")
@@ -705,7 +707,7 @@ const RegistroCertificadoMedico = () => {
         if (upErr) throw upErr;
         const { data: urlData } = supabase.storage.from("comprobantes_certificados").getPublicUrl(filePath);
 
-        await supabase.functions.invoke("enviar-comprobante-whatsapp", {
+        const { error: fnError } = await supabase.functions.invoke("enviar-comprobante-whatsapp", {
           body: {
             telefono: telefono.trim(),
             folio: folioFinal,
@@ -716,50 +718,16 @@ const RegistroCertificadoMedico = () => {
             ubicacionUrl: UBICACION_MAPS_URL,
           },
         });
+        if (fnError) throw fnError;
+        setEstadoWhatsapp("ok");
       } catch (err) {
         console.error("Error enviando comprobante por WhatsApp:", err);
+        setEstadoWhatsapp("error");
       }
     };
     enviar();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [paso, folioFinal]);
-
-  // Abre WhatsApp con el comprobante completo como mensaje
-  const compartirWhatsApp = () => {
-    const nombreTutor = `${tutorForm.nombre} ${tutorForm.a_paterno} ${tutorForm.a_materno}`.trim();
-    const fechaLarga = formatearFechaLarga(fechaCita);
-    const listaMenores = menores
-      .map((m, i) => `  ${i + 1}. ${m.nombre} ${m.a_paterno} ${m.a_materno} (${m.edad} años)`)
-      .join("\n");
-
-    const msg = [
-      `*✅ Comprobante de Registro — Certificado Médico*`,
-      ``,
-      `📋 *Folio:* \`${folioFinal}\``,
-      `📅 *Fecha de cita:* ${fechaLarga}`,
-      `🕙 *Hora:* ${horaCita} hrs`,
-      `📍 *Ubicación:* ${UBICACION_MAPS_URL}`,
-      ``,
-      `👤 *Tutor responsable:*`,
-      `${nombreTutor}`,
-      ``,
-      ...(menores.length > 0 ? [
-        `👶 *Menores beneficiarios (${menores.length}):*`,
-        listaMenores,
-        ``,
-      ] : []),
-      `📌 *Recuerda traer el día de tu cita:*`,
-      `• Este comprobante (impreso o digital)`,
-      `• CURP original del tutor`,
-      `• CURP de cada menor beneficiario`,
-      `• Llegar 15 minutos antes`,
-      ``,
-      `🔄 ¿Necesitas reagendar?`,
-      `sm-estructura.netlify.app/registro-certificado-medico/reagendar`,
-    ].join("\n");
-
-    window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, "_blank");
-  };
 
   const generadoEn = new Date().toLocaleDateString("es-MX", {
     day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit",
@@ -1238,9 +1206,21 @@ const RegistroCertificadoMedico = () => {
               <p className="text-xs text-slate-400 mt-3 leading-relaxed">
                 Presenta este QR en el módulo de atención el día de tu cita.
               </p>
-              <p className="text-xs text-slate-400 mt-1 leading-relaxed">
-                También te lo enviamos por WhatsApp al {telefono}.
-              </p>
+              {estadoWhatsapp === "enviando" && (
+                <p className="text-xs text-slate-400 mt-1 leading-relaxed">
+                  Enviando tu comprobante por WhatsApp al {telefono}…
+                </p>
+              )}
+              {estadoWhatsapp === "ok" && (
+                <p className="text-xs text-emerald-600 font-semibold mt-1 leading-relaxed">
+                  ✔ También te lo enviamos por WhatsApp al {telefono}.
+                </p>
+              )}
+              {estadoWhatsapp === "error" && (
+                <p className="text-xs text-red-600 font-semibold mt-1 leading-relaxed">
+                  No pudimos enviarlo por WhatsApp. Descarga el PDF abajo por si acaso.
+                </p>
+              )}
             </Card>
 
             {/* Detalle en pantalla */}
@@ -1348,20 +1328,6 @@ const RegistroCertificadoMedico = () => {
                   </>
                 )}
               </Btn>
-
-              {/* WhatsApp */}
-              <button
-                type="button"
-                onClick={compartirWhatsApp}
-                className="w-full flex items-center justify-center gap-3 px-4 py-3 rounded-xl font-bold text-sm text-white transition-all active:scale-95 shadow-sm"
-                style={{ background: "linear-gradient(135deg, #25D366 0%, #128C7E 100%)" }}
-              >
-                {/* WhatsApp icon */}
-                <svg className="w-5 h-5 flex-shrink-0" viewBox="0 0 24 24" fill="currentColor">
-                  <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/>
-                </svg>
-                Enviarme el comprobante por WhatsApp
-              </button>
 
               <Btn type="button" v="ghost"
                 onClick={() => { window.location.href = "/registro-certificado-medico"; }}
