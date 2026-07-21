@@ -356,6 +356,20 @@ const RegistroCertificadoMedico = () => {
 
       setFolioFinal(folio);
       setPaso("confirmacion");
+
+      // Envío del comprobante por WhatsApp: es un "mejor esfuerzo", si falla
+      // no se le informa como error al tutor (ya tiene su folio y el QR en pantalla).
+      supabase.functions
+        .invoke("enviar-comprobante-whatsapp", {
+          body: {
+            telefono: telefono.trim(),
+            folio,
+            tutorNombre: `${tutorForm.nombre} ${tutorForm.a_paterno} ${tutorForm.a_materno}`.trim(),
+            fechaCita,
+            horaCita,
+          },
+        })
+        .catch(() => {});
     } catch (err) {
       setErrorEnvio("Error al guardar el registro: " + err.message);
     } finally {
@@ -430,6 +444,7 @@ const RegistroCertificadoMedico = () => {
                   className="border p-2 rounded w-full"
                 />
                 {errorTelefono && <p className="text-sm text-red-600 mt-1">{errorTelefono}</p>}
+                <p className="text-xs text-slate-400 mt-1">Te enviaremos tu comprobante de cita por WhatsApp a este número.</p>
               </div>
 
               <div className="pt-2 border-t">
@@ -584,6 +599,7 @@ const RegistroCertificadoMedico = () => {
               <h2 className="text-lg font-bold text-slate-800 mb-1">¡Registro confirmado!</h2>
               <p className="text-xs text-slate-400">Folio</p>
               <p className="text-2xl font-mono font-bold text-blue-700 tracking-widest">{folioFinal}</p>
+              <p className="text-xs text-slate-400 mt-1">También te lo enviamos por WhatsApp al {telefono}.</p>
               {folioFinal && (
                 <div className="flex justify-center mt-3">
                   <QRCodeSVG value={folioFinal} size={140} />
