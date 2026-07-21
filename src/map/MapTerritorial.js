@@ -517,7 +517,7 @@ const MapTerritorial = ({
 
   // ── Generar PDF con formato ───────────────────────────────────────────────
   const generatePDF = useCallback(async () => {
-    if (!mapRef.current || !window.google || !containerRef.current) return;
+    if (!mapRef.current || !window.google) return;
     setGenerating(true);
     try {
       // 1. Fit bounds al contenido actual
@@ -528,29 +528,82 @@ const MapTerritorial = ({
       geoSource.forEach(item => {
         parseWKT(item.geometry ?? '').flat().forEach(p => { bounds.extend(p); hasBounds = true; });
       });
-      if (hasBounds) mapRef.current.fitBounds(bounds, { top: 55, right: 55, bottom: 55, left: 55 });
+      if (hasBounds) mapRef.current.fitBounds(bounds, { top: 40, right: 40, bottom: 40, left: 40 });
 
-      // 2. Esperar que el mapa termine de mover/cargar tiles
+      // 2. Esperar que el mapa termine de mover
       await new Promise(resolve => {
         const listener = window.google.maps.event.addListenerOnce(mapRef.current, 'idle', resolve);
         setTimeout(() => { window.google.maps.event.removeListener(listener); resolve(); }, 3000);
       });
-      await new Promise(r => setTimeout(r, 350)); // extra para OverlayView labels
+      await new Promise(r => setTimeout(r, 200));
 
-      // 3. Capturar mapa con html2canvas
-      const html2canvas = (await import('html2canvas')).default;
-      const canvas = await html2canvas(containerRef.current, {
-        allowTaint: true,
-        useCORS: false,
-        scale: 1.5,
-        logging: false,
-        ignoreElements: el => el.classList?.contains('no-print'),
+      // 3. Obtener centro y zoom para Google Static Maps API
+      const center = mapRef.current.getCenter();
+      const zoom   = Math.min(mapRef.current.getZoom(), 15);
+      const clat   = center.lat().toFixed(6);
+      const clng   = center.lng().toFixed(6);
+
+      const simplify = (pts, maxPts = 16) => {
+        if (pts.length <= maxPts) return pts;
+        const step = Math.ceil(pts.length / maxPts);
+        const out = [];
+        for (let i = 0; i < pts.length; i += step) out.push(pts[i]);
+        return out;
+      };
+      const toHex6 = (hex) => hex.replace('#', '').substring(0, 6).padStart(6, '0');
+
+      let pathParams = '';
+      let urlLen = 0;
+      const URL_LIMIT = 7800;
+
+      if (hasFracGeo) {
+        fraccionesGeo.forEach(f => {
+          const lat = Number(f.sm?.latitud);
+          const located = f.sm && lat && !isNaN(lat) && lat !== 0;
+          const fill   = located ? '10B98160' : '94A3B860';
+          const stroke = located ? '047857ff' : '64748Bff';
+          parseWKT(f.geometry ?? '').forEach(ring => {
+            const pts = simplify(ring, 16);
+            const ptsStr = pts.map(p => `${p.lat.toFixed(5)},${p.lng.toFixed(5)}`).join('|');
+            const param = `&path=color:0x${stroke}|fillcolor:0x${fill}|weight:2|${ptsStr}`;
+            if (urlLen + param.length <= URL_LIMIT) { pathParams += param; urlLen += param.length; }
+          });
+        });
+      } else {
+        secciones.forEach(sec => {
+          const colors = sectorColorMap[sec.pologono] ?? SECTOR_COLORS[0];
+          const fill   = `${toHex6(colors.fill)}60`;
+          const stroke = `${toHex6(colors.stroke)}ff`;
+          parseWKT(sec.geometry ?? '').forEach(ring => {
+            const pts = simplify(ring, 16);
+            const ptsStr = pts.map(p => `${p.lat.toFixed(5)},${p.lng.toFixed(5)}`).join('|');
+            const param = `&path=color:0x${stroke}|fillcolor:0x${fill}|weight:2|${ptsStr}`;
+            if (urlLen + param.length <= URL_LIMIT) { pathParams += param; urlLen += param.length; }
+          });
+        });
+      }
+
+      // Área del mapa en A4 landscape ≈ 277×132 mm → solicitar 640×305 @scale=2 (=1280×610 px efectivos)
+      const staticUrl =
+        `https://maps.googleapis.com/maps/api/staticmap` +
+        `?center=${clat},${clng}&zoom=${zoom}&size=640x305&scale=2` +
+        `&maptype=roadmap&key=${GOOGLE_API_KEY}${pathParams}`;
+
+      // Descargar imagen como blob (sin restricciones CORS del canvas)
+      const resp = await fetch(staticUrl);
+      if (!resp.ok) throw new Error(`Static Maps HTTP ${resp.status}`);
+      const blob = await resp.blob();
+      const mapImgUrl = await new Promise((res, rej) => {
+        const reader = new FileReader();
+        reader.onload = () => res(reader.result);
+        reader.onerror = rej;
+        reader.readAsDataURL(blob);
       });
 
       // 4. Construir PDF con jsPDF
       const { jsPDF } = await import('jspdf');
       const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
-      const W = 297, H = 210, M = 10, CW = W - M * 2;
+      const W = 297, M = 10, CW = W - M * 2;
 
       // ── Header ──────────────────────────────────────────────────────────
       doc.setFillColor(15, 42, 74);
@@ -558,7 +611,6 @@ const MapTerritorial = ({
       doc.setFillColor(245, 158, 11);
       doc.rect(0, 21, W, 2, 'F');
 
-      // Logo pill
       doc.setFillColor(29, 78, 216);
       doc.roundedRect(M, 5, 13, 11, 1.5, 1.5, 'F');
       doc.setFontSize(6.5);
@@ -566,13 +618,11 @@ const MapTerritorial = ({
       doc.setTextColor(255, 255, 255);
       doc.text('MG', M + 6.5, 12, { align: 'center' });
 
-      // Título
       doc.setFontSize(13);
       doc.setFont('helvetica', 'bold');
       doc.setTextColor(255, 255, 255);
       doc.text('TABLERO TERRITORIAL', M + 17, 10.5);
 
-      // Breadcrumb
       if (printContext?.breadcrumb) {
         doc.setFontSize(7);
         doc.setFont('helvetica', 'normal');
@@ -580,7 +630,6 @@ const MapTerritorial = ({
         doc.text(printContext.breadcrumb, M + 17, 17);
       }
 
-      // Fecha + nivel (derecha)
       const fecha = new Date().toLocaleDateString('es-MX', { day: '2-digit', month: 'long', year: 'numeric' });
       doc.setFontSize(7);
       doc.setFont('helvetica', 'normal');
@@ -595,12 +644,11 @@ const MapTerritorial = ({
       }
 
       // ── Imagen del mapa ──────────────────────────────────────────────────
-      const mapImg = canvas.toDataURL('image/jpeg', 0.88);
       const mapY = 25, mapH = 132;
       doc.setDrawColor(203, 213, 225);
       doc.setLineWidth(0.3);
       doc.rect(M, mapY, CW, mapH);
-      doc.addImage(mapImg, 'JPEG', M, mapY, CW, mapH);
+      doc.addImage(mapImgUrl, 'JPEG', M, mapY, CW, mapH);
 
       // ── Barra de estadísticas ────────────────────────────────────────────
       const statsY = mapY + mapH + 3;
@@ -667,10 +715,11 @@ const MapTerritorial = ({
 
     } catch (err) {
       console.error('Error generando PDF:', err);
+      alert(`Error al generar el PDF: ${err.message}`);
     } finally {
       setGenerating(false);
     }
-  }, [secciones, fraccionesGeo, printContext]);
+  }, [secciones, fraccionesGeo, printContext, sectorColorMap]);
 
   // Inject print CSS once on mount
   useEffect(() => {
