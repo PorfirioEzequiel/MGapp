@@ -8,15 +8,19 @@ import EscanerQR from "../componentes/EscanerQR";
 import codigosPostalesData from "../codigospostales.json";
 import { datosDesdeTextoQR } from "../utils/curp";
 
-// ── Constantes (sin cambios) ──────────────────────────────────────────────────
-const HORA_INICIO = 9;
-const HORA_FIN = 15;
+// ── Constantes ─────────────────────────────────────────────────────────────────
+// Jornada única: jueves 23 de julio, 3 módulos de atención en paralelo (una
+// cita cada 10 min), tope de 80 citas en total. La ubicación es interna
+// (sector 6) y por eso nunca se muestra ese nombre en texto público — solo
+// el link del mapa.
+const FECHA_CITA_UNICA = "2026-07-23";
+const HORA_INICIO_CITAS = "09:30";
+const INTERVALO_MINUTOS = 10;
 const CUPO_POR_SLOT = 3;
-const DIAS_VENTANA = 14;
-const FECHA_INICIO_REGISTRO = "2026-07-16";
-const HORA_INICIO_PRIMER_DIA = "09:30";
+const CUPO_TOTAL_DIA = 80;
+const UBICACION_MAPS_URL = "https://maps.app.goo.gl/pPw3DfKM8y18VrwF6";
 
-// ── Helpers puros (sin cambios) ───────────────────────────────────────────────
+// ── Helpers puros ────────────────────────────────────────────────────────────
 const generarFolio = () => {
   const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
   let s = "";
@@ -24,32 +28,19 @@ const generarFolio = () => {
   return `CM-${s}`;
 };
 
-const fechaISO = (d) =>
-  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-
-const diasHabiles = (dias) => {
+// Genera los horarios de la jornada: arranca en HORA_INICIO_CITAS y avanza de
+// INTERVALO_MINUTOS en INTERVALO_MINUTOS hasta cubrir CUPO_TOTAL_DIA citas
+// (con CUPO_POR_SLOT citas por horario). El tope real de 80 se aplica aparte
+// como conteo global, así que el último horario puede quedar con menos cupo.
+const horariosDelDia = () => {
+  const totalSlots = Math.ceil(CUPO_TOTAL_DIA / CUPO_POR_SLOT);
+  const [hh, mm] = HORA_INICIO_CITAS.split(":").map(Number);
   const out = [];
-  const hoy = new Date();
-  for (let i = 0; i < dias; i++) {
-    const d = new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate() + i);
-    const dow = d.getDay();
-    const iso = fechaISO(d);
-    if (dow >= 1 && dow <= 5 && iso >= FECHA_INICIO_REGISTRO) {
-      out.push({
-        iso,
-        label: d.toLocaleDateString("es-MX", { weekday: "short", day: "numeric", month: "short" }),
-      });
-    }
+  let minutos = hh * 60 + mm;
+  for (let i = 0; i < totalSlots; i++) {
+    out.push(`${String(Math.floor(minutos / 60)).padStart(2, "0")}:${String(minutos % 60).padStart(2, "0")}`);
+    minutos += INTERVALO_MINUTOS;
   }
-  return out;
-};
-
-const horariosDelDia = (fechaIso) => {
-  const out = [];
-  for (let h = HORA_INICIO; h < HORA_FIN; h++)
-    for (let m = 0; m < 60; m += 15)
-      out.push(`${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`);
-  if (fechaIso === FECHA_INICIO_REGISTRO) return out.filter((h) => h >= HORA_INICIO_PRIMER_DIA);
   return out;
 };
 
@@ -263,7 +254,7 @@ const ConfirmarPersona = ({ datosCurp, form, setForm, onConfirmar, onReescanear,
 };
 
 // ── Ticket de comprobante para PDF (off-screen) ───────────────────────────────
-const TicketComprobante = React.forwardRef(({ folio, fecha, hora, tutor, curpTutor, menores, generadoEn }, ref) => {
+const TicketComprobante = React.forwardRef(({ folio, fecha, hora, tutor, curpTutor, menores, generadoEn, ubicacionUrl }, ref) => {
   const s = { /* shorthand */ };
   return (
     <div ref={ref} style={{
@@ -320,6 +311,12 @@ const TicketComprobante = React.forwardRef(({ folio, fecha, hora, tutor, curpTut
             <p style={{ color: "#0f172a", fontSize: "13px", fontWeight: 700, margin: 0 }}>{hora} hrs</p>
           </div>
         </div>
+        {ubicacionUrl && (
+          <div style={{ marginTop: "10px" }}>
+            <p style={{ color: "#64748b", fontSize: "9px", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.1em", margin: "0 0 3px" }}>Ubicación</p>
+            <p style={{ color: "#1d4ed8", fontSize: "11px", fontWeight: 700, margin: 0, wordBreak: "break-all" }}>{ubicacionUrl}</p>
+          </div>
+        )}
       </div>
 
       {/* Tutor */}
@@ -425,12 +422,12 @@ const RegistroCertificadoMedico = () => {
   const [menorForm, setMenorForm] = useState({ nombre: "", a_paterno: "", a_materno: "" });
   const [errorMenor, setErrorMenor] = useState("");
 
-  // Cita
-  const dias = useMemo(() => diasHabiles(DIAS_VENTANA), []);
-  const [fechaCita, setFechaCita] = useState("");
-  const horarios = useMemo(() => horariosDelDia(fechaCita), [fechaCita]);
+  // Cita: fecha única (jueves 23 de julio), no seleccionable
+  const [fechaCita] = useState(FECHA_CITA_UNICA);
+  const horarios = useMemo(() => horariosDelDia(), []);
   const [horaCita, setHoraCita] = useState("");
   const [ocupacion, setOcupacion] = useState({});
+  const [totalOcupadosDia, setTotalOcupadosDia] = useState(0);
   const [cargandoOcupacion, setCargandoOcupacion] = useState(false);
 
   // Encuesta + envío
@@ -440,9 +437,10 @@ const RegistroCertificadoMedico = () => {
   const [errorEnvio, setErrorEnvio] = useState("");
   const [folioFinal, setFolioFinal] = useState(null);
 
-  // PDF
+  // PDF / comprobante
   const ticketRef = useRef(null);
   const [generandoPDF, setGenerandoPDF] = useState(false);
+  const comprobanteEnviadoRef = useRef(false);
 
   // Cierra el scanner cuando hay un error de escaneo (UI: mostrar botón de nuevo)
   useEffect(() => {
@@ -460,15 +458,16 @@ const RegistroCertificadoMedico = () => {
       const { data, error } = await supabase
         .from("beneficiarios_certificados")
         .select("fecha_cita, hora_cita")
-        .in("fecha_cita", dias.map((d) => d.iso))
+        .eq("fecha_cita", FECHA_CITA_UNICA)
         .in("status", ["AGENDADA", "REAGENDADA"]);
       if (!error) {
         const conteo = {};
         (data ?? []).forEach((r) => {
-          const key = `${r.fecha_cita}_${String(r.hora_cita).slice(0, 5)}`;
+          const key = String(r.hora_cita).slice(0, 5);
           conteo[key] = (conteo[key] ?? 0) + 1;
         });
         setOcupacion(conteo);
+        setTotalOcupadosDia((data ?? []).length);
       }
       setCargandoOcupacion(false);
     };
@@ -583,12 +582,22 @@ const RegistroCertificadoMedico = () => {
   };
 
   const handleSubmit = async () => {
-    if (!fechaCita || !horaCita) { alert("Selecciona fecha y horario de la cita."); return; }
+    if (!horaCita) { alert("Selecciona un horario para tu cita."); return; }
     if (!comoSeEntero) { alert("Selecciona cómo te enteraste del beneficio."); return; }
     if (comoSeEntero === "OTRO" && !comoSeEnteroOtro.trim()) { alert("Describe cómo te enteraste."); return; }
     setEnviando(true);
     setErrorEnvio("");
     try {
+      const { count: totalDia } = await supabase
+        .from("beneficiarios_certificados")
+        .select("*", { count: "exact", head: true })
+        .eq("fecha_cita", fechaCita)
+        .in("status", ["AGENDADA", "REAGENDADA"]);
+      if ((totalDia ?? 0) >= CUPO_TOTAL_DIA) {
+        setErrorEnvio(`Ya se llenaron las ${CUPO_TOTAL_DIA} citas disponibles para este día.`);
+        setEnviando(false);
+        return;
+      }
       const { count } = await supabase
         .from("beneficiarios_certificados")
         .select("*", { count: "exact", head: true })
@@ -639,20 +648,6 @@ const RegistroCertificadoMedico = () => {
       }
       setFolioFinal(folio);
       setPaso("confirmacion");
-
-      // Envío del comprobante por WhatsApp: es un "mejor esfuerzo", si falla
-      // no se le informa como error al tutor (ya tiene su folio y el QR en pantalla).
-      supabase.functions
-        .invoke("enviar-comprobante-whatsapp", {
-          body: {
-            telefono: telefono.trim(),
-            folio,
-            tutorNombre: `${tutorForm.nombre} ${tutorForm.a_paterno} ${tutorForm.a_materno}`.trim(),
-            fechaCita,
-            horaCita,
-          },
-        })
-        .catch(() => {});
     } catch (err) {
       setErrorEnvio("Error al guardar el registro: " + err.message);
     } finally {
@@ -660,15 +655,22 @@ const RegistroCertificadoMedico = () => {
     }
   };
 
+  // Renderiza el ticket off-screen a canvas. La comparten el botón de
+  // descargar PDF y el envío automático por WhatsApp (misma imagen).
+  const generarCanvasTicket = async () => {
+    if (!ticketRef.current) return null;
+    await new Promise((r) => setTimeout(r, 200));
+    return html2canvas(ticketRef.current, {
+      scale: 2, useCORS: true, allowTaint: true, logging: false, backgroundColor: "#ffffff",
+    });
+  };
+
   // Genera PDF profesional usando html2canvas + jsPDF
   const generarComprobantePDF = async () => {
-    if (!ticketRef.current) return;
     setGenerandoPDF(true);
     try {
-      await new Promise((r) => setTimeout(r, 200));
-      const canvas = await html2canvas(ticketRef.current, {
-        scale: 2, useCORS: true, allowTaint: true, logging: false, backgroundColor: "#ffffff",
-      });
+      const canvas = await generarCanvasTicket();
+      if (!canvas) return;
       const imgData = canvas.toDataURL("image/png");
       const pageW = 148;
       const pageH = (canvas.height * pageW) / canvas.width;
@@ -682,6 +684,45 @@ const RegistroCertificadoMedico = () => {
       setGenerandoPDF(false);
     }
   };
+
+  // Al llegar a la confirmación, sube la MISMA imagen del comprobante (el
+  // ticket que también arma el PDF) a Storage y dispara el envío automático
+  // por WhatsApp con la cita y la ubicación. Es "mejor esfuerzo": si falla,
+  // no se le informa como error al tutor porque ya tiene su folio y QR en pantalla.
+  useEffect(() => {
+    if (paso !== "confirmacion" || !folioFinal || comprobanteEnviadoRef.current) return;
+    comprobanteEnviadoRef.current = true;
+    const enviar = async () => {
+      try {
+        const canvas = await generarCanvasTicket();
+        if (!canvas) return;
+        const blob = await new Promise((resolve) => canvas.toBlob(resolve, "image/png"));
+        if (!blob) return;
+        const filePath = `${folioFinal}.png`;
+        const { error: upErr } = await supabase.storage
+          .from("comprobantes_certificados")
+          .upload(filePath, blob, { upsert: true, contentType: "image/png" });
+        if (upErr) throw upErr;
+        const { data: urlData } = supabase.storage.from("comprobantes_certificados").getPublicUrl(filePath);
+
+        await supabase.functions.invoke("enviar-comprobante-whatsapp", {
+          body: {
+            telefono: telefono.trim(),
+            folio: folioFinal,
+            tutorNombre: `${tutorForm.nombre} ${tutorForm.a_paterno} ${tutorForm.a_materno}`.trim(),
+            fechaCita,
+            horaCita,
+            comprobanteUrl: urlData.publicUrl,
+            ubicacionUrl: UBICACION_MAPS_URL,
+          },
+        });
+      } catch (err) {
+        console.error("Error enviando comprobante por WhatsApp:", err);
+      }
+    };
+    enviar();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [paso, folioFinal]);
 
   // Abre WhatsApp con el comprobante completo como mensaje
   const compartirWhatsApp = () => {
@@ -697,6 +738,7 @@ const RegistroCertificadoMedico = () => {
       `📋 *Folio:* \`${folioFinal}\``,
       `📅 *Fecha de cita:* ${fechaLarga}`,
       `🕙 *Hora:* ${horaCita} hrs`,
+      `📍 *Ubicación:* ${UBICACION_MAPS_URL}`,
       ``,
       `👤 *Tutor responsable:*`,
       `${nombreTutor}`,
@@ -738,6 +780,7 @@ const RegistroCertificadoMedico = () => {
           curpTutor={tutorCurpDatos?.curp ?? ""}
           menores={menores}
           generadoEn={generadoEn}
+          ubicacionUrl={UBICACION_MAPS_URL}
         />
       )}
 
@@ -872,8 +915,19 @@ const RegistroCertificadoMedico = () => {
               <div className="px-4 py-4 space-y-3">
                 <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Menores a registrar</p>
                 <Campo label="¿Cuántos menores recibirán el beneficio?" required>
-                  <InputField type="number" min={1} max={10} value={numMenores}
-                    onChange={(e) => setNumMenores(Math.max(1, Number(e.target.value) || 1))} />
+                  <div className="flex items-center justify-center gap-4 py-1">
+                    <button type="button" onClick={() => setNumMenores((n) => Math.max(1, n - 1))}
+                      disabled={numMenores <= 1}
+                      className="w-11 h-11 rounded-xl border border-slate-200 bg-white text-xl font-bold text-slate-600 hover:bg-slate-50 disabled:opacity-30 disabled:hover:bg-white transition-colors">
+                      −
+                    </button>
+                    <span className="text-2xl font-bold text-slate-900 w-8 text-center">{numMenores}</span>
+                    <button type="button" onClick={() => setNumMenores((n) => Math.min(10, n + 1))}
+                      disabled={numMenores >= 10}
+                      className="w-11 h-11 rounded-xl border border-slate-200 bg-white text-xl font-bold text-slate-600 hover:bg-slate-50 disabled:opacity-30 disabled:hover:bg-white transition-colors">
+                      +
+                    </button>
+                  </div>
                 </Campo>
                 <div className="flex gap-2 bg-blue-50 border border-blue-100 rounded-xl p-3">
                   <svg className="w-3.5 h-3.5 text-blue-600 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
@@ -971,87 +1025,83 @@ const RegistroCertificadoMedico = () => {
         {paso === "cita" && (
           <div className="space-y-4 animate-fade-in-up">
             <div>
-              <h2 className="text-lg font-bold text-slate-900">Elige tu cita</h2>
+              <h2 className="text-lg font-bold text-slate-900">Elige tu horario</h2>
               <p className="text-sm text-slate-500 mt-1">
-                Lunes a viernes · 9:00 – 15:00 hrs · Máximo {CUPO_POR_SLOT} personas por horario. La disponibilidad es en tiempo real.
+                Jueves 23 de julio · Jornada desde las 9:30 am · Una cita cada 10 minutos · Cupo total: {CUPO_TOTAL_DIA} citas.
               </p>
             </div>
 
+            <Card className="px-4 py-3.5">
+              <div className="flex items-start gap-2.5">
+                <svg className="w-4 h-4 text-blue-700 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M17.657 16.657L13.414 20.9a2 2 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+                </svg>
+                <div>
+                  <p className="text-xs font-bold text-slate-700">Ubicación de la jornada</p>
+                  <a href={UBICACION_MAPS_URL} target="_blank" rel="noreferrer"
+                    className="text-xs text-blue-700 hover:underline font-semibold">
+                    Ver ubicación en Google Maps →
+                  </a>
+                </div>
+              </div>
+            </Card>
+
             <Card className="divide-y divide-slate-100">
               <div className="px-4 py-4">
-                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-3">Selecciona una fecha</p>
-                {dias.length === 0 ? (
-                  <p className="text-sm text-slate-400">No hay fechas disponibles actualmente.</p>
+                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-3">
+                  Horarios disponibles · {formatearFechaLarga(fechaCita)}
+                </p>
+                {cargandoOcupacion ? (
+                  <div className="flex items-center gap-2.5 text-sm text-slate-400 py-3">
+                    <Spinner /> Verificando disponibilidad…
+                  </div>
+                ) : totalOcupadosDia >= CUPO_TOTAL_DIA ? (
+                  <p className="text-sm text-red-600 font-bold py-3">
+                    Se agotaron las {CUPO_TOTAL_DIA} citas disponibles para este día.
+                  </p>
                 ) : (
-                  <div className="flex flex-wrap gap-1.5">
-                    {dias.map((d) => (
-                      <button key={d.iso} type="button"
-                        onClick={() => { setFechaCita(d.iso); setHoraCita(""); }}
-                        className={`px-3 py-1.5 rounded-xl text-xs font-bold border transition-all capitalize ${
-                          fechaCita === d.iso
-                            ? "bg-blue-800 text-white border-blue-800 shadow-sm"
-                            : "bg-white text-slate-600 border-slate-200 hover:border-blue-400 hover:text-blue-700"
-                        }`}
-                      >
-                        {d.label}
-                      </button>
-                    ))}
+                  <div className="grid grid-cols-4 sm:grid-cols-5 gap-1.5">
+                    {horarios.map((h) => {
+                      const ocupados = ocupacion[h] ?? 0;
+                      const lleno = ocupados >= CUPO_POR_SLOT;
+                      const libres = CUPO_POR_SLOT - ocupados;
+                      return (
+                        <button key={h} type="button" disabled={lleno} onClick={() => setHoraCita(h)}
+                          className={`flex flex-col items-center px-1.5 py-2 rounded-xl text-xs font-bold border transition-all ${
+                            lleno
+                              ? "bg-slate-50 text-slate-300 border-slate-100 cursor-not-allowed"
+                              : horaCita === h
+                              ? "bg-emerald-600 text-white border-emerald-600 shadow-sm"
+                              : "bg-white text-slate-700 border-slate-200 hover:border-emerald-400 hover:text-emerald-700"
+                          }`}
+                        >
+                          <span>{h}</span>
+                          <span className={`text-[9px] font-normal mt-0.5 ${
+                            lleno ? "text-slate-300" : horaCita === h ? "text-emerald-100" : "text-slate-400"
+                          }`}>
+                            {lleno ? "Lleno" : `${libres} lib.`}
+                          </span>
+                        </button>
+                      );
+                    })}
                   </div>
                 )}
               </div>
 
-              {fechaCita && (
-                <div className="px-4 py-4">
-                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-3">
-                    Horarios para {dias.find(d => d.iso === fechaCita)?.label}
-                  </p>
-                  {cargandoOcupacion ? (
-                    <div className="flex items-center gap-2.5 text-sm text-slate-400 py-3">
-                      <Spinner /> Verificando disponibilidad…
-                    </div>
-                  ) : (
-                    <div className="grid grid-cols-4 sm:grid-cols-5 gap-1.5">
-                      {horarios.map((h) => {
-                        const ocupados = ocupacion[`${fechaCita}_${h}`] ?? 0;
-                        const lleno = ocupados >= CUPO_POR_SLOT;
-                        const libres = CUPO_POR_SLOT - ocupados;
-                        return (
-                          <button key={h} type="button" disabled={lleno} onClick={() => setHoraCita(h)}
-                            className={`flex flex-col items-center px-1.5 py-2 rounded-xl text-xs font-bold border transition-all ${
-                              lleno
-                                ? "bg-slate-50 text-slate-300 border-slate-100 cursor-not-allowed"
-                                : horaCita === h
-                                ? "bg-emerald-600 text-white border-emerald-600 shadow-sm"
-                                : "bg-white text-slate-700 border-slate-200 hover:border-emerald-400 hover:text-emerald-700"
-                            }`}
-                          >
-                            <span>{h}</span>
-                            <span className={`text-[9px] font-normal mt-0.5 ${
-                              lleno ? "text-slate-300" : horaCita === h ? "text-emerald-100" : "text-slate-400"
-                            }`}>
-                              {lleno ? "Lleno" : `${libres} lib.`}
-                            </span>
-                          </button>
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {fechaCita && horaCita && (
+              {horaCita && (
                 <div className="px-4 py-3">
                   <div className="flex items-center gap-2.5 bg-emerald-50 border border-emerald-200 rounded-xl px-3.5 py-2.5">
                     <IcoCheck className="w-4 h-4 text-emerald-600 flex-shrink-0" />
                     <p className="text-sm font-bold text-emerald-800">
-                      {dias.find(d => d.iso === fechaCita)?.label} · {horaCita} hrs
+                      {formatearFechaLarga(fechaCita)} · {horaCita} hrs
                     </p>
                   </div>
                 </div>
               )}
 
               <div className="px-4 py-3">
-                <Btn type="button" v="primary" disabled={!fechaCita || !horaCita}
+                <Btn type="button" v="primary" disabled={!horaCita}
                   onClick={() => setPaso("encuesta")} className="w-full justify-center">
                   Continuar <IcoArrow />
                 </Btn>
@@ -1089,7 +1139,7 @@ const RegistroCertificadoMedico = () => {
                 <div className="flex items-center gap-2">
                   <IcoCheck className="w-3 h-3 text-emerald-500 flex-shrink-0" />
                   <p className="text-xs text-slate-600">
-                    <span className="font-semibold">Cita:</span> {dias.find(d => d.iso === fechaCita)?.label} · {horaCita} hrs
+                    <span className="font-semibold">Cita:</span> {formatearFechaLarga(fechaCita)} · {horaCita} hrs
                   </p>
                 </div>
               </div>
@@ -1194,6 +1244,21 @@ const RegistroCertificadoMedico = () => {
                     <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wide mb-0.5">Cita</p>
                     <p className="text-sm font-bold text-slate-900 capitalize">{formatearFechaLarga(fechaCita)}</p>
                     <p className="text-sm text-slate-500">{horaCita} hrs</p>
+                  </div>
+                </div>
+                <div className="px-4 py-3.5 flex items-start gap-3">
+                  <div className="w-7 h-7 rounded-lg bg-blue-50 flex items-center justify-center flex-shrink-0 mt-0.5">
+                    <svg className="w-3.5 h-3.5 text-blue-700" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M17.657 16.657L13.414 20.9a2 2 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+                    </svg>
+                  </div>
+                  <div>
+                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wide mb-0.5">Ubicación</p>
+                    <a href={UBICACION_MAPS_URL} target="_blank" rel="noreferrer"
+                      className="text-sm font-bold text-blue-700 hover:underline">
+                      Ver ubicación en Google Maps
+                    </a>
                   </div>
                 </div>
                 <div className="px-4 py-3.5 flex items-start gap-3">

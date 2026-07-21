@@ -1,5 +1,7 @@
 // Envía por WhatsApp (vía UltraMsg) el comprobante de la cita del beneficio
-// de Certificado Médico: la imagen del QR del folio + los datos de la cita.
+// de Certificado Médico: la MISMA imagen del ticket que se genera como PDF
+// (subida antes a Supabase Storage por el cliente), con la cita y la
+// ubicación en el texto del mensaje.
 //
 // Secrets requeridos (supabase secrets set ...):
 //   ULTRAMSG_INSTANCE_ID   - ID de instancia de ultramsg.com
@@ -18,10 +20,10 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const { telefono, folio, tutorNombre, fechaCita, horaCita } = await req.json();
+    const { telefono, folio, tutorNombre, fechaCita, horaCita, comprobanteUrl, ubicacionUrl } = await req.json();
 
-    if (!telefono || !folio) {
-      return new Response(JSON.stringify({ error: "Faltan telefono o folio" }), {
+    if (!telefono || !comprobanteUrl) {
+      return new Response(JSON.stringify({ error: "Faltan telefono o comprobanteUrl" }), {
         status: 400,
         headers: { ...CORS_HEADERS, "Content-Type": "application/json" },
       });
@@ -40,17 +42,17 @@ Deno.serve(async (req) => {
 
     const telefonoLimpio = String(telefono).replace(/\D/g, "");
     const to = `${countryCode}${telefonoLimpio}`;
-    const qrImageUrl = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(folio)}`;
     const caption =
       `Hola ${tutorNombre ?? ""}, este es tu comprobante de cita para el Certificado Médico.\n\n` +
-      `Folio: ${folio}\n` +
-      `Fecha: ${fechaCita} a las ${horaCita} hrs\n\n` +
-      `Presenta este folio o el código QR el día de tu cita.`;
+      `📅 Fecha: ${fechaCita} a las ${horaCita} hrs\n` +
+      (ubicacionUrl ? `📍 Ubicación: ${ubicacionUrl}\n` : "") +
+      (folio ? `\nFolio: ${folio}\n` : "") +
+      `\nPresenta este comprobante el día de tu cita.`;
 
     const resp = await fetch(`https://api.ultramsg.com/${instanceId}/messages/image`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ token, to, image: qrImageUrl, caption }),
+      body: JSON.stringify({ token, to, image: comprobanteUrl, caption }),
     });
 
     const data = await resp.json().catch(() => ({}));
