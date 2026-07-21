@@ -1,18 +1,22 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { QRCodeSVG } from "qrcode.react";
+import { QRCodeSVG, QRCodeCanvas } from "qrcode.react";
+import html2canvas from "html2canvas";
+import { jsPDF } from "jspdf";
 import supabase from "../supabase/client";
 import EscanerQR from "../componentes/EscanerQR";
 import codigosPostalesData from "../codigospostales.json";
 import { datosDesdeTextoQR } from "../utils/curp";
 
+// ── Constantes (sin cambios) ──────────────────────────────────────────────────
 const HORA_INICIO = 9;
-const HORA_FIN = 15; // última cita inicia 14:45
+const HORA_FIN = 15;
 const CUPO_POR_SLOT = 3;
 const DIAS_VENTANA = 14;
-const FECHA_INICIO_REGISTRO = "2026-07-16"; // jueves 16 de julio
+const FECHA_INICIO_REGISTRO = "2026-07-16";
 const HORA_INICIO_PRIMER_DIA = "09:30";
 
+// ── Helpers puros (sin cambios) ───────────────────────────────────────────────
 const generarFolio = () => {
   const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
   let s = "";
@@ -20,7 +24,8 @@ const generarFolio = () => {
   return `CM-${s}`;
 };
 
-const fechaISO = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+const fechaISO = (d) =>
+  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 
 const diasHabiles = (dias) => {
   const out = [];
@@ -39,28 +44,153 @@ const diasHabiles = (dias) => {
   return out;
 };
 
-// El registro arranca el jueves 16 a las 9:30 (los demás días siguen con horario normal desde las 9:00).
 const horariosDelDia = (fechaIso) => {
   const out = [];
-  for (let h = HORA_INICIO; h < HORA_FIN; h++) {
-    for (let m = 0; m < 60; m += 15) {
+  for (let h = HORA_INICIO; h < HORA_FIN; h++)
+    for (let m = 0; m < 60; m += 15)
       out.push(`${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`);
-    }
-  }
-  if (fechaIso === FECHA_INICIO_REGISTRO) {
-    return out.filter((h) => h >= HORA_INICIO_PRIMER_DIA);
-  }
+  if (fechaIso === FECHA_INICIO_REGISTRO) return out.filter((h) => h >= HORA_INICIO_PRIMER_DIA);
   return out;
 };
 
-const StepHeader = ({ n, total, titulo }) => (
-  <div className="mb-3">
-    <p className="text-xs font-semibold text-slate-400 uppercase tracking-widest">Paso {n} de {total}</p>
-    <h2 className="text-lg font-bold text-slate-800">{titulo}</h2>
+const formatearFechaLarga = (isoDate) => {
+  if (!isoDate) return "";
+  const [y, m, d] = isoDate.split("-");
+  return new Date(+y, +m - 1, +d).toLocaleDateString("es-MX", {
+    weekday: "long", day: "numeric", month: "long", year: "numeric",
+  });
+};
+
+// ── Primitivas de UI ──────────────────────────────────────────────────────────
+const PASOS = [
+  { key: "tutor-scan",  label: "Tutor" },
+  { key: "contacto",    label: "Contacto" },
+  { key: "menores-scan",label: "Menores" },
+  { key: "cita",        label: "Cita" },
+  { key: "encuesta",    label: "Confirmar" },
+];
+
+const BarraProgreso = ({ paso }) => {
+  const idx = PASOS.findIndex((p) => p.key === paso);
+  if (idx === -1) return null;
+  return (
+    <div className="mb-6 print:hidden">
+      <div className="flex items-center">
+        {PASOS.map((p, i) => (
+          <React.Fragment key={p.key}>
+            <div className="flex flex-col items-center">
+              <div className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold transition-all duration-300 ${
+                i < idx  ? "bg-blue-800 text-white"
+                : i === idx ? "bg-blue-800 text-white ring-[3px] ring-blue-200"
+                : "bg-slate-200 text-slate-400"
+              }`}>
+                {i < idx ? (
+                  <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                  </svg>
+                ) : i + 1}
+              </div>
+              <span className={`text-[9px] mt-1 font-bold uppercase tracking-wide hidden sm:block ${i <= idx ? "text-blue-800" : "text-slate-400"}`}>
+                {p.label}
+              </span>
+            </div>
+            {i < PASOS.length - 1 && (
+              <div className={`flex-1 h-0.5 mx-1 mb-4 sm:mb-5 transition-all duration-500 ${i < idx ? "bg-blue-700" : "bg-slate-200"}`} />
+            )}
+          </React.Fragment>
+        ))}
+      </div>
+    </div>
+  );
+};
+
+const Campo = ({ label, required, children }) => (
+  <div className="space-y-1">
+    <label className="flex items-center gap-1 text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+      {label}{required && <span className="text-red-500">*</span>}
+    </label>
+    {children}
   </div>
 );
 
-// Confirmación de datos de una persona ya escaneada (tutor o menor), reutilizada para ambos.
+const InputField = ({ className = "", ...props }) => (
+  <input
+    {...props}
+    className={`w-full px-3.5 py-2.5 rounded-xl border border-slate-200 bg-white text-slate-900 placeholder-slate-400 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all ${className}`}
+  />
+);
+
+const SelectField = ({ children, ...props }) => (
+  <select
+    {...props}
+    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 bg-white text-slate-900 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
+  >
+    {children}
+  </select>
+);
+
+const Btn = ({ children, v = "primary", className = "", ...props }) => {
+  const base = "inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold transition-all active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed disabled:active:scale-100 focus:outline-none focus:ring-2 focus:ring-offset-1";
+  const vs = {
+    primary: "bg-blue-800 text-white hover:bg-blue-900 shadow-sm focus:ring-blue-700",
+    success: "bg-emerald-600 text-white hover:bg-emerald-700 shadow-sm focus:ring-emerald-500",
+    ghost:   "text-slate-500 hover:text-slate-800 hover:bg-slate-100 focus:ring-slate-400",
+    danger:  "bg-red-600 text-white hover:bg-red-700 shadow-sm focus:ring-red-500",
+    scan:    "bg-blue-800 text-white hover:bg-blue-900 shadow-md focus:ring-blue-700 animate-pulse-ring px-6 py-3 text-base",
+  };
+  return <button {...props} className={`${base} ${vs[v]} ${className}`}>{children}</button>;
+};
+
+const Card = ({ children, className = "" }) => (
+  <div className={`bg-white rounded-2xl border border-slate-200 shadow-sm ${className}`}>{children}</div>
+);
+
+const Spinner = ({ lg }) => (
+  <div className={`rounded-full border-[3px] border-blue-700 border-t-transparent animate-spin flex-shrink-0 ${lg ? "w-8 h-8" : "w-4 h-4"}`} />
+);
+
+const IcoCheck = ({ className = "w-3.5 h-3.5" }) => (
+  <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+    <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+  </svg>
+);
+
+const IcoArrow = () => (
+  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+    <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+  </svg>
+);
+
+// ── Botón de escaneo (UI pura, sin lógica) ────────────────────────────────────
+const BotonesEscanear = ({ onClick, titulo, subtitulo, badge }) => (
+  <Card className="p-6 text-center border-2 border-dashed border-slate-200">
+    <div className="w-14 h-14 bg-blue-50 rounded-2xl flex items-center justify-center mx-auto mb-4">
+      <svg className="w-7 h-7 text-blue-700" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+        <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 4.875c0-.621.504-1.125 1.125-1.125h4.5c.621 0 1.125.504 1.125 1.125v4.5c0 .621-.504 1.125-1.125 1.125h-4.5A1.125 1.125 0 013.75 9.375v-4.5zM3.75 14.625c0-.621.504-1.125 1.125-1.125h4.5c.621 0 1.125.504 1.125 1.125v4.5c0 .621-.504 1.125-1.125 1.125h-4.5a1.125 1.125 0 01-1.125-1.125v-4.5zM13.5 4.875c0-.621.504-1.125 1.125-1.125h4.5c.621 0 1.125.504 1.125 1.125v4.5c0 .621-.504 1.125-1.125 1.125h-4.5A1.125 1.125 0 0113.5 9.375v-4.5z" />
+        <path strokeLinecap="round" strokeLinejoin="round" d="M6.75 6.75h.75v.75h-.75v-.75zM6.75 16.5h.75v.75h-.75v-.75zM16.5 6.75h.75v.75h-.75v-.75zM13.5 13.5h.75v.75h-.75v-.75zM13.5 19.5h.75v.75h-.75v-.75zM19.5 13.5h.75v.75h-.75v-.75zM19.5 19.5h.75v.75h-.75v-.75zM16.5 16.5h.75v.75h-.75v-.75z" />
+      </svg>
+    </div>
+    {badge && (
+      <span className="inline-flex items-center gap-1 bg-amber-50 border border-amber-200 text-amber-700 text-[10px] font-bold uppercase tracking-wide px-2.5 py-1 rounded-full mb-3">
+        <svg className="w-2.5 h-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+        </svg>
+        {badge}
+      </span>
+    )}
+    <p className="text-sm font-bold text-slate-800 mb-1">{titulo}</p>
+    <p className="text-xs text-slate-400 mb-5 leading-relaxed">{subtitulo}</p>
+    <Btn v="scan" type="button" onClick={onClick} className="mx-auto">
+      <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
+        <path strokeLinecap="round" strokeLinejoin="round" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
+      </svg>
+      Abrir cámara y escanear
+    </Btn>
+  </Card>
+);
+
+// ── ConfirmarPersona — diseño, lógica intacta ─────────────────────────────────
 const ConfirmarPersona = ({ datosCurp, form, setForm, onConfirmar, onReescanear, error, edadMinima, edadMaxima, textoRequisito }) => {
   const cumpleEdad =
     (edadMinima == null || datosCurp.edad >= edadMinima) &&
@@ -68,42 +198,210 @@ const ConfirmarPersona = ({ datosCurp, form, setForm, onConfirmar, onReescanear,
   const bloqueado = !cumpleEdad ? textoRequisito : datosCurp.bloqueo || null;
 
   return (
-    <div className="border rounded-lg p-3 bg-white shadow-sm">
-      <p className="text-sm text-slate-600">CURP detectada: <span className="font-mono font-semibold">{datosCurp.curp}</span></p>
-      <p className="text-sm text-slate-600 mb-2">Edad calculada: <strong>{datosCurp.edad} años</strong> · Sexo: {datosCurp.sexo ?? "—"}</p>
+    <Card className="overflow-hidden animate-fade-in-up">
+      <div className={`px-4 py-3.5 border-b ${bloqueado ? "bg-red-50 border-red-100" : "bg-emerald-50 border-emerald-100"}`}>
+        <div className="flex items-center gap-3">
+          <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${bloqueado ? "bg-red-100" : "bg-emerald-100"}`}>
+            {bloqueado ? (
+              <svg className="w-3.5 h-3.5 text-red-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            ) : (
+              <IcoCheck className="w-3.5 h-3.5 text-emerald-600" />
+            )}
+          </div>
+          <div>
+            <p className={`text-[10px] font-bold uppercase tracking-widest ${bloqueado ? "text-red-600" : "text-emerald-700"}`}>
+              {bloqueado ? "CURP no válida para este trámite" : "CURP leída correctamente"}
+            </p>
+            <p className="font-mono text-sm font-bold text-slate-800 mt-0.5">{datosCurp.curp}</p>
+            <p className="text-xs text-slate-500">{datosCurp.edad} años · {datosCurp.sexo ?? "—"}</p>
+          </div>
+        </div>
+      </div>
 
       {bloqueado ? (
-        <div className="bg-red-50 border border-red-200 rounded p-3 mt-2">
-          <p className="text-sm text-red-700 font-semibold">{bloqueado}</p>
-          <button type="button" onClick={onReescanear} className="mt-2 text-sm text-blue-600 hover:underline">
-            Escanear otra CURP
-          </button>
+        <div className="px-4 py-4">
+          <div className="flex gap-2 bg-red-50 border border-red-100 rounded-xl p-3 mb-4">
+            <svg className="w-4 h-4 text-red-500 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v4m0 4h.01M12 3a9 9 0 110 18A9 9 0 0112 3z" />
+            </svg>
+            <p className="text-sm text-red-700 font-medium leading-relaxed">{bloqueado}</p>
+          </div>
+          <Btn type="button" v="ghost" onClick={onReescanear}>← Escanear otra CURP</Btn>
         </div>
       ) : (
-        <>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-2 mt-2">
-            <input placeholder="Nombre" value={form.nombre} onChange={(e) => setForm({ ...form, nombre: e.target.value.toUpperCase() })} className="border p-2 rounded" />
-            <input placeholder="Apellido Paterno" value={form.a_paterno} onChange={(e) => setForm({ ...form, a_paterno: e.target.value.toUpperCase() })} className="border p-2 rounded" />
-            <input placeholder="Apellido Materno" value={form.a_materno} onChange={(e) => setForm({ ...form, a_materno: e.target.value.toUpperCase() })} className="border p-2 rounded" />
+        <div className="px-4 py-4 space-y-3">
+          <p className="text-xs text-slate-500 leading-relaxed">
+            Verifica que el nombre coincida exactamente con el documento oficial.
+          </p>
+          <Campo label="Nombre(s)" required>
+            <InputField placeholder="Como aparece en la CURP" value={form.nombre}
+              onChange={(e) => setForm({ ...form, nombre: e.target.value.toUpperCase() })} />
+          </Campo>
+          <div className="grid grid-cols-2 gap-2">
+            <Campo label="A. Paterno" required>
+              <InputField placeholder="Paterno" value={form.a_paterno}
+                onChange={(e) => setForm({ ...form, a_paterno: e.target.value.toUpperCase() })} />
+            </Campo>
+            <Campo label="A. Materno">
+              <InputField placeholder="Materno" value={form.a_materno}
+                onChange={(e) => setForm({ ...form, a_materno: e.target.value.toUpperCase() })} />
+            </Campo>
           </div>
-          {error && <p className="text-sm text-red-600 mt-1">{error}</p>}
-          <div className="flex gap-2 mt-3">
-            <button type="button" onClick={onConfirmar} className="bg-emerald-600 text-white px-4 py-2 rounded text-sm">
-              Continuar
-            </button>
-            <button type="button" onClick={onReescanear} className="text-sm text-slate-500 hover:underline">
-              Escanear de nuevo
-            </button>
+          {error && <p className="text-xs text-red-600 font-bold">{error}</p>}
+          <div className="flex items-center gap-2 pt-1">
+            <Btn type="button" v="success" onClick={onConfirmar}>
+              Confirmar y continuar <IcoArrow />
+            </Btn>
+            <Btn type="button" v="ghost" onClick={onReescanear}>Volver a escanear</Btn>
           </div>
-        </>
+        </div>
       )}
-    </div>
+    </Card>
   );
 };
 
+// ── Ticket de comprobante para PDF (off-screen) ───────────────────────────────
+const TicketComprobante = React.forwardRef(({ folio, fecha, hora, tutor, curpTutor, menores, generadoEn }, ref) => {
+  const s = { /* shorthand */ };
+  return (
+    <div ref={ref} style={{
+      position: "fixed", top: "-12000px", left: "-12000px",
+      width: "550px", backgroundColor: "#ffffff",
+      fontFamily: "'Montserrat', Verdana, Geneva, Tahoma, sans-serif",
+    }}>
+      {/* Header */}
+      <div style={{ background: "linear-gradient(135deg,#1e3a8a 0%,#1d4ed8 100%)", padding: "22px 30px 18px" }}>
+        <p style={{ color: "rgba(255,255,255,0.55)", fontSize: "9px", fontWeight: 700, letterSpacing: "0.2em", textTransform: "uppercase", margin: "0 0 6px" }}>
+          Beneficio Social · Salud
+        </p>
+        <h1 style={{ color: "#fff", fontSize: "22px", fontWeight: 800, margin: "0 0 3px", letterSpacing: "-0.02em" }}>
+          Certificado Médico
+        </h1>
+        <p style={{ color: "rgba(255,255,255,0.7)", fontSize: "11px", fontWeight: 500, margin: 0 }}>
+          Comprobante Oficial de Registro
+        </p>
+      </div>
+
+      {/* Folio + QR — centrado y prominente */}
+      <div style={{ background: "#f8fafc", borderBottom: "1px solid #e2e8f0", padding: "24px 30px 20px", textAlign: "center" }}>
+        <p style={{ color: "#64748b", fontSize: "9px", fontWeight: 700, letterSpacing: "0.18em", textTransform: "uppercase", margin: "0 0 14px" }}>
+          Código de acceso · Folio {folio}
+        </p>
+        <div style={{ display: "flex", justifyContent: "center", marginBottom: "14px" }}>
+          <div style={{ background: "#ffffff", padding: "12px", borderRadius: "16px", border: "2px solid #e2e8f0", display: "inline-block", boxShadow: "0 2px 12px rgba(0,0,0,0.06)" }}>
+            <QRCodeCanvas value={folio} size={160} level="H" includeMargin={false} />
+          </div>
+        </div>
+        <p style={{ color: "#1e3a8a", fontSize: "30px", fontWeight: 800, fontFamily: "monospace", letterSpacing: "0.15em", margin: "0 0 6px" }}>
+          {folio}
+        </p>
+        <p style={{ color: "#94a3b8", fontSize: "10px", lineHeight: 1.6, margin: 0 }}>
+          Presenta este código en el módulo de atención el día de tu cita.
+        </p>
+      </div>
+
+      {/* Detalles cita */}
+      <div style={{ padding: "16px 30px", borderBottom: "1px solid #e2e8f0" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "12px" }}>
+          <div style={{ width: "3px", height: "14px", background: "#1d4ed8", borderRadius: "2px" }} />
+          <p style={{ color: "#1e293b", fontSize: "10px", fontWeight: 800, letterSpacing: "0.12em", textTransform: "uppercase", margin: 0 }}>
+            Detalles de la Cita
+          </p>
+        </div>
+        <div style={{ display: "flex", gap: "32px" }}>
+          <div>
+            <p style={{ color: "#64748b", fontSize: "9px", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.1em", margin: "0 0 3px" }}>Fecha</p>
+            <p style={{ color: "#0f172a", fontSize: "13px", fontWeight: 700, margin: 0, textTransform: "capitalize" }}>{formatearFechaLarga(fecha)}</p>
+          </div>
+          <div>
+            <p style={{ color: "#64748b", fontSize: "9px", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.1em", margin: "0 0 3px" }}>Hora</p>
+            <p style={{ color: "#0f172a", fontSize: "13px", fontWeight: 700, margin: 0 }}>{hora} hrs</p>
+          </div>
+        </div>
+      </div>
+
+      {/* Tutor */}
+      <div style={{ padding: "14px 30px", borderBottom: "1px solid #e2e8f0", background: "#fafafa" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "10px" }}>
+          <div style={{ width: "3px", height: "14px", background: "#1d4ed8", borderRadius: "2px" }} />
+          <p style={{ color: "#1e293b", fontSize: "10px", fontWeight: 800, letterSpacing: "0.12em", textTransform: "uppercase", margin: 0 }}>
+            Tutor / Responsable
+          </p>
+        </div>
+        <p style={{ color: "#0f172a", fontSize: "13px", fontWeight: 700, margin: "0 0 4px" }}>{tutor}</p>
+        <p style={{ color: "#64748b", fontSize: "10px", fontFamily: "monospace", letterSpacing: "0.06em", margin: 0 }}>CURP: {curpTutor}</p>
+      </div>
+
+      {/* Menores */}
+      {menores.length > 0 && (
+        <div style={{ padding: "14px 30px", borderBottom: "1px solid #e2e8f0" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "10px" }}>
+            <div style={{ width: "3px", height: "14px", background: "#1d4ed8", borderRadius: "2px" }} />
+            <p style={{ color: "#1e293b", fontSize: "10px", fontWeight: 800, letterSpacing: "0.12em", textTransform: "uppercase", margin: 0 }}>
+              Menores Beneficiarios ({menores.length})
+            </p>
+          </div>
+          {menores.map((m, i) => (
+            <div key={i} style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: i < menores.length - 1 ? "6px" : 0 }}>
+              <span style={{ width: "18px", height: "18px", background: "#dbeafe", borderRadius: "50%", display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: "9px", fontWeight: 800, color: "#1d4ed8", flexShrink: 0 }}>
+                {i + 1}
+              </span>
+              <span style={{ color: "#1e293b", fontSize: "12px", fontWeight: 600 }}>
+                {m.nombre} {m.a_paterno} {m.a_materno}
+              </span>
+              <span style={{ color: "#94a3b8", fontSize: "11px" }}>· {m.edad} años</span>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Recomendaciones */}
+      <div style={{ padding: "14px 30px", borderBottom: "1px solid #e2e8f0", background: "#eff6ff" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "10px" }}>
+          <div style={{ width: "3px", height: "14px", background: "#f59e0b", borderRadius: "2px" }} />
+          <p style={{ color: "#92400e", fontSize: "10px", fontWeight: 800, letterSpacing: "0.12em", textTransform: "uppercase", margin: 0 }}>
+            Recomendaciones Importantes
+          </p>
+        </div>
+        {[
+          "Llega al menos 15 minutos antes de tu horario de cita.",
+          "Presenta este comprobante impreso o desde tu dispositivo móvil.",
+          "Porta la CURP original del tutor (padre, madre o tutor legal).",
+          "Porta la CURP original de cada menor beneficiario.",
+          "Los menores deben acudir acompañados del tutor registrado.",
+          "Si no puedes asistir, reagenda en: sm-estructura.netlify.app",
+        ].map((rec, i) => (
+          <div key={i} style={{ display: "flex", gap: "8px", marginBottom: i < 5 ? "5px" : 0 }}>
+            <span style={{ color: "#1d4ed8", fontWeight: 800, fontSize: "11px", flexShrink: 0, marginTop: "1px" }}>✓</span>
+            <p style={{ color: "#1e40af", fontSize: "10px", margin: 0, lineHeight: 1.55 }}>{rec}</p>
+          </div>
+        ))}
+      </div>
+
+      {/* Footer */}
+      <div style={{ padding: "12px 30px", background: "#1e293b", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <div>
+          <p style={{ color: "rgba(255,255,255,0.5)", fontSize: "9px", margin: "0 0 2px" }}>Generado el {generadoEn}</p>
+          <p style={{ color: "rgba(255,255,255,0.3)", fontSize: "8px", margin: 0 }}>
+            Documento válido como comprobante oficial de registro al beneficio.
+          </p>
+        </div>
+        <p style={{ color: "rgba(255,255,255,0.45)", fontSize: "10px", fontFamily: "monospace", fontWeight: 700, margin: 0 }}>{folio}</p>
+      </div>
+    </div>
+  );
+});
+
+// ── Componente principal ──────────────────────────────────────────────────────
 const RegistroCertificadoMedico = () => {
   const navigate = useNavigate();
   const [paso, setPaso] = useState("tutor-scan");
+
+  // UI state para scanner (solo presentación)
+  const [scannerTutorActivo, setScannerTutorActivo] = useState(false);
+  const [scannerMenorActivo, setScannerMenorActivo] = useState(false);
 
   // Tutor
   const [tutorCurpDatos, setTutorCurpDatos] = useState(null);
@@ -113,7 +411,7 @@ const RegistroCertificadoMedico = () => {
   const [textoEscaneadoCrudo, setTextoEscaneadoCrudo] = useState("");
   const [verificandoDuplicado, setVerificandoDuplicado] = useState(false);
 
-  // Contacto: por temas legales solo se pide teléfono, código postal y colonia (nada de domicilio ni sección)
+  // Contacto
   const [cp, setCp] = useState("");
   const [colonia, setColonia] = useState("");
   const [colonias, setColonias] = useState([]);
@@ -141,6 +439,19 @@ const RegistroCertificadoMedico = () => {
   const [enviando, setEnviando] = useState(false);
   const [errorEnvio, setErrorEnvio] = useState("");
   const [folioFinal, setFolioFinal] = useState(null);
+
+  // PDF
+  const ticketRef = useRef(null);
+  const [generandoPDF, setGenerandoPDF] = useState(false);
+
+  // Cierra el scanner cuando hay un error de escaneo (UI: mostrar botón de nuevo)
+  useEffect(() => {
+    if (errorEscaneo) { setScannerTutorActivo(false); setScannerMenorActivo(false); }
+  }, [errorEscaneo]);
+
+  // Cierra el scanner cuando la CURP fue aceptada (UI: ocultar cámara)
+  useEffect(() => { if (tutorCurpDatos) setScannerTutorActivo(false); }, [tutorCurpDatos]);
+  useEffect(() => { if (menorCurpDatos)  setScannerMenorActivo(false); }, [menorCurpDatos]);
 
   useEffect(() => {
     if (paso !== "cita") return;
@@ -210,10 +521,7 @@ const RegistroCertificadoMedico = () => {
   };
 
   const confirmarTutor = () => {
-    if (!tutorForm.nombre.trim()) {
-      setErrorTutor("El nombre es obligatorio.");
-      return;
-    }
+    if (!tutorForm.nombre.trim()) { setErrorTutor("El nombre es obligatorio."); return; }
     setErrorTutor("");
     setPaso("contacto");
   };
@@ -227,14 +535,8 @@ const RegistroCertificadoMedico = () => {
   };
 
   const confirmarContacto = () => {
-    if (!cp.trim() || !colonia.trim()) {
-      alert("Código Postal y Colonia son obligatorios.");
-      return;
-    }
-    if (!/^\d{10}$/.test(telefono.trim())) {
-      setErrorTelefono("El teléfono debe tener exactamente 10 dígitos.");
-      return;
-    }
+    if (!cp.trim() || !colonia.trim()) { alert("Código Postal y Colonia son obligatorios."); return; }
+    if (!/^\d{10}$/.test(telefono.trim())) { setErrorTelefono("El teléfono debe tener exactamente 10 dígitos."); return; }
     setErrorTelefono("");
     setPaso("menores-scan");
   };
@@ -248,7 +550,6 @@ const RegistroCertificadoMedico = () => {
     }
     setErrorEscaneo("");
     setTextoEscaneadoCrudo("");
-
     let bloqueo = null;
     if (datos.curp === tutorCurpDatos?.curp) {
       bloqueo = "Esta CURP es la misma que la del tutor.";
@@ -260,7 +561,6 @@ const RegistroCertificadoMedico = () => {
       setVerificandoDuplicado(false);
       if (duplicado) bloqueo = "Esta CURP ya está registrada (como tutor o como menor) en un trámite anterior.";
     }
-
     setMenorCurpDatos({ ...datos, bloqueo });
     if (!bloqueo) {
       setMenorForm({
@@ -272,34 +572,20 @@ const RegistroCertificadoMedico = () => {
   };
 
   const confirmarMenorActual = () => {
-    if (!menorForm.nombre.trim()) {
-      setErrorMenor("El nombre es obligatorio.");
-      return;
-    }
+    if (!menorForm.nombre.trim()) { setErrorMenor("El nombre es obligatorio."); return; }
     const nuevo = { ...menorForm, curp: menorCurpDatos.curp, edad: menorCurpDatos.edad };
     const listaActualizada = [...menores, nuevo];
     setMenores(listaActualizada);
     setMenorCurpDatos(null);
     setMenorForm({ nombre: "", a_paterno: "", a_materno: "" });
     setErrorMenor("");
-    if (listaActualizada.length >= numMenores) {
-      setPaso("cita");
-    }
+    if (listaActualizada.length >= numMenores) setPaso("cita");
   };
 
   const handleSubmit = async () => {
-    if (!fechaCita || !horaCita) {
-      alert("Selecciona fecha y horario de la cita.");
-      return;
-    }
-    if (!comoSeEntero) {
-      alert("Selecciona cómo te enteraste del beneficio.");
-      return;
-    }
-    if (comoSeEntero === "OTRO" && !comoSeEnteroOtro.trim()) {
-      alert("Describe cómo te enteraste.");
-      return;
-    }
+    if (!fechaCita || !horaCita) { alert("Selecciona fecha y horario de la cita."); return; }
+    if (!comoSeEntero) { alert("Selecciona cómo te enteraste del beneficio."); return; }
+    if (comoSeEntero === "OTRO" && !comoSeEnteroOtro.trim()) { alert("Describe cómo te enteraste."); return; }
     setEnviando(true);
     setErrorEnvio("");
     try {
@@ -314,7 +600,6 @@ const RegistroCertificadoMedico = () => {
         setEnviando(false);
         return;
       }
-
       const folio = generarFolio();
       const { data: registro, error } = await supabase
         .from("beneficiarios_certificados")
@@ -338,7 +623,6 @@ const RegistroCertificadoMedico = () => {
         .select()
         .single();
       if (error) throw error;
-
       if (menores.length) {
         const filas = menores.map((m) => ({
           beneficiario_certificado_id: registro.id,
@@ -353,7 +637,6 @@ const RegistroCertificadoMedico = () => {
         const { error: errMenores } = await supabase.from("beneficiarios_certificados_menores").insert(filas);
         if (errMenores) throw errMenores;
       }
-
       setFolioFinal(folio);
       setPaso("confirmacion");
 
@@ -377,37 +660,165 @@ const RegistroCertificadoMedico = () => {
     }
   };
 
-  return (
-    <div className="min-h-screen bg-slate-50 py-6 px-4">
-      <div className="max-w-lg mx-auto">
-        <div className="text-center mb-5 print:hidden">
-          <h1 className="text-xl font-bold text-slate-800">Registro — Certificado Médico</h1>
-          <p className="text-sm text-slate-500 mt-1">
-            ¿Ya tienes una cita?{" "}
-            <button onClick={() => navigate("/registro-certificado-medico/reagendar")} className="text-blue-600 hover:underline">
-              Búscala o reagéndala aquí
-            </button>
-          </p>
-        </div>
+  // Genera PDF profesional usando html2canvas + jsPDF
+  const generarComprobantePDF = async () => {
+    if (!ticketRef.current) return;
+    setGenerandoPDF(true);
+    try {
+      await new Promise((r) => setTimeout(r, 200));
+      const canvas = await html2canvas(ticketRef.current, {
+        scale: 2, useCORS: true, allowTaint: true, logging: false, backgroundColor: "#ffffff",
+      });
+      const imgData = canvas.toDataURL("image/png");
+      const pageW = 148;
+      const pageH = (canvas.height * pageW) / canvas.width;
+      const pdf = new jsPDF({ orientation: "portrait", unit: "mm", format: [pageW, pageH] });
+      pdf.addImage(imgData, "PNG", 0, 0, pageW, pageH);
+      pdf.save(`Comprobante-${folioFinal}.pdf`);
+    } catch (err) {
+      console.error("Error generando PDF:", err);
+      alert("No se pudo generar el PDF. Intenta de nuevo.");
+    } finally {
+      setGenerandoPDF(false);
+    }
+  };
 
+  // Abre WhatsApp con el comprobante completo como mensaje
+  const compartirWhatsApp = () => {
+    const nombreTutor = `${tutorForm.nombre} ${tutorForm.a_paterno} ${tutorForm.a_materno}`.trim();
+    const fechaLarga = formatearFechaLarga(fechaCita);
+    const listaMenores = menores
+      .map((m, i) => `  ${i + 1}. ${m.nombre} ${m.a_paterno} ${m.a_materno} (${m.edad} años)`)
+      .join("\n");
+
+    const msg = [
+      `*✅ Comprobante de Registro — Certificado Médico*`,
+      ``,
+      `📋 *Folio:* \`${folioFinal}\``,
+      `📅 *Fecha de cita:* ${fechaLarga}`,
+      `🕙 *Hora:* ${horaCita} hrs`,
+      ``,
+      `👤 *Tutor responsable:*`,
+      `${nombreTutor}`,
+      ``,
+      ...(menores.length > 0 ? [
+        `👶 *Menores beneficiarios (${menores.length}):*`,
+        listaMenores,
+        ``,
+      ] : []),
+      `📌 *Recuerda traer el día de tu cita:*`,
+      `• Este comprobante (impreso o digital)`,
+      `• CURP original del tutor`,
+      `• CURP de cada menor beneficiario`,
+      `• Llegar 15 minutos antes`,
+      ``,
+      `🔄 ¿Necesitas reagendar?`,
+      `sm-estructura.netlify.app/registro-certificado-medico/reagendar`,
+    ].join("\n");
+
+    window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, "_blank");
+  };
+
+  const generadoEn = new Date().toLocaleDateString("es-MX", {
+    day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit",
+  });
+
+  // ── Render ────────────────────────────────────────────────────────────────
+  return (
+    <div className="min-h-screen bg-slate-100">
+
+      {/* Ticket off-screen para PDF */}
+      {folioFinal && (
+        <TicketComprobante
+          ref={ticketRef}
+          folio={folioFinal}
+          fecha={fechaCita}
+          hora={horaCita}
+          tutor={`${tutorForm.nombre} ${tutorForm.a_paterno} ${tutorForm.a_materno}`.trim()}
+          curpTutor={tutorCurpDatos?.curp ?? ""}
+          menores={menores}
+          generadoEn={generadoEn}
+        />
+      )}
+
+      {/* ── Header ─────────────────────────────────────────────────────────── */}
+      <header className="bg-blue-900 sticky top-0 z-10 print:hidden">
+        <div className="max-w-lg mx-auto px-4 py-3 flex items-center justify-between">
+          <div>
+            <p className="text-[9px] font-bold text-blue-300 uppercase tracking-[0.2em] leading-none mb-0.5">Beneficio Social</p>
+            <h1 className="text-sm font-bold text-white leading-tight">Certificado Médico</h1>
+          </div>
+          {paso !== "confirmacion" && (
+            <button
+              onClick={() => navigate("/registro-certificado-medico/reagendar")}
+              className="text-xs text-blue-200 hover:text-white transition-colors font-semibold bg-blue-800 hover:bg-blue-700 px-3 py-1.5 rounded-lg"
+            >
+              ¿Ya tienes cita?
+            </button>
+          )}
+        </div>
+      </header>
+
+      <main className="max-w-lg mx-auto px-4 py-6">
+
+        {/* Barra de progreso */}
+        {paso !== "confirmacion" && <BarraProgreso paso={paso} />}
+
+        {/* Banner de error de escaneo */}
         {errorEscaneo && (
-          <div className="mb-3 text-center">
-            <p className="text-sm text-red-600">{errorEscaneo}</p>
-            {textoEscaneadoCrudo && (
-              <div className="mt-1 text-left bg-slate-100 border border-slate-200 rounded p-2">
-                <p className="text-xs text-slate-500 mb-1">Texto que sí leyó la cámara (cópialo y compártelo si el escaneo sigue fallando):</p>
-                <p className="text-xs font-mono text-slate-700 break-all select-all">{textoEscaneadoCrudo}</p>
+          <div className="mb-4 rounded-2xl bg-red-50 border border-red-200 p-3.5 animate-fade-in-up">
+            <div className="flex gap-3">
+              <div className="w-7 h-7 rounded-full bg-red-100 flex items-center justify-center flex-shrink-0">
+                <svg className="w-3.5 h-3.5 text-red-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                </svg>
               </div>
-            )}
+              <div className="flex-1">
+                <p className="text-sm font-bold text-red-800">Código no reconocido</p>
+                <p className="text-xs text-red-600 mt-0.5 leading-relaxed">{errorEscaneo}</p>
+                {textoEscaneadoCrudo && (
+                  <div className="mt-2 rounded-xl bg-red-100/60 p-2.5">
+                    <p className="text-[10px] text-red-500 mb-1 uppercase tracking-wide font-bold">Texto leído</p>
+                    <p className="text-xs font-mono text-red-800 break-all select-all">{textoEscaneadoCrudo}</p>
+                  </div>
+                )}
+              </div>
+            </div>
           </div>
         )}
 
+        {/* ── PASO 1: Tutor scan ──────────────────────────────────────────── */}
         {paso === "tutor-scan" && (
-          <div>
-            <StepHeader n={1} total={5} titulo="Escanea la CURP del padre, madre o tutor" />
-            {verificandoDuplicado && <p className="text-sm text-slate-400 mb-2">Verificando CURP...</p>}
-            {!tutorCurpDatos ? (
-              <EscanerQR onScan={handleTutorScan} />
+          <div className="space-y-4 animate-fade-in-up">
+            <div>
+              <h2 className="text-lg font-bold text-slate-900">Identifica al tutor</h2>
+              <p className="text-sm text-slate-500 mt-1 leading-relaxed">
+                Escanea el código QR de la CURP del padre, madre o tutor legal.
+                Puedes encontrarlo en la CURP impresa o descargada desde CURP en línea del gobierno.
+              </p>
+            </div>
+
+            {verificandoDuplicado ? (
+              <Card className="p-8 flex flex-col items-center gap-3">
+                <Spinner lg />
+                <p className="text-sm font-bold text-slate-700">Verificando CURP</p>
+                <p className="text-xs text-slate-400">Consultando registros anteriores…</p>
+              </Card>
+            ) : !tutorCurpDatos ? (
+              <>
+                {!scannerTutorActivo ? (
+                  <BotonesEscanear
+                    onClick={() => { setScannerTutorActivo(true); setErrorEscaneo(""); setTextoEscaneadoCrudo(""); }}
+                    titulo="Escanear CURP del tutor"
+                    subtitulo="Acerca el documento con el código QR a la cámara. La lectura es automática."
+                    badge="Mayor de 18 años"
+                  />
+                ) : (
+                  <div className="animate-fade-in-up">
+                    <EscanerQR onScan={handleTutorScan} onCerrar={() => setScannerTutorActivo(false)} />
+                  </div>
+                )}
+              </>
             ) : (
               <ConfirmarPersona
                 datosCurp={tutorCurpDatos}
@@ -423,55 +834,124 @@ const RegistroCertificadoMedico = () => {
           </div>
         )}
 
+        {/* ── PASO 2: Contacto ────────────────────────────────────────────── */}
         {paso === "contacto" && (
-          <div>
-            <StepHeader n={2} total={5} titulo="Contacto y menores beneficiarios" />
-            <div className="border rounded-lg p-3 bg-white shadow-sm space-y-2">
-              <input placeholder="Código Postal" maxLength={5} value={cp} onChange={(e) => handleCodigoPostalChange(e.target.value)} className="border p-2 rounded w-full" />
-              <select value={colonia} onChange={(e) => setColonia(e.target.value)} className="border p-2 rounded w-full">
-                <option value="">{colonias.length ? "Selecciona colonia" : "Ingresa el C.P. para ver colonias"}</option>
-                {colonias.map((c, i) => <option key={i} value={c}>{c}</option>)}
-              </select>
-
-              <div className="pt-2 border-t">
-                <p className="text-xs font-semibold text-slate-500 mb-1">Teléfono de contacto (10 dígitos)</p>
-                <input
-                  type="tel"
-                  maxLength={10}
-                  placeholder="10 dígitos"
-                  value={telefono}
-                  onChange={(e) => setTelefono(e.target.value.replace(/\D/g, ""))}
-                  className="border p-2 rounded w-full"
-                />
-                {errorTelefono && <p className="text-sm text-red-600 mt-1">{errorTelefono}</p>}
-                <p className="text-xs text-slate-400 mt-1">Te enviaremos tu comprobante de cita por WhatsApp a este número.</p>
-              </div>
-
-              <div className="pt-2 border-t">
-                <p className="text-xs font-semibold text-slate-500 mb-1">¿Cuántos menores serán beneficiarios?</p>
-                <input
-                  type="number"
-                  min={1}
-                  max={10}
-                  value={numMenores}
-                  onChange={(e) => setNumMenores(Math.max(1, Number(e.target.value) || 1))}
-                  className="border p-2 rounded w-full"
-                />
-              </div>
-
-              <button type="button" onClick={confirmarContacto} className="bg-emerald-600 text-white px-4 py-2 rounded text-sm">
-                Continuar
-              </button>
+          <div className="space-y-4 animate-fade-in-up">
+            <div>
+              <h2 className="text-lg font-bold text-slate-900">Datos de contacto</h2>
+              <p className="text-sm text-slate-500 mt-1 leading-relaxed">
+                Solo pedimos los datos estrictamente necesarios para coordinar tu cita. No compartimos tu información.
+              </p>
             </div>
+
+            <Card className="divide-y divide-slate-100">
+              <div className="px-4 py-4 space-y-3">
+                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Domicilio</p>
+                <Campo label="Código Postal" required>
+                  <InputField placeholder="Ej. 06600" maxLength={5} value={cp}
+                    onChange={(e) => handleCodigoPostalChange(e.target.value)} />
+                </Campo>
+                <Campo label="Colonia" required>
+                  <SelectField value={colonia} onChange={(e) => setColonia(e.target.value)}>
+                    <option value="">{colonias.length ? "Selecciona tu colonia" : "Ingresa el C.P. primero"}</option>
+                    {colonias.map((c, i) => <option key={i} value={c}>{c}</option>)}
+                  </SelectField>
+                </Campo>
+              </div>
+
+              <div className="px-4 py-4 space-y-3">
+                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Teléfono</p>
+                <Campo label="Número de contacto (10 dígitos)" required>
+                  <InputField type="tel" maxLength={10} placeholder="Ej. 5512345678" value={telefono}
+                    onChange={(e) => setTelefono(e.target.value.replace(/\D/g, ""))} />
+                  {errorTelefono && <p className="text-xs text-red-600 font-bold mt-1">{errorTelefono}</p>}
+                  <p className="text-xs text-slate-400 mt-1">Te enviaremos tu comprobante de cita por WhatsApp a este número.</p>
+                </Campo>
+              </div>
+
+              <div className="px-4 py-4 space-y-3">
+                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Menores a registrar</p>
+                <Campo label="¿Cuántos menores recibirán el beneficio?" required>
+                  <InputField type="number" min={1} max={10} value={numMenores}
+                    onChange={(e) => setNumMenores(Math.max(1, Number(e.target.value) || 1))} />
+                </Campo>
+                <div className="flex gap-2 bg-blue-50 border border-blue-100 rounded-xl p-3">
+                  <svg className="w-3.5 h-3.5 text-blue-600 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  <p className="text-xs text-blue-700 leading-relaxed font-medium">
+                    En el siguiente paso escanearás la CURP de cada menor. Solo aplica para menores de 15 años.
+                  </p>
+                </div>
+              </div>
+
+              <div className="px-4 py-3">
+                <Btn type="button" v="primary" onClick={confirmarContacto} className="w-full justify-center">
+                  Continuar <IcoArrow />
+                </Btn>
+              </div>
+            </Card>
           </div>
         )}
 
+        {/* ── PASO 3: Menores scan ─────────────────────────────────────────── */}
         {paso === "menores-scan" && (
-          <div>
-            <StepHeader n={3} total={5} titulo={`Menor ${menores.length + 1} de ${numMenores}: escanea su CURP`} />
-            {verificandoDuplicado && <p className="text-sm text-slate-400 mb-2">Verificando CURP...</p>}
-            {!menorCurpDatos ? (
-              <EscanerQR onScan={handleMenorScan} titulo="Escanea el código QR de la CURP del menor" />
+          <div className="space-y-4 animate-fade-in-up">
+            <div>
+              <div className="flex items-baseline justify-between">
+                <h2 className="text-lg font-bold text-slate-900">
+                  Menor {menores.length + 1} de {numMenores}
+                </h2>
+                <span className="text-xs bg-blue-100 text-blue-800 font-bold px-2.5 py-1 rounded-full">
+                  {menores.length}/{numMenores} completados
+                </span>
+              </div>
+              <p className="text-sm text-slate-500 mt-1 leading-relaxed">
+                Escanea el código QR de la CURP del menor. Cada menor debe tener su propia CURP.
+              </p>
+            </div>
+
+            {menores.length > 0 && (
+              <Card className="p-3.5">
+                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2.5">Menores ya registrados</p>
+                <div className="space-y-2">
+                  {menores.map((m, i) => (
+                    <div key={i} className="flex items-center gap-2">
+                      <div className="w-5 h-5 rounded-full bg-emerald-100 flex items-center justify-center flex-shrink-0">
+                        <IcoCheck className="w-2.5 h-2.5 text-emerald-600" />
+                      </div>
+                      <p className="text-sm text-slate-700 font-semibold">
+                        {m.nombre} {m.a_paterno} {m.a_materno}
+                        <span className="text-slate-400 font-normal ml-1 text-xs">· {m.edad} años</span>
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              </Card>
+            )}
+
+            {verificandoDuplicado ? (
+              <Card className="p-8 flex flex-col items-center gap-3">
+                <Spinner lg />
+                <p className="text-sm font-bold text-slate-700">Verificando CURP</p>
+                <p className="text-xs text-slate-400">Un momento…</p>
+              </Card>
+            ) : !menorCurpDatos ? (
+              <>
+                {!scannerMenorActivo ? (
+                  <BotonesEscanear
+                    onClick={() => { setScannerMenorActivo(true); setErrorEscaneo(""); setTextoEscaneadoCrudo(""); }}
+                    titulo={`Escanear CURP del menor ${menores.length + 1}`}
+                    subtitulo="Acerca la CURP impresa o descargada del menor a la cámara."
+                    badge="Menor de 15 años"
+                  />
+                ) : (
+                  <div className="animate-fade-in-up">
+                    <EscanerQR onScan={handleMenorScan} titulo="Escanea el código QR de la CURP del menor"
+                      onCerrar={() => setScannerMenorActivo(false)} />
+                  </div>
+                )}
+              </>
             ) : (
               <ConfirmarPersona
                 datosCurp={menorCurpDatos}
@@ -484,165 +964,335 @@ const RegistroCertificadoMedico = () => {
                 textoRequisito="Este beneficio es solo para menores de 15 años. Esta CURP no cumple el requisito."
               />
             )}
-            {menores.length > 0 && (
-              <p className="text-xs text-slate-400 mt-2">Ya registrados: {menores.map((m) => m.nombre).join(", ")}</p>
-            )}
           </div>
         )}
 
+        {/* ── PASO 4: Cita ─────────────────────────────────────────────────── */}
         {paso === "cita" && (
-          <div>
-            <StepHeader n={4} total={5} titulo="Agenda tu cita" />
-            <div className="border rounded-lg p-3 bg-white shadow-sm">
-              <p className="text-xs text-slate-500 mb-2">
-                Lunes a viernes, 9:00 a 15:00 (el jueves 16 de julio arranca a las 9:30) · Cupo de {CUPO_POR_SLOT} personas por horario
+          <div className="space-y-4 animate-fade-in-up">
+            <div>
+              <h2 className="text-lg font-bold text-slate-900">Elige tu cita</h2>
+              <p className="text-sm text-slate-500 mt-1">
+                Lunes a viernes · 9:00 – 15:00 hrs · Máximo {CUPO_POR_SLOT} personas por horario. La disponibilidad es en tiempo real.
               </p>
-              <div className="flex flex-wrap gap-1.5 mb-3">
-                {dias.map((d) => (
-                  <button
-                    key={d.iso}
-                    type="button"
-                    onClick={() => { setFechaCita(d.iso); setHoraCita(""); }}
-                    className={`px-2.5 py-1.5 rounded-lg text-xs font-medium border ${
-                      fechaCita === d.iso ? "bg-blue-600 text-white border-blue-600" : "bg-white text-slate-600 border-slate-200 hover:bg-slate-50"
-                    }`}
-                  >
-                    {d.label}
-                  </button>
-                ))}
+            </div>
+
+            <Card className="divide-y divide-slate-100">
+              <div className="px-4 py-4">
+                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-3">Selecciona una fecha</p>
+                {dias.length === 0 ? (
+                  <p className="text-sm text-slate-400">No hay fechas disponibles actualmente.</p>
+                ) : (
+                  <div className="flex flex-wrap gap-1.5">
+                    {dias.map((d) => (
+                      <button key={d.iso} type="button"
+                        onClick={() => { setFechaCita(d.iso); setHoraCita(""); }}
+                        className={`px-3 py-1.5 rounded-xl text-xs font-bold border transition-all capitalize ${
+                          fechaCita === d.iso
+                            ? "bg-blue-800 text-white border-blue-800 shadow-sm"
+                            : "bg-white text-slate-600 border-slate-200 hover:border-blue-400 hover:text-blue-700"
+                        }`}
+                      >
+                        {d.label}
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
 
               {fechaCita && (
-                cargandoOcupacion ? (
-                  <p className="text-sm text-slate-400">Cargando horarios...</p>
-                ) : (
-                  <div className="grid grid-cols-3 sm:grid-cols-4 gap-1.5">
-                    {horarios.map((h) => {
-                      const ocupados = ocupacion[`${fechaCita}_${h}`] ?? 0;
-                      const lleno = ocupados >= CUPO_POR_SLOT;
-                      return (
-                        <button
-                          key={h}
-                          type="button"
-                          disabled={lleno}
-                          onClick={() => setHoraCita(h)}
-                          className={`px-2 py-1.5 rounded-lg text-xs font-medium border ${
-                            lleno
-                              ? "bg-slate-100 text-slate-300 border-slate-100 cursor-not-allowed"
-                              : horaCita === h
-                                ? "bg-emerald-600 text-white border-emerald-600"
-                                : "bg-white text-slate-600 border-slate-200 hover:bg-slate-50"
-                          }`}
-                        >
-                          {h} {lleno ? "· lleno" : `· ${CUPO_POR_SLOT - ocupados} lib.`}
-                        </button>
-                      );
-                    })}
-                  </div>
-                )
-              )}
-
-              <button
-                type="button"
-                disabled={!fechaCita || !horaCita}
-                onClick={() => setPaso("encuesta")}
-                className="mt-3 bg-emerald-600 text-white px-4 py-2 rounded text-sm disabled:opacity-40"
-              >
-                Continuar
-              </button>
-            </div>
-          </div>
-        )}
-
-        {paso === "encuesta" && (
-          <div>
-            <StepHeader n={5} total={5} titulo="Última pregunta" />
-            <div className="border rounded-lg p-3 bg-white shadow-sm">
-              <p className="text-sm font-medium text-slate-700 mb-2">¿Cómo te enteraste de este beneficio?</p>
-              <div className="space-y-1.5">
-                {[
-                  { v: "REDES_SOCIALES", l: "Redes sociales" },
-                  { v: "SM_INVITO", l: "Una SM me invitó" },
-                  { v: "OTRO", l: "Otro" },
-                ].map((op) => (
-                  <label key={op.v} className="flex items-center gap-2 text-sm">
-                    <input type="radio" name="como_se_entero" checked={comoSeEntero === op.v} onChange={() => setComoSeEntero(op.v)} />
-                    {op.l}
-                  </label>
-                ))}
-              </div>
-              {comoSeEntero === "OTRO" && (
-                <input
-                  placeholder="¿Cómo?"
-                  value={comoSeEnteroOtro}
-                  onChange={(e) => setComoSeEnteroOtro(e.target.value.toUpperCase())}
-                  className="border p-2 rounded w-full mt-2"
-                />
-              )}
-              {errorEnvio && <p className="text-sm text-red-600 mt-2">{errorEnvio}</p>}
-              <button
-                type="button"
-                disabled={enviando}
-                onClick={handleSubmit}
-                className="mt-3 bg-blue-600 text-white px-4 py-2 rounded text-sm disabled:opacity-50"
-              >
-                {enviando ? "Guardando..." : "Confirmar registro"}
-              </button>
-            </div>
-          </div>
-        )}
-
-        {paso === "confirmacion" && (
-          <div className="border rounded-lg p-4 bg-white shadow-sm">
-            <div className="text-center mb-4">
-              <p className="text-emerald-600 text-3xl mb-2">✔</p>
-              <h2 className="text-lg font-bold text-slate-800 mb-1">¡Registro confirmado!</h2>
-              <p className="text-xs text-slate-400">Folio</p>
-              <p className="text-2xl font-mono font-bold text-blue-700 tracking-widest">{folioFinal}</p>
-              <p className="text-xs text-slate-400 mt-1">También te lo enviamos por WhatsApp al {telefono}.</p>
-              {folioFinal && (
-                <div className="flex justify-center mt-3">
-                  <QRCodeSVG value={folioFinal} size={140} />
+                <div className="px-4 py-4">
+                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-3">
+                    Horarios para {dias.find(d => d.iso === fechaCita)?.label}
+                  </p>
+                  {cargandoOcupacion ? (
+                    <div className="flex items-center gap-2.5 text-sm text-slate-400 py-3">
+                      <Spinner /> Verificando disponibilidad…
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-4 sm:grid-cols-5 gap-1.5">
+                      {horarios.map((h) => {
+                        const ocupados = ocupacion[`${fechaCita}_${h}`] ?? 0;
+                        const lleno = ocupados >= CUPO_POR_SLOT;
+                        const libres = CUPO_POR_SLOT - ocupados;
+                        return (
+                          <button key={h} type="button" disabled={lleno} onClick={() => setHoraCita(h)}
+                            className={`flex flex-col items-center px-1.5 py-2 rounded-xl text-xs font-bold border transition-all ${
+                              lleno
+                                ? "bg-slate-50 text-slate-300 border-slate-100 cursor-not-allowed"
+                                : horaCita === h
+                                ? "bg-emerald-600 text-white border-emerald-600 shadow-sm"
+                                : "bg-white text-slate-700 border-slate-200 hover:border-emerald-400 hover:text-emerald-700"
+                            }`}
+                          >
+                            <span>{h}</span>
+                            <span className={`text-[9px] font-normal mt-0.5 ${
+                              lleno ? "text-slate-300" : horaCita === h ? "text-emerald-100" : "text-slate-400"
+                            }`}>
+                              {lleno ? "Lleno" : `${libres} lib.`}
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
               )}
-            </div>
 
-            <div className="border-t pt-3 space-y-3 text-sm text-left">
-              <div>
-                <p className="text-xs font-bold uppercase text-slate-400">Cita</p>
-                <p>{fechaCita} a las {horaCita} hrs</p>
-              </div>
-              <div>
-                <p className="text-xs font-bold uppercase text-slate-400">Tutor</p>
-                <p>{tutorForm.nombre} {tutorForm.a_paterno} {tutorForm.a_materno}</p>
-              </div>
-              <div>
-                <p className="text-xs font-bold uppercase text-slate-400">Menores ({menores.length})</p>
-                <ul className="list-disc list-inside">
-                  {menores.map((m, i) => (
-                    <li key={i}>
-                      {m.nombre} {m.a_paterno} {m.a_materno} ({m.edad} años)
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            </div>
+              {fechaCita && horaCita && (
+                <div className="px-4 py-3">
+                  <div className="flex items-center gap-2.5 bg-emerald-50 border border-emerald-200 rounded-xl px-3.5 py-2.5">
+                    <IcoCheck className="w-4 h-4 text-emerald-600 flex-shrink-0" />
+                    <p className="text-sm font-bold text-emerald-800">
+                      {dias.find(d => d.iso === fechaCita)?.label} · {horaCita} hrs
+                    </p>
+                  </div>
+                </div>
+              )}
 
-            <div className="flex gap-3 mt-4 print:hidden">
-              <button type="button" onClick={() => window.print()} className="bg-blue-600 text-white px-4 py-2 rounded text-sm">
-                🖨 Imprimir comprobante
-              </button>
-              <button
-                type="button"
-                onClick={() => { window.location.href = "/registro-certificado-medico"; }}
-                className="text-sm text-slate-500 hover:underline"
-              >
-                Registrar otro
-              </button>
-            </div>
+              <div className="px-4 py-3">
+                <Btn type="button" v="primary" disabled={!fechaCita || !horaCita}
+                  onClick={() => setPaso("encuesta")} className="w-full justify-center">
+                  Continuar <IcoArrow />
+                </Btn>
+              </div>
+            </Card>
           </div>
         )}
-      </div>
+
+        {/* ── PASO 5: Encuesta ─────────────────────────────────────────────── */}
+        {paso === "encuesta" && (
+          <div className="space-y-4 animate-fade-in-up">
+            <div>
+              <h2 className="text-lg font-bold text-slate-900">Última pregunta</h2>
+              <p className="text-sm text-slate-500 mt-1">
+                Ya casi terminamos. Esta información nos ayuda a mejorar la difusión del programa.
+              </p>
+            </div>
+
+            {/* Resumen rápido */}
+            <Card className="px-4 py-3">
+              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">Tu registro hasta ahora</p>
+              <div className="space-y-1.5">
+                <div className="flex items-center gap-2">
+                  <IcoCheck className="w-3 h-3 text-emerald-500 flex-shrink-0" />
+                  <p className="text-xs text-slate-600">
+                    <span className="font-semibold">Tutor:</span> {tutorForm.nombre} {tutorForm.a_paterno}
+                  </p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <IcoCheck className="w-3 h-3 text-emerald-500 flex-shrink-0" />
+                  <p className="text-xs text-slate-600">
+                    <span className="font-semibold">{menores.length} menor{menores.length !== 1 ? "es" : ""}</span> registrado{menores.length !== 1 ? "s" : ""}
+                  </p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <IcoCheck className="w-3 h-3 text-emerald-500 flex-shrink-0" />
+                  <p className="text-xs text-slate-600">
+                    <span className="font-semibold">Cita:</span> {dias.find(d => d.iso === fechaCita)?.label} · {horaCita} hrs
+                  </p>
+                </div>
+              </div>
+            </Card>
+
+            <Card className="divide-y divide-slate-100">
+              <div className="px-4 py-4 space-y-2">
+                <p className="text-sm font-bold text-slate-700 mb-3">¿Cómo te enteraste de este beneficio?</p>
+                {[
+                  { v: "REDES_SOCIALES", l: "Redes sociales", d: "Facebook, Instagram, etc.", icon: "📱" },
+                  { v: "SM_INVITO",      l: "Una SM me invitó", d: "Promotora o trabajadora social", icon: "👤" },
+                  { v: "OTRO",           l: "Otro medio", d: "Volante, periódico, conocido, etc.", icon: "💬" },
+                ].map((op) => (
+                  <label key={op.v} className={`flex items-center gap-3 p-3 rounded-xl border cursor-pointer transition-all ${
+                    comoSeEntero === op.v
+                      ? "border-blue-400 bg-blue-50"
+                      : "border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50"
+                  }`}>
+                    <input type="radio" name="como_se_entero" checked={comoSeEntero === op.v}
+                      onChange={() => setComoSeEntero(op.v)} className="sr-only" />
+                    <span className="text-lg leading-none flex-shrink-0">{op.icon}</span>
+                    <div className="flex-1">
+                      <p className={`text-sm font-bold ${comoSeEntero === op.v ? "text-blue-800" : "text-slate-700"}`}>{op.l}</p>
+                      <p className="text-xs text-slate-400">{op.d}</p>
+                    </div>
+                    {comoSeEntero === op.v && (
+                      <div className="w-5 h-5 rounded-full bg-blue-700 flex items-center justify-center flex-shrink-0">
+                        <IcoCheck className="w-2.5 h-2.5 text-white" />
+                      </div>
+                    )}
+                  </label>
+                ))}
+
+                {comoSeEntero === "OTRO" && (
+                  <Campo label="¿Cómo específicamente?">
+                    <InputField placeholder="Cuéntanos brevemente" value={comoSeEnteroOtro}
+                      onChange={(e) => setComoSeEnteroOtro(e.target.value.toUpperCase())} />
+                  </Campo>
+                )}
+              </div>
+
+              {errorEnvio && (
+                <div className="px-4 py-3 bg-red-50">
+                  <p className="text-sm text-red-700 font-bold">{errorEnvio}</p>
+                </div>
+              )}
+
+              <div className="px-4 py-3">
+                <Btn type="button" v="primary" disabled={enviando} onClick={handleSubmit} className="w-full justify-center">
+                  {enviando ? <><Spinner /> Guardando…</> : <>Confirmar registro <IcoArrow /></>}
+                </Btn>
+              </div>
+            </Card>
+          </div>
+        )}
+
+        {/* ── Confirmación ──────────────────────────────────────────────────── */}
+        {paso === "confirmacion" && (
+          <div className="space-y-4 animate-fade-in-up">
+
+            {/* Hero */}
+            <div className="text-center py-6 print:py-2">
+              <div className="w-16 h-16 bg-emerald-100 rounded-full flex items-center justify-center mx-auto mb-4 print:hidden">
+                <IcoCheck className="w-8 h-8 text-emerald-600" />
+              </div>
+              <h2 className="text-2xl font-bold text-slate-900">¡Registro confirmado!</h2>
+              <p className="text-sm text-slate-500 mt-2 leading-relaxed max-w-xs mx-auto">
+                Tu cita ha sido guardada exitosamente. Descarga o guarda tu comprobante.
+              </p>
+            </div>
+
+            {/* Folio + QR en pantalla */}
+            <Card className="p-5 text-center">
+              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">Número de folio</p>
+              <p className="text-3xl font-mono font-bold text-blue-800 tracking-[0.18em] mb-5">{folioFinal}</p>
+              <div className="flex justify-center">
+                <div className="p-3.5 bg-white rounded-2xl border border-slate-200 shadow-sm inline-block">
+                  <QRCodeSVG value={folioFinal} size={148} />
+                </div>
+              </div>
+              <p className="text-xs text-slate-400 mt-3 leading-relaxed">
+                Presenta este QR en el módulo de atención el día de tu cita.
+              </p>
+              <p className="text-xs text-slate-400 mt-1 leading-relaxed">
+                También te lo enviamos por WhatsApp al {telefono}.
+              </p>
+            </Card>
+
+            {/* Detalle en pantalla */}
+            <Card className="overflow-hidden">
+              <div className="px-4 py-3 bg-slate-50 border-b border-slate-100">
+                <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Resumen de tu registro</p>
+              </div>
+              <div className="divide-y divide-slate-100">
+                <div className="px-4 py-3.5 flex items-start gap-3">
+                  <div className="w-7 h-7 rounded-lg bg-blue-50 flex items-center justify-center flex-shrink-0 mt-0.5">
+                    <svg className="w-3.5 h-3.5 text-blue-700" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                    </svg>
+                  </div>
+                  <div>
+                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wide mb-0.5">Cita</p>
+                    <p className="text-sm font-bold text-slate-900 capitalize">{formatearFechaLarga(fechaCita)}</p>
+                    <p className="text-sm text-slate-500">{horaCita} hrs</p>
+                  </div>
+                </div>
+                <div className="px-4 py-3.5 flex items-start gap-3">
+                  <div className="w-7 h-7 rounded-lg bg-blue-50 flex items-center justify-center flex-shrink-0 mt-0.5">
+                    <svg className="w-3.5 h-3.5 text-blue-700" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                    </svg>
+                  </div>
+                  <div>
+                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wide mb-0.5">Tutor</p>
+                    <p className="text-sm font-bold text-slate-900">{tutorForm.nombre} {tutorForm.a_paterno} {tutorForm.a_materno}</p>
+                    <p className="text-xs font-mono text-slate-400 mt-0.5">{tutorCurpDatos?.curp}</p>
+                  </div>
+                </div>
+                <div className="px-4 py-3.5 flex items-start gap-3">
+                  <div className="w-7 h-7 rounded-lg bg-blue-50 flex items-center justify-center flex-shrink-0 mt-0.5">
+                    <svg className="w-3.5 h-3.5 text-blue-700" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" />
+                    </svg>
+                  </div>
+                  <div>
+                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wide mb-1">Menores ({menores.length})</p>
+                    <div className="space-y-1">
+                      {menores.map((m, i) => (
+                        <p key={i} className="text-sm text-slate-700">
+                          {m.nombre} {m.a_paterno} {m.a_materno}
+                          <span className="text-xs text-slate-400 ml-1">· {m.edad} años</span>
+                        </p>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </Card>
+
+            {/* Recomendaciones en pantalla */}
+            <Card className="overflow-hidden">
+              <div className="px-4 py-3 bg-amber-50 border-b border-amber-100">
+                <p className="text-[10px] font-bold text-amber-700 uppercase tracking-widest">Qué debes traer el día de tu cita</p>
+              </div>
+              <div className="px-4 py-3.5 space-y-2">
+                {[
+                  "Llega 15 minutos antes de tu horario.",
+                  "Este comprobante (impreso o en tu celular).",
+                  "CURP original del tutor (papel o digital).",
+                  "CURP original de cada menor beneficiario.",
+                  "Los menores deben acudir con el tutor registrado.",
+                ].map((rec, i) => (
+                  <div key={i} className="flex items-start gap-2.5">
+                    <div className="w-4 h-4 rounded-full bg-amber-100 flex items-center justify-center flex-shrink-0 mt-0.5">
+                      <IcoCheck className="w-2.5 h-2.5 text-amber-600" />
+                    </div>
+                    <p className="text-xs text-slate-600 leading-relaxed">{rec}</p>
+                  </div>
+                ))}
+              </div>
+            </Card>
+
+            {/* Acciones */}
+            <div className="space-y-2.5 print:hidden pb-8">
+              {/* PDF */}
+              <Btn type="button" v="primary" onClick={generarComprobantePDF}
+                disabled={generandoPDF} className="w-full justify-center py-3">
+                {generandoPDF ? (
+                  <><Spinner /> Generando PDF…</>
+                ) : (
+                  <>
+                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                    </svg>
+                    Descargar comprobante PDF
+                  </>
+                )}
+              </Btn>
+
+              {/* WhatsApp */}
+              <button
+                type="button"
+                onClick={compartirWhatsApp}
+                className="w-full flex items-center justify-center gap-3 px-4 py-3 rounded-xl font-bold text-sm text-white transition-all active:scale-95 shadow-sm"
+                style={{ background: "linear-gradient(135deg, #25D366 0%, #128C7E 100%)" }}
+              >
+                {/* WhatsApp icon */}
+                <svg className="w-5 h-5 flex-shrink-0" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/>
+                </svg>
+                Enviarme el comprobante por WhatsApp
+              </button>
+
+              <Btn type="button" v="ghost"
+                onClick={() => { window.location.href = "/registro-certificado-medico"; }}
+                className="w-full justify-center text-xs">
+                Registrar otro beneficiario
+              </Btn>
+            </div>
+
+          </div>
+        )}
+      </main>
     </div>
   );
 };

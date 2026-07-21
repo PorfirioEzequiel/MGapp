@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { GoogleMap, useJsApiLoader, Polygon, Marker, InfoWindow, Autocomplete } from '@react-google-maps/api';
+import { GoogleMap, useJsApiLoader, Polygon, Marker, InfoWindow, OverlayView, Autocomplete } from '@react-google-maps/api';
 
 const GOOGLE_API_KEY = 'AIzaSyCq9lepK0chTwx6vDjQlCftmP-IpCSBuPM';
 const GOOGLE_LIBRARIES = ['places'];
@@ -134,6 +134,106 @@ const getCenter = (pathGroups) => {
 };
 
 const fmt = (v) => (v != null && v !== '' ? Number(v).toLocaleString() : null);
+
+// ── Print ─────────────────────────────────────────────────────────────────────
+
+const PRINT_STYLE = `
+  @media print {
+    @page { size: A4 landscape; margin: 8mm 12mm; }
+    * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+    body * { visibility: hidden; }
+    .mp-root, .mp-root * { visibility: visible; }
+    .mp-root {
+      position: fixed !important; top: 0 !important; left: 0 !important;
+      width: 100% !important; height: 100% !important;
+      background: white !important;
+      display: flex !important; flex-direction: column !important;
+      z-index: 99999 !important;
+    }
+    .no-print { display: none !important; visibility: hidden !important; }
+    .print-only { display: block !important; visibility: visible !important; }
+    .print-flex { display: flex !important; visibility: visible !important; }
+  }
+  .print-only, .print-flex { display: none; }
+`;
+
+const PrintHeader = ({ ctx }) => {
+  const dt = new Date().toLocaleDateString('es-MX', { day: '2-digit', month: 'long', year: 'numeric' });
+  return (
+    <div className="print-flex" style={{
+      flexShrink: 0,
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      padding: '8px 16px',
+      background: 'linear-gradient(135deg, #0f2a4a 0%, #1d4ed8 100%)',
+      color: '#fff',
+      borderBottom: '3px solid #f59e0b',
+    }}>
+      <div>
+        <div style={{ fontSize: 17, fontWeight: 800, letterSpacing: '.06em', textTransform: 'uppercase', lineHeight: 1.1 }}>
+          Tablero Territorial
+          {ctx?.levelValue && (
+            <span style={{ marginLeft: 12, fontSize: 12, fontWeight: 500, opacity: .75, letterSpacing: '.04em' }}>
+              · {ctx.levelValue}
+            </span>
+          )}
+        </div>
+        {ctx?.breadcrumb && (
+          <div style={{ fontSize: 10, marginTop: 3, opacity: .65, letterSpacing: '.03em' }}>{ctx.breadcrumb}</div>
+        )}
+      </div>
+      <div style={{ textAlign: 'right' }}>
+        <div style={{ fontSize: 12, fontWeight: 700, opacity: .9 }}>{dt}</div>
+        <div style={{ fontSize: 9, marginTop: 2, opacity: .6, letterSpacing: '.05em', textTransform: 'uppercase' }}>
+          Informe operativo de campo
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const PrintFooter = ({ ctx }) => {
+  if (!ctx) return null;
+  const afPct = ctx.afiliados && ctx.credenciales
+    ? `${((ctx.credenciales / ctx.afiliados) * 100).toFixed(0)}%`
+    : null;
+  const items = [
+    { label: 'Lista Nominal', value: Number(ctx.listaNominal || 0).toLocaleString('es-MX'), accent: '#1d4ed8' },
+    { label: 'Secciones', value: ctx.secciones },
+    ctx.ubicados   && { label: 'Ubicados', value: ctx.ubicados },
+    ctx.promotores && { label: 'Promotores SM', value: ctx.promotores, accent: '#2563eb' },
+    ctx.fracciones && { label: 'Fracciones', value: ctx.fracciones },
+    ctx.afiliados  && { label: 'Afiliados', value: Number(ctx.afiliados).toLocaleString('es-MX'), accent: '#0f766e' },
+    ctx.credenciales && {
+      label: 'Credenciales entregadas',
+      value: `${Number(ctx.credenciales).toLocaleString('es-MX')}${afPct ? ` · ${afPct}` : ''}`,
+      accent: '#0f766e',
+    },
+  ].filter(Boolean);
+
+  return (
+    <div className="print-only" style={{ flexShrink: 0, background: '#f8fafc', borderTop: '2px solid #e2e8f0', padding: '7px 16px' }}>
+      <div className="print-flex" style={{ gap: 22, marginBottom: 5, flexWrap: 'wrap', alignItems: 'flex-start' }}>
+        {items.map((it, i) => (
+          <div key={i}>
+            <div style={{ fontSize: 7, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.1em', color: '#64748b', lineHeight: 1 }}>{it.label}</div>
+            <div style={{ fontSize: 16, fontWeight: 800, color: it.accent ?? '#0f172a', fontVariantNumeric: 'tabular-nums', lineHeight: 1.2, marginTop: 2 }}>{it.value}</div>
+          </div>
+        ))}
+      </div>
+      <div className="print-flex" style={{ justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid #e2e8f0', paddingTop: 5, marginTop: 3 }}>
+        <div style={{ fontSize: 9, color: '#475569' }}>
+          {ctx.sp && <span><strong>Coordinador SP:</strong> {ctx.sp}</span>}
+          {ctx.sp && ctx.seccional && <span style={{ margin: '0 10px', color: '#cbd5e1' }}>|</span>}
+          {ctx.seccional && <span><strong>Seccional RS:</strong> {ctx.seccional}</span>}
+        </div>
+        <div style={{ fontSize: 8, color: '#94a3b8' }}>
+          Documento informativo para operaciones en campo · Sistema de Gestión Electoral
+        </div>
+      </div>
+    </div>
+  );
+};
 
 // ── Tooltip de hover ──────────────────────────────────────────────────────────
 const GenderBar = ({ total, hombres, mujeres, noBinario, sub, isDark }) => {
@@ -341,6 +441,7 @@ const MapTerritorial = ({
   focusCoords = null,
   onClearFocus,
   afiliacionBySec = {},
+  printContext = null,
   editableLocation = null,
   onEditableLocationChange = null,
 }) => {
@@ -352,6 +453,7 @@ const MapTerritorial = ({
   const [currentStyle,    setCurrentStyle]    = useState('claro');
   const [hovered,         setHovered]         = useState(null);  // { data, tipo }
   const [tooltipPos,      setTooltipPos]      = useState({ x: 0, y: 0 });
+  const [generating,      setGenerating]      = useState(false);
 
   const isDark     = currentStyle === 'oscuro';
   const styleDef   = MAP_STYLE_DEFS[currentStyle];
@@ -412,6 +514,221 @@ const MapTerritorial = ({
   }, [editableLocation]);
 
   const onLoad = useCallback((map) => { mapRef.current = map; }, []);
+
+  // ── Generar PDF con formato ───────────────────────────────────────────────
+  const generatePDF = useCallback(async () => {
+    if (!mapRef.current || !window.google) return;
+    setGenerating(true);
+    try {
+      // 1. Fit bounds al contenido actual
+      const bounds = new window.google.maps.LatLngBounds();
+      let hasBounds = false;
+      const hasFracGeo = fraccionesGeo.some(f => f.geometry && parseWKT(f.geometry).length > 0);
+      const geoSource  = hasFracGeo ? fraccionesGeo : secciones;
+      geoSource.forEach(item => {
+        parseWKT(item.geometry ?? '').flat().forEach(p => { bounds.extend(p); hasBounds = true; });
+      });
+      if (hasBounds) mapRef.current.fitBounds(bounds, { top: 40, right: 40, bottom: 40, left: 40 });
+
+      // 2. Esperar que el mapa termine de mover
+      await new Promise(resolve => {
+        const listener = window.google.maps.event.addListenerOnce(mapRef.current, 'idle', resolve);
+        setTimeout(() => { window.google.maps.event.removeListener(listener); resolve(); }, 3000);
+      });
+      await new Promise(r => setTimeout(r, 200));
+
+      // 3. Obtener centro y zoom para Google Static Maps API
+      const center = mapRef.current.getCenter();
+      const zoom   = Math.min(mapRef.current.getZoom(), 15);
+      const clat   = center.lat().toFixed(6);
+      const clng   = center.lng().toFixed(6);
+
+      const simplify = (pts, maxPts = 16) => {
+        if (pts.length <= maxPts) return pts;
+        const step = Math.ceil(pts.length / maxPts);
+        const out = [];
+        for (let i = 0; i < pts.length; i += step) out.push(pts[i]);
+        return out;
+      };
+      const toHex6 = (hex) => hex.replace('#', '').substring(0, 6).padStart(6, '0');
+
+      let pathParams = '';
+      let urlLen = 0;
+      const URL_LIMIT = 7800;
+
+      if (hasFracGeo) {
+        fraccionesGeo.forEach(f => {
+          const lat = Number(f.sm?.latitud);
+          const located = f.sm && lat && !isNaN(lat) && lat !== 0;
+          const fill   = located ? '10B98160' : '94A3B860';
+          const stroke = located ? '047857ff' : '64748Bff';
+          parseWKT(f.geometry ?? '').forEach(ring => {
+            const pts = simplify(ring, 16);
+            const ptsStr = pts.map(p => `${p.lat.toFixed(5)},${p.lng.toFixed(5)}`).join('|');
+            const param = `&path=color:0x${stroke}|fillcolor:0x${fill}|weight:2|${ptsStr}`;
+            if (urlLen + param.length <= URL_LIMIT) { pathParams += param; urlLen += param.length; }
+          });
+        });
+      } else {
+        secciones.forEach(sec => {
+          const colors = sectorColorMap[sec.pologono] ?? SECTOR_COLORS[0];
+          const fill   = `${toHex6(colors.fill)}60`;
+          const stroke = `${toHex6(colors.stroke)}ff`;
+          parseWKT(sec.geometry ?? '').forEach(ring => {
+            const pts = simplify(ring, 16);
+            const ptsStr = pts.map(p => `${p.lat.toFixed(5)},${p.lng.toFixed(5)}`).join('|');
+            const param = `&path=color:0x${stroke}|fillcolor:0x${fill}|weight:2|${ptsStr}`;
+            if (urlLen + param.length <= URL_LIMIT) { pathParams += param; urlLen += param.length; }
+          });
+        });
+      }
+
+      // Área del mapa en A4 landscape ≈ 277×132 mm → solicitar 640×305 @scale=2 (=1280×610 px efectivos)
+      const staticUrl =
+        `https://maps.googleapis.com/maps/api/staticmap` +
+        `?center=${clat},${clng}&zoom=${zoom}&size=640x305&scale=2` +
+        `&maptype=roadmap&key=${GOOGLE_API_KEY}${pathParams}`;
+
+      // Descargar imagen como blob (sin restricciones CORS del canvas)
+      const resp = await fetch(staticUrl);
+      if (!resp.ok) throw new Error(`Static Maps HTTP ${resp.status}`);
+      const blob = await resp.blob();
+      const mapImgUrl = await new Promise((res, rej) => {
+        const reader = new FileReader();
+        reader.onload = () => res(reader.result);
+        reader.onerror = rej;
+        reader.readAsDataURL(blob);
+      });
+
+      // 4. Construir PDF con jsPDF
+      const { jsPDF } = await import('jspdf');
+      const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+      const W = 297, M = 10, CW = W - M * 2;
+
+      // ── Header ──────────────────────────────────────────────────────────
+      doc.setFillColor(15, 42, 74);
+      doc.rect(0, 0, W, 21, 'F');
+      doc.setFillColor(245, 158, 11);
+      doc.rect(0, 21, W, 2, 'F');
+
+      doc.setFillColor(29, 78, 216);
+      doc.roundedRect(M, 5, 13, 11, 1.5, 1.5, 'F');
+      doc.setFontSize(6.5);
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(255, 255, 255);
+      doc.text('MG', M + 6.5, 12, { align: 'center' });
+
+      doc.setFontSize(13);
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(255, 255, 255);
+      doc.text('TABLERO TERRITORIAL', M + 17, 10.5);
+
+      if (printContext?.breadcrumb) {
+        doc.setFontSize(7);
+        doc.setFont('helvetica', 'normal');
+        doc.setTextColor(148, 180, 230);
+        doc.text(printContext.breadcrumb, M + 17, 17);
+      }
+
+      const fecha = new Date().toLocaleDateString('es-MX', { day: '2-digit', month: 'long', year: 'numeric' });
+      doc.setFontSize(7);
+      doc.setFont('helvetica', 'normal');
+      doc.setTextColor(148, 180, 230);
+      doc.text(fecha, W - M, 9, { align: 'right' });
+
+      if (printContext?.levelValue) {
+        doc.setFontSize(10);
+        doc.setFont('helvetica', 'bold');
+        doc.setTextColor(253, 224, 120);
+        doc.text(printContext.levelValue, W - M, 18, { align: 'right' });
+      }
+
+      // ── Imagen del mapa ──────────────────────────────────────────────────
+      const mapY = 25, mapH = 132;
+      doc.setDrawColor(203, 213, 225);
+      doc.setLineWidth(0.3);
+      doc.rect(M, mapY, CW, mapH);
+      doc.addImage(mapImgUrl, 'JPEG', M, mapY, CW, mapH);
+
+      // ── Barra de estadísticas ────────────────────────────────────────────
+      const statsY = mapY + mapH + 3;
+      doc.setFillColor(248, 250, 252);
+      doc.rect(0, statsY, W, 30, 'F');
+      doc.setDrawColor(226, 232, 240);
+      doc.setLineWidth(0.3);
+      doc.line(0, statsY, W, statsY);
+
+      const afPct = printContext?.afiliados && printContext?.credenciales
+        ? ` (${((printContext.credenciales / printContext.afiliados) * 100).toFixed(0)}%)`
+        : '';
+
+      const items = [
+        printContext?.listaNominal && { label: 'Lista Nominal', value: Number(printContext.listaNominal).toLocaleString('es-MX'), rgb: [29, 78, 216] },
+        { label: 'Secciones', value: String(printContext?.secciones ?? '—'), rgb: [30, 64, 175] },
+        printContext?.ubicados    && { label: 'Ubicados', value: String(printContext.ubicados), rgb: [5, 150, 105] },
+        printContext?.promotores  && { label: 'Promotores SM', value: String(printContext.promotores), rgb: [37, 99, 235] },
+        printContext?.fracciones  && { label: 'Fracciones', value: String(printContext.fracciones), rgb: [79, 70, 229] },
+        printContext?.afiliados   && { label: 'Afiliados', value: Number(printContext.afiliados).toLocaleString('es-MX'), rgb: [15, 118, 110] },
+        printContext?.credenciales && { label: 'Credenciales', value: `${Number(printContext.credenciales).toLocaleString('es-MX')}${afPct}`, rgb: [15, 118, 110] },
+      ].filter(Boolean);
+
+      const colW = CW / items.length;
+      items.forEach((item, i) => {
+        const x = M + i * colW + colW / 2;
+        if (i > 0) {
+          doc.setDrawColor(226, 232, 240);
+          doc.setLineWidth(0.25);
+          doc.line(M + i * colW, statsY + 3, M + i * colW, statsY + 23);
+        }
+        doc.setFontSize(5.5);
+        doc.setFont('helvetica', 'bold');
+        doc.setTextColor(100, 116, 139);
+        doc.text(item.label.toUpperCase(), x, statsY + 6, { align: 'center' });
+
+        doc.setFontSize(12);
+        doc.setFont('helvetica', 'bold');
+        doc.setTextColor(...item.rgb);
+        doc.text(item.value, x, statsY + 17, { align: 'center' });
+      });
+
+      // ── Pie ──────────────────────────────────────────────────────────────
+      const footY = statsY + 29;
+      doc.setDrawColor(226, 232, 240);
+      doc.setLineWidth(0.25);
+      doc.line(M, footY, W - M, footY);
+
+      doc.setFontSize(7);
+      doc.setFont('helvetica', 'normal');
+      doc.setTextColor(71, 85, 105);
+      const respParts = [];
+      if (printContext?.sp)       respParts.push(`SP: ${printContext.sp}`);
+      if (printContext?.seccional) respParts.push(`RS: ${printContext.seccional}`);
+      if (respParts.length) doc.text(respParts.join('   ·   '), M, footY + 5);
+
+      doc.setFontSize(6);
+      doc.setTextColor(148, 163, 184);
+      doc.text('Documento informativo para operaciones en campo · Sistema de Gestión Electoral', W - M, footY + 5, { align: 'right' });
+
+      // ── Guardar ───────────────────────────────────────────────────────────
+      const name = (printContext?.levelValue ?? 'municipio').toLowerCase().replace(/[\s/]+/g, '-').replace(/[^a-z0-9-]/g, '');
+      doc.save(`tablero-${name}-${new Date().toISOString().split('T')[0]}.pdf`);
+
+    } catch (err) {
+      console.error('Error generando PDF:', err);
+      alert(`Error al generar el PDF: ${err.message}`);
+    } finally {
+      setGenerating(false);
+    }
+  }, [secciones, fraccionesGeo, printContext, sectorColorMap]);
+
+  // Inject print CSS once on mount
+  useEffect(() => {
+    const el = document.createElement('style');
+    el.id = 'map-print-style';
+    el.textContent = PRINT_STYLE;
+    document.head.appendChild(el);
+    return () => document.getElementById('map-print-style')?.remove();
+  }, []);
 
   // Clic en el mapa: coloca o mueve el marcador editable y, si cae dentro de
   // una fracción, la reporta para que el formulario reasigne esa fracción.
@@ -511,7 +828,10 @@ const MapTerritorial = ({
   };
 
   return (
-    <div className="flex flex-col h-full rounded-xl overflow-hidden shadow-lg border border-gray-200">
+    <div className="mp-root flex flex-col h-full">
+      <PrintHeader ctx={printContext} />
+
+      <div className="flex flex-col flex-1 overflow-hidden rounded-xl shadow-lg border border-gray-200">
 
       {/* ── Área del mapa ───────────────────────────────────────────────── */}
       <div
@@ -521,7 +841,7 @@ const MapTerritorial = ({
         onMouseLeave={() => setHovered(null)}
       >
         {/* Selector de capa flotante */}
-        <div className="absolute top-3 left-3 z-10 flex gap-1 bg-white/90 backdrop-blur-sm rounded-lg shadow-md p-1 border border-gray-200">
+        <div className="no-print absolute top-3 left-3 z-10 flex gap-1 bg-white/90 backdrop-blur-sm rounded-lg shadow-md p-1 border border-gray-200">
           {Object.entries(MAP_STYLE_DEFS).map(([key, def]) => (
             <button
               key={key}
@@ -537,6 +857,49 @@ const MapTerritorial = ({
           ))}
         </div>
 
+        {/* Botones de exportación (solo cuando no hay modo editable) */}
+        {!onEditableLocationChange && (
+          <div className="no-print absolute top-3 right-3 z-10 flex items-center gap-1.5">
+            <button
+              onClick={() => window.print()}
+              className="flex items-center gap-1.5 px-2.5 py-1.5 bg-white/90 backdrop-blur-sm rounded-lg shadow-md border border-gray-200 text-xs font-semibold text-gray-600 hover:bg-gray-50 hover:border-gray-300 transition-all"
+              title="Imprimir lo que se ve en pantalla"
+            >
+              <svg width="12" height="12" viewBox="0 0 16 16" fill="none">
+                <path d="M4 6V2h8v4M4 12H2a1 1 0 01-1-1V6.5a1 1 0 011-1h12a1 1 0 011 1V11a1 1 0 01-1 1h-2M4 9h8v5H4V9z" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
+              Imprimir
+            </button>
+            <button
+              onClick={generatePDF}
+              disabled={generating}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg shadow-md border text-xs font-semibold transition-all ${
+                generating
+                  ? 'bg-blue-50 border-blue-200 text-blue-400 cursor-wait'
+                  : 'bg-blue-600 border-blue-700 text-white hover:bg-blue-700 shadow-blue-200'
+              }`}
+              title="Generar PDF centrado en el área seleccionada"
+            >
+              {generating ? (
+                <>
+                  <svg className="animate-spin" width="12" height="12" viewBox="0 0 16 16" fill="none">
+                    <circle cx="8" cy="8" r="6" stroke="currentColor" strokeWidth="2" strokeDasharray="20 10" />
+                  </svg>
+                  Generando…
+                </>
+              ) : (
+                <>
+                  <svg width="12" height="12" viewBox="0 0 16 16" fill="none">
+                    <path d="M3 12l5-5 5 5M8 7V2" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/>
+                    <path d="M1 14h14" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/>
+                  </svg>
+                  Generar PDF
+                </>
+              )}
+            </button>
+          </div>
+        )}
+
         {onEditableLocationChange && (
           <div className={`absolute top-3 right-3 z-10 rounded-lg shadow-md px-3 py-1.5 text-xs font-medium border ${
             isDark ? 'bg-gray-900/90 text-gray-200 border-gray-700' : 'bg-white/90 text-gray-700 border-gray-200'
@@ -545,7 +908,6 @@ const MapTerritorial = ({
           </div>
         )}
 
-        {/* Buscador de calle / dirección (solo en mapas editables) */}
         {onEditableLocationChange && isLoaded && (
           <div className="absolute top-14 left-1/2 -translate-x-1/2 z-10 w-[85%] max-w-xs">
             <Autocomplete
@@ -620,6 +982,46 @@ const MapTerritorial = ({
             });
           })()}
 
+          {/* ── Etiquetas de sección (watermark) ───────────────────── */}
+          {secciones.map((sec, idx) => {
+            const paths = parseWKT(sec.geometry);
+            if (!paths.length) return null;
+            const center = getCenter(paths);
+            const isSelected = selectedSeccion != null && selectedSeccion === sec.seccion;
+            return (
+              <OverlayView
+                key={`lbl-sec-${sec.id ?? idx}`}
+                position={center}
+                mapPaneName="overlayMouseTarget"
+              >
+                <div style={{ position: 'absolute', transform: 'translate(-50%,-50%)', pointerEvents: 'none', userSelect: 'none' }}>
+                  <span style={{
+                    display: 'inline-block',
+                    fontSize: 9,
+                    fontWeight: 800,
+                    fontFamily: 'system-ui,-apple-system,sans-serif',
+                    letterSpacing: '.03em',
+                    lineHeight: 1.35,
+                    whiteSpace: 'nowrap',
+                    padding: '1.5px 4px',
+                    borderRadius: 3,
+                    color: isSelected
+                      ? '#78350f'
+                      : isDark ? 'rgba(248,250,252,0.85)' : 'rgba(15,23,42,0.72)',
+                    background: isSelected
+                      ? 'rgba(251,191,36,0.75)'
+                      : isDark ? 'rgba(15,23,42,0.62)' : 'rgba(255,255,255,0.72)',
+                    border: isSelected
+                      ? '0.5px solid rgba(120,53,15,0.4)'
+                      : isDark ? '0.5px solid rgba(255,255,255,0.1)' : '0.5px solid rgba(0,0,0,0.1)',
+                  }}>
+                    {sec.seccion}
+                  </span>
+                </div>
+              </OverlayView>
+            );
+          })}
+
           {/* ── Polígonos de fracciones (desde tabla fracciones) ───── */}
           {fraccionesGeo.map((f) => {
             const paths = parseWKT(f.geometry);
@@ -648,6 +1050,67 @@ const MapTerritorial = ({
                   />
                 ))}
               </React.Fragment>
+            );
+          })}
+
+          {/* ── Etiquetas de fracción ───────────────────────────────── */}
+          {fraccionesGeo.map((f) => {
+            const paths = parseWKT(f.geometry);
+            if (!paths.length) return null;
+            const center  = getCenter(paths);
+            const { fill } = fracColor(f);
+            const smName  = f.sm
+              ? [f.sm.nombre, f.sm.a_paterno].filter(Boolean).join(' ')
+              : null;
+            return (
+              <OverlayView
+                key={`lbl-frac-${f.fraccion}`}
+                position={center}
+                mapPaneName="overlayMouseTarget"
+              >
+                <div style={{ position: 'absolute', transform: 'translate(-50%,-50%)', pointerEvents: 'none', userSelect: 'none', textAlign: 'center' }}>
+                  <div style={{
+                    display: 'inline-flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    gap: 1,
+                  }}>
+                    <span style={{
+                      fontSize: 10,
+                      fontWeight: 800,
+                      fontFamily: 'system-ui,-apple-system,sans-serif',
+                      letterSpacing: '.04em',
+                      lineHeight: 1.3,
+                      whiteSpace: 'nowrap',
+                      padding: '1.5px 5px',
+                      borderRadius: 4,
+                      color: '#fff',
+                      background: fill + 'cc',
+                      border: '0.5px solid rgba(0,0,0,0.15)',
+                    }}>
+                      F-{f.fraccion}
+                    </span>
+                    {smName && (
+                      <span style={{
+                        fontSize: 8,
+                        fontWeight: 600,
+                        fontFamily: 'system-ui,-apple-system,sans-serif',
+                        whiteSpace: 'nowrap',
+                        padding: '1px 4px',
+                        borderRadius: 3,
+                        color: isDark ? 'rgba(248,250,252,0.8)' : 'rgba(15,23,42,0.65)',
+                        background: isDark ? 'rgba(15,23,42,0.65)' : 'rgba(255,255,255,0.78)',
+                        border: isDark ? '0.5px solid rgba(255,255,255,0.1)' : '0.5px solid rgba(0,0,0,0.08)',
+                        maxWidth: 80,
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                      }}>
+                        {smName}
+                      </span>
+                    )}
+                  </div>
+                </div>
+              </OverlayView>
             );
           })}
 
@@ -735,7 +1198,7 @@ const MapTerritorial = ({
       </div>
 
       {/* ── Pie: leyenda ────────────────────────────────────────────────── */}
-      <div className={`flex-shrink-0 px-4 py-2.5 border-t flex flex-wrap items-center gap-x-4 gap-y-1.5 ${
+      <div className={`no-print flex-shrink-0 px-4 py-2.5 border-t flex flex-wrap items-center gap-x-4 gap-y-1.5 ${
         isDark ? 'bg-gray-900 border-gray-700' : 'bg-white border-gray-100'
       }`}>
         {onEditableLocationChange && (
@@ -805,6 +1268,9 @@ const MapTerritorial = ({
           </div>
         )}
       </div>
+      </div>
+
+      <PrintFooter ctx={printContext} />
     </div>
   );
 };

@@ -349,6 +349,7 @@ const TableroBoard = () => {
     fracciones.map(f => ({ ...f, sm: promotores.find(p => p.ubt === f.fraccion) ?? null })),
   [fracciones, promotores]);
 
+
   const crumbs = useMemo(() => {
     const list = [{ label: 'Municipio', onClick: () => { setSelectedDistrito(null); setSelectedSector(null); setSelectedSeccion(null); } }];
     if (selectedDistrito) list.push({ label: `Dto. ${selectedDistrito}`, onClick: () => { setSelectedSector(null); setSelectedSeccion(null); } });
@@ -358,6 +359,39 @@ const TableroBoard = () => {
   }, [selectedDistrito, selectedSector, selectedSeccion]);
 
   const currentLevel = selectedSeccion != null ? 3 : selectedSector != null ? 2 : selectedDistrito != null ? 1 : 0;
+
+  const printContext = useMemo(() => {
+    const listaNominal = mapSecciones.reduce((s, x) => s + (Number(x.lista_nominal) || 0), 0);
+    const ubicados = ciudadanosGeo.filter(c => c.latitud && c.longitud).length;
+    const bc = ['Municipio'];
+    if (selectedDistrito) bc.push(`Dto. ${selectedDistrito}`);
+    if (selectedSector)   bc.push(`Sector ${selectedSector}`);
+    if (selectedSeccion)  bc.push(`Sección ${selectedSeccion}`);
+    let afiliados = 0, credenciales = 0;
+    if (afiliacionStats?.mode === 'seccion' && afiliacionStats.seccion) {
+      afiliados   = afiliacionStats.seccion.afiliados ?? 0;
+      credenciales = afiliacionStats.seccion.credenciales_entregadas ?? 0;
+    } else if (afiliacionStats?.total) {
+      afiliados   = afiliacionStats.total.afiliados ?? 0;
+      credenciales = afiliacionStats.total.credenciales ?? 0;
+    }
+    return {
+      breadcrumb: bc.join(' › '),
+      level: ['Municipio', 'Distrito Federal', 'Sector', 'Sección'][currentLevel],
+      levelValue: selectedSeccion != null ? `Sección ${selectedSeccion}` :
+                  selectedSector   != null ? `Sector ${selectedSector}` :
+                  selectedDistrito != null ? `Distrito ${selectedDistrito}` : null,
+      listaNominal,
+      secciones:   mapSecciones.length,
+      ubicados:    ubicados || null,
+      sp:          fullName(sp),
+      seccional:   selectedSeccion != null ? fullName(seccional) : null,
+      promotores:  selectedSeccion != null && promotores.length ? promotores.length : null,
+      fracciones:  selectedSeccion != null && fracciones.length ? fracciones.length : null,
+      afiliados:   afiliados   || null,
+      credenciales: credenciales || null,
+    };
+  }, [currentLevel, selectedSeccion, selectedSector, selectedDistrito, mapSecciones, ciudadanosGeo, afiliacionStats, sp, seccional, promotores, fracciones]);
 
   // ── Info panel ────────────────────────────────────────────────────────────
   const renderInfoPanel = () => {
@@ -746,6 +780,7 @@ const TableroBoard = () => {
                 focusCoords={focusCoords}
                 onClearFocus={() => { setSelectedSM(null); setFocusCoords(null); }}
                 afiliacionBySec={afiliacionBySec}
+                printContext={printContext}
               />
             </div>
           )}
