@@ -1,51 +1,70 @@
 import React from 'react';
-import { LiaUserFriendsSolid, LiaMapMarkedAltSolid , LiaCookieBiteSolid, LiaBlackTie, LiaFileContractSolid ,LiaSitemapSolid, LiaWeixin, LiaWalletSolid, LiaUsersSolid } from "react-icons/lia";
-// import { AiTwotoneFund } from "react-icons/ai";
-import MapComponent2 from '../map/MapComponent2';
+import {
+  LiaUserFriendsSolid, LiaMapMarkedAltSolid, LiaCookieBiteSolid,
+  LiaBlackTie, LiaFileContractSolid, LiaSitemapSolid, LiaWeixin,
+  LiaWalletSolid, LiaUsersSolid, LiaCalendarCheckSolid,
+} from "react-icons/lia";
 import { useNavigate } from 'react-router-dom';
+
+const MenuItem = ({ icon: Icon, label, onClick, color = 'blue', disabled = false }) => {
+  const colors = {
+    red: 'border-red-400 text-red-600 hover:bg-red-600',
+    blue: 'border-blue-400 text-blue-600 hover:bg-blue-600',
+    emerald: 'border-emerald-500 text-emerald-600 hover:bg-emerald-600',
+    violet: 'border-violet-400 text-violet-600 hover:bg-violet-600',
+  };
+  return (
+    <div className="xl:w-1/3 sm:w-full w-1/2 mb-4 px-2">
+      <button
+        onClick={onClick}
+        disabled={disabled}
+        className={`flex items-center gap-2 flex-row w-full bg-transparent hover:text-white text-sm font-semibold py-3 px-4 border h-14 rounded-xl transition-all duration-150 ${colors[color]} disabled:opacity-40 disabled:pointer-events-none`}
+      >
+        <Icon size={22} className="flex-shrink-0" />
+        <span>{label}</span>
+      </button>
+    </div>
+  );
+};
+
 const MenuAdmin = () => {
   const navigate = useNavigate();
 
-  return (<>
-  <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
-    <header className="bg-white shadow-sm mb-8">
-        <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
-          <h1 className="text-3xl font-bold tracking-tight text-gray-900">Menu</h1>
+  return (
+    <div className="min-h-screen bg-slate-50">
+      {/* Header */}
+      <div className="bg-gradient-to-r from-blue-600 to-blue-700 px-4 py-6 mb-6">
+        <h1 className="text-white font-bold text-2xl">SM</h1>
+        {/* <p className="text-blue-200 text-sm mt-0.5">Sistema de monitoreo político</p> */}
+      </div>
+
+      <div className="max-w-4xl mx-auto px-4">
+        {/* Sección estructura */}
+        <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-3 px-2">Estructura</p>
+        <div className="flex flex-wrap -mb-4 -mx-2 mb-6">
+          <MenuItem icon={LiaBlackTie} label="CIUDADANOS" onClick={() => navigate('/admin')} color="red" />
+          <MenuItem icon={LiaUserFriendsSolid} label="MAPA TERRITORIAL" onClick={() => navigate('/tablero')} />
+          <MenuItem icon={LiaMapMarkedAltSolid} label="TERRITORIO" onClick={() => navigate('/territorio')} />
         </div>
-    </header>
-    <div class="flex flex-wrap -mb-4 -mx-2">
-      <div class="flex items-center justify-center xl:w-1/3 sm:w-full mb-4 px-2">
-        <button onClick={() => navigate("/admin")} class="flex items-center flex-row w-full bg-transparent hover:bg-red-600 text-sm text-red-600 hover:text-white font-semibold py-2 px-4 border border-red-500 hover:border-transparent h-14 rounded-lg"><LiaBlackTie size={25}/>CIUDADANOS</button>
-      </div>
-      <div class="flex items-center justify-center xl:w-1/3 sm:w-full mb-4 px-2">
-      
-      <button onClick={() => navigate("/tablero")} class="flex items-center flex-row w-full bg-transparent hover:bg-blue-600 text-sm text-blue-600 hover:text-white font-semibold py-2 px-4 border border-blue-500 hover:border-transparent h-14 rounded-lg"><LiaUserFriendsSolid size={25}/>MAPA TERRITORIAL</button>
-      </div>
-      <div class="flex items-center justify-center xl:w-1/3 sm:w-full mb-4 px-2">
-      <button onClick={() => navigate("/territorio")} class="flex items-center flex-row w-full bg-transparent hover:bg-blue-600 text-sm text-blue-600 hover:text-white font-semibold py-2 px-4 border border-blue-500 hover:border-transparent h-14 rounded-lg"><LiaMapMarkedAltSolid size={25}/>TERRITORIO</button>
-      </div>
-      <div class="flex items-center justify-center xl:w-1/3 sm:w-full mb-4 px-2">
-      <button onClick={() => navigate("/admin/reporte")} class="flex items-center flex-row w-full bg-transparent hover:bg-blue-600 text-sm text-blue-600 hover:text-white font-semibold py-2 px-4 border border-blue-500 hover:border-transparent h-14 rounded-lg"><LiaCookieBiteSolid size={25}/>ESTADISTICA</button>
-      </div>
-      <div class="flex items-center justify-center xl:w-1/3 sm:w-full mb-4 px-2">
-      <button onClick={() => navigate("/solicitudes")} class="flex items-center flex-row w-full bg-transparent hover:bg-blue-600 text-sm text-blue-600 hover:text-white font-semibold py-2 px-4 border border-blue-500 hover:border-transparent h-14 rounded-lg"><LiaFileContractSolid  size={25}/>ALTAS/BAJAS</button>
-      </div>
-      <div class="flex items-center justify-center xl:w-1/3 sm:w-full mb-4 px-2">
-      <button onClick={() => navigate("/admin/programas")} class="flex items-center flex-row w-full bg-transparent hover:bg-blue-600 text-sm text-blue-600 hover:text-white font-semibold py-2 px-4 border border-blue-500 hover:border-transparent h-14 rounded-lg"><LiaUsersSolid size={25}/>APOYOS</button>
-      </div>
-      <div class="flex items-center justify-center xl:w-1/3 sm:w-full mb-4 px-2">
-      <button class="flex items-center flex-row w-full bg-transparent hover:bg-blue-600 text-sm text-blue-600 hover:text-white font-semibold py-2 px-4 border border-blue-500 hover:border-transparent h-14 rounded-lg"><LiaWalletSolid size={25}/>BAJA DE INFORMACION</button>
-      </div>
-      <div class="flex items-center justify-center xl:w-1/3 sm:w-full mb-4 px-2">
-      <button class="flex items-center flex-row w-full bg-transparent hover:bg-blue-600 text-sm text-blue-600 hover:text-white font-semibold py-2 px-4 border border-blue-500 hover:border-transparent h-14 rounded-lg"><LiaWeixin size={25}/>REDES SOCIALES</button>
-      </div>
-      <div class="flex items-center justify-center xl:w-1/3 sm:w-full mb-4 px-2">
-      <button onClick={() => navigate("/admin/base")} class="flex items-center flex-row w-full bg-transparent hover:bg-blue-600 text-sm text-blue-600 hover:text-white font-semibold py-2 px-4 border border-blue-500 hover:border-transparent h-14 rounded-lg"><LiaSitemapSolid size={25}/>ESTRUCTURA</button>
+
+        {/* Sección análisis */}
+        {/* <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-3 px-2 mt-6">Análisis</p> */}
+        <div className="flex flex-wrap -mb-4 -mx-2 mb-6">
+          <MenuItem icon={LiaCookieBiteSolid} label="ESTADÍSTICA" onClick={() => navigate('/admin/reporte')} />
+          <MenuItem icon={LiaSitemapSolid} label="ESTRUCTURA" onClick={() => navigate('/admin/base')} />
+          <MenuItem icon={LiaCalendarCheckSolid} label="ACTIVIDADES" onClick={() => navigate('/admin/actividades')} color="violet" />
+        </div>
+
+        {/* Sección operación */}
+        {/* <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-3 px-2 mt-6">Operación</p> */}
+        <div className="flex flex-wrap -mb-4 -mx-2 mb-6">
+          <MenuItem icon={LiaFileContractSolid} label="ALTAS / BAJAS" onClick={() => navigate('/solicitudes')} />
+          <MenuItem icon={LiaUsersSolid} label="APOYOS" onClick={() => navigate('/admin/programas')} />
+          <MenuItem icon={LiaWalletSolid} label="BAJA DE INFO" disabled />
+          <MenuItem icon={LiaWeixin} label="REDES SOCIALES" disabled />
+        </div>
       </div>
     </div>
-    {/* <MapComponent2 mapa={3}/> */}
-    </div>
-    </>
   );
 };
 

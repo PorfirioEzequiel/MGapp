@@ -9,7 +9,12 @@ const EscanerQR = ({ onScan, onCerrar, titulo = "Escanea el código QR de la CUR
   useEffect(() => {
     const scanner = new Html5QrcodeScanner(
       readerId,
-      { fps: 10, qrbox: { width: 250, height: 250 }, rememberLastUsedCamera: true },
+      {
+        fps: 10,
+        qrbox: { width: 250, height: 250 },
+        rememberLastUsedCamera: false,
+        videoConstraints: { facingMode: { ideal: "environment" } },
+      },
       false
     );
 
@@ -44,7 +49,7 @@ const EscanerQR = ({ onScan, onCerrar, titulo = "Escanea el código QR de la CUR
           <div className="flex-1 min-w-0">
             <p className="text-sm font-semibold text-slate-800 leading-snug">{titulo}</p>
             <p className="text-xs text-slate-500 mt-1 leading-relaxed">
-              Acerca el código QR a la cámara. Se leerá automáticamente.
+              Acerca el código QR a la cámara trasera. Se leerá automáticamente.
             </p>
           </div>
           {onCerrar && (
@@ -63,7 +68,7 @@ const EscanerQR = ({ onScan, onCerrar, titulo = "Escanea el código QR de la CUR
             <path strokeLinecap="round" strokeLinejoin="round" d="M11.25 11.25l.041-.02a.75.75 0 011.063.852l-.708 2.836a.75.75 0 001.063.853l.041-.021M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9-3.75h.008v.008H12V8.25z" />
           </svg>
           <p className="text-xs text-amber-700 leading-relaxed">
-            Da clic en <strong>"Request Camera Permissions"</strong>. Si tu equipo tiene más de una cámara, elige cuál usar desde el menú.
+            Da clic en <strong>"Request Camera Permissions"</strong> y permite el acceso. Se usará la cámara trasera por defecto.
           </p>
         </div>
       </div>

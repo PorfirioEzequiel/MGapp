@@ -1,530 +1,487 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import supabase from "../supabase/client";
 import MapTerritorial from "../map/MapTerritorial";
+
+// ── helpers ──────────────────────────────────────────────────────────────────
+
+const Field = ({ label, children }) => (
+  <div className="flex flex-col gap-1.5">
+    <label className="text-[10px] font-bold uppercase tracking-widest text-slate-400">{label}</label>
+    {children}
+  </div>
+);
+
+const inputCls =
+  "border border-slate-200 rounded-lg px-3 py-2.5 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white w-full";
+const selectCls =
+  "border border-slate-200 rounded-lg px-3 py-2.5 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white w-full";
+
+const SectionTitle = ({ children }) => (
+  <h2 className="text-[10px] font-bold uppercase tracking-[0.15em] text-slate-400 border-b border-slate-100 pb-2 mb-4">
+    {children}
+  </h2>
+);
+
+// Garantiza que el valor actual siempre aparezca en las opciones
+const ensureOption = (options, value) => {
+  const sv = String(value ?? "");
+  if (!sv || options.some(o => String(o) === sv)) return options;
+  return [sv, ...options];
+};
+
+// ── foto card ────────────────────────────────────────────────────────────────
+
+const PhotoCard = ({ url, alt, shape, onUpload, uploading }) => {
+  // shape: 'portrait' | 'landscape'
+  const containerCls =
+    shape === "landscape"
+      ? "w-full max-w-xs h-40"   // credencial INE: ~2.5:1
+      : "w-40 h-52";             // foto perfil: ~0.77:1
+
+  return (
+    <div className="flex flex-col items-center gap-2">
+      <div className={`${containerCls} rounded-xl overflow-hidden border border-slate-200 shadow-sm bg-slate-100 flex items-center justify-center`}>
+        {url ? (
+          <img
+            src={url}
+            alt={alt}
+            className="w-full h-full object-cover"
+            onError={e => {
+              e.target.style.display = "none";
+              e.target.parentNode.querySelector(".placeholder")?.style.removeProperty("display");
+            }}
+          />
+        ) : null}
+        <div
+          className="placeholder flex flex-col items-center justify-center w-full h-full"
+          style={{ display: url ? "none" : "flex" }}
+        >
+          <span className="text-3xl">📷</span>
+          <span className="text-[10px] text-slate-400 mt-1 text-center px-2">Sin imagen</span>
+        </div>
+      </div>
+      <label className="cursor-pointer">
+        <span className="text-[10px] font-semibold text-blue-600 hover:text-blue-700 bg-blue-50 hover:bg-blue-100 px-3 py-1.5 rounded-lg transition-colors block text-center">
+          {uploading ? "Subiendo…" : "Cambiar foto"}
+        </span>
+        <input type="file" accept="image/*" className="hidden" onChange={onUpload} disabled={uploading} />
+      </label>
+      <p className="text-[10px] text-slate-400 text-center">{alt}</p>
+    </div>
+  );
+};
+
+// ── componente principal ─────────────────────────────────────────────────────
 
 const FichaCiudadano = () => {
   const { id } = useParams();
   const navigate = useNavigate();
   const [ciudadano, setCiudadano] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [uploading, setUploading] = useState({});
   const [seccionGeo, setSeccionGeo] = useState(null);
   const [fracciones, setFracciones] = useState([]);
+  const [catalogo, setCatalogo] = useState([]);
 
-  // Quién está viendo la ficha: admin/coordinador ven el mapa editable,
-  // el usuario SM solo ve sector/sección/fracción en texto.
   let viewer = null;
   try { viewer = JSON.parse(sessionStorage.getItem("user")); } catch { viewer = null; }
   const viewerEsSM = viewer?.puesto?.toUpperCase() === "SM";
 
+  // Cargar ciudadano
   useEffect(() => {
-    async function fetchCiudadano() {
-      const { data, error } = await supabase
-        .from("ciudadania")
-        .select("*")
-        .eq("id", id)
-        .single();
-
-      if (error) console.error("Error obteniendo ciudadano:", error);
-      else setCiudadano(data);
+    supabase.from("ciudadania").select("*").eq("id", id).single().then(({ data, error }) => {
+      if (!error) setCiudadano(data);
       setLoading(false);
-    }
-    fetchCiudadano();
+    });
   }, [id]);
 
-  // Polígono de la sección y sus fracciones, para dibujar el mapa dividido por fracciones
+  // Cargar catálogo completo para los selects en cascada
   useEffect(() => {
-    if (!ciudadano?.seccion) {
-      setSeccionGeo(null);
-      setFracciones([]);
-      return;
-    }
-    async function fetchMapa() {
-      const seccionNum = Number(ciudadano.seccion);
-      const [secRes, fracRes] = await Promise.all([
-        supabase.from("secciones").select("*").eq("seccion", seccionNum).maybeSingle(),
-        supabase.from("fracciones").select("fraccion, seccion, geometry").eq("seccion", seccionNum),
-      ]);
-      setSeccionGeo(secRes.data ?? null);
-      setFracciones(fracRes.data ?? []);
-    }
-    fetchMapa();
+    supabase
+      .from("ubt_catalogo")
+      .select("dtto_fed, dtto_loc, poligono, sector, seccion, fraccion")
+      .then(({ data }) => {
+        if (!data) return;
+        // Normalizar: usar 'poligono' como campo principal del sector;
+        // si está vacío en alguna fila, usar 'sector' como fallback.
+        const norm = data.map(r => ({
+          ...r,
+          poligono: r.poligono != null && r.poligono !== "" ? String(r.poligono) : String(r.sector ?? ""),
+          seccion: String(r.seccion ?? ""),
+          fraccion: String(r.fraccion ?? ""),
+          dtto_fed: String(r.dtto_fed ?? ""),
+          dtto_loc: String(r.dtto_loc ?? ""),
+        }));
+        setCatalogo(norm);
+      });
+  }, []);
+
+  // Geometría de la sección para el mapa
+  useEffect(() => {
+    if (!ciudadano?.seccion) { setSeccionGeo(null); setFracciones([]); return; }
+    const num = Number(ciudadano.seccion);
+    Promise.all([
+      supabase.from("secciones").select("*").eq("seccion", num).maybeSingle(),
+      supabase.from("fracciones").select("fraccion, seccion, geometry").eq("seccion", num),
+    ]).then(([sec, frac]) => {
+      setSeccionGeo(sec.data ?? null);
+      setFracciones(frac.data ?? []);
+    });
   }, [ciudadano?.seccion]);
 
-  function handleObtenerUbicacion() {
-    if (!navigator.geolocation) {
-      alert("Geolocalización no disponible en este dispositivo.");
-      return;
+  // ── opciones en cascada ─────────────────────────────────────────────────────
+  const curDttoFed = String(ciudadano?.dtto_fed ?? "");
+  const curDttoLoc = String(ciudadano?.dtto_loc ?? "");
+  const curPoligono = String(ciudadano?.poligono ?? "");
+  const curSeccion  = String(ciudadano?.seccion  ?? "");
+  const curUbt      = String(ciudadano?.ubt      ?? "");
+
+  const dttosFed = useMemo(
+    () => ensureOption([...new Set(catalogo.map(r => r.dtto_fed))].filter(Boolean).sort(), curDttoFed),
+    [catalogo, curDttoFed]
+  );
+
+  const dttosLoc = useMemo(() => {
+    const base = curDttoFed ? catalogo.filter(r => r.dtto_fed === curDttoFed) : catalogo;
+    return ensureOption([...new Set(base.map(r => r.dtto_loc))].filter(Boolean).sort(), curDttoLoc);
+  }, [catalogo, curDttoFed, curDttoLoc]);
+
+  const sectores = useMemo(() => {
+    let base = catalogo;
+    if (curDttoFed) base = base.filter(r => r.dtto_fed === curDttoFed);
+    if (curDttoLoc) base = base.filter(r => r.dtto_loc === curDttoLoc);
+    return ensureOption([...new Set(base.map(r => r.poligono))].filter(Boolean).sort(), curPoligono);
+  }, [catalogo, curDttoFed, curDttoLoc, curPoligono]);
+
+  const secciones = useMemo(() => {
+    let base = catalogo;
+    if (curPoligono) base = base.filter(r => r.poligono === curPoligono);
+    return ensureOption(
+      [...new Set(base.map(r => r.seccion))].filter(Boolean).sort((a, b) => Number(a) - Number(b)),
+      curSeccion
+    );
+  }, [catalogo, curPoligono, curSeccion]);
+
+  const ubts = useMemo(() => {
+    if (!curSeccion) return ensureOption([], curUbt);
+    return ensureOption(
+      catalogo.filter(r => r.seccion === curSeccion).map(r => r.fraccion).filter(Boolean).sort(),
+      curUbt
+    );
+  }, [catalogo, curSeccion, curUbt]);
+
+  // ── handlers de cascada ─────────────────────────────────────────────────────
+
+  const set = (field, value) => setCiudadano(prev => ({ ...prev, [field]: value }));
+
+  const handleDttoFed = val =>
+    setCiudadano(prev => ({ ...prev, dtto_fed: val, dtto_loc: "", poligono: "", seccion: "", ubt: "" }));
+  const handleDttoLoc = val =>
+    setCiudadano(prev => ({ ...prev, dtto_loc: val, poligono: "", seccion: "", ubt: "" }));
+  const handleSector = val =>
+    setCiudadano(prev => ({ ...prev, poligono: val, seccion: "", ubt: "" }));
+  const handleSeccion = val => {
+    // Al cambiar sección, auto-rellena los campos superiores desde el catálogo
+    const row = catalogo.find(
+      r => r.seccion === String(val) && (!curPoligono || r.poligono === curPoligono)
+    );
+    setCiudadano(prev => ({
+      ...prev,
+      seccion: val,
+      ubt: "",
+      ...(row ? { dtto_fed: row.dtto_fed, dtto_loc: row.dtto_loc, poligono: row.poligono } : {}),
+    }));
+  };
+
+  // ── upload de fotos ─────────────────────────────────────────────────────────
+
+  async function handleFileUpload(e, fieldName) {
+    const file = e.target.files[0];
+    if (!file || !ciudadano) return;
+    setUploading(prev => ({ ...prev, [fieldName]: true }));
+    const filePath = `ciudadanos/${fieldName}-${ciudadano.curp}`;
+    const { error } = await supabase.storage.from("fotos_estructura").upload(filePath, file, { upsert: true });
+    if (!error) {
+      const { data: urlData } = supabase.storage.from("fotos_estructura").getPublicUrl(filePath);
+      set(fieldName, urlData.publicUrl);
     }
+    setUploading(prev => ({ ...prev, [fieldName]: false }));
+  }
+
+  function handleUbicacion() {
+    if (!navigator.geolocation) { alert("Geolocalización no disponible."); return; }
     navigator.geolocation.getCurrentPosition(
-      (position) => {
-        setCiudadano((prev) => ({
-          ...prev,
-          latitud: position.coords.latitude,
-          longitud: position.coords.longitude,
-        }));
-      },
-      (error) => alert("Error al obtener ubicación: " + error.message)
+      ({ coords }) => setCiudadano(prev => ({ ...prev, latitud: coords.latitude, longitud: coords.longitude })),
+      err => alert("Error: " + err.message)
     );
   }
 
+  // ── guardar ─────────────────────────────────────────────────────────────────
+
   async function handleSave() {
-    const { error } = await supabase
-      .from("ciudadania")
-      .update({
-        usuario: ciudadano.usuario,
-        password: ciudadano.password,
-        dtto_fed: ciudadano.dtto_fed,
-        dtto_loc: ciudadano.dtto_loc,
-        poligono: ciudadano.poligono,
-        seccion: ciudadano.seccion,
-        ubt: ciudadano.ubt,
-        nombre: ciudadano.nombre,
-        a_paterno: ciudadano.a_paterno,
-        a_materno: ciudadano.a_materno,
-        curp: ciudadano.curp,
-        telefono_1: ciudadano.telefono_1,
-        telefono_2: ciudadano.telefono_2,
-        ingreso_estructura: ciudadano.ingreso_estructura,
-        observaciones: ciudadano.observaciones,
-        calle: ciudadano.calle,
-        n_ext_mz: ciudadano.n_ext_mz,
-        n_int_lt: ciudadano.n_int_lt,
-        n_casa: ciudadano.n_casa,
-        movilizador: ciudadano.movilizador,
-        c_p: ciudadano.c_p,
-        col_loc: ciudadano.col_loc,
-        latitud: ciudadano.latitud,
-        longitud: ciudadano.longitud,
-        url_foto_perfil: ciudadano.url_foto_perfil,
-        url_foto_ine1: ciudadano.url_foto_ine1,
-        url_foto_ine2: ciudadano.url_foto_ine2,
-        cuenta_inst: ciudadano.cuenta_inst,
-        cuenta_fb: ciudadano.cuenta_fb,
-        cuenta_x: ciudadano.cuenta_x,
-
-      })
-      .eq("id", id);
-
-    if (error) {
-      console.error("Error actualizando ciudadano:", error);
-    } else {
-      alert("Datos actualizados correctamente");
-    }
+    setSaving(true);
+    const { error } = await supabase.from("ciudadania").update({
+      usuario: ciudadano.usuario, password: ciudadano.password,
+      dtto_fed: ciudadano.dtto_fed, dtto_loc: ciudadano.dtto_loc,
+      poligono: ciudadano.poligono, seccion: ciudadano.seccion, ubt: ciudadano.ubt,
+      nombre: ciudadano.nombre, a_paterno: ciudadano.a_paterno, a_materno: ciudadano.a_materno,
+      curp: ciudadano.curp, telefono_1: ciudadano.telefono_1, telefono_2: ciudadano.telefono_2,
+      ingreso_estructura: ciudadano.ingreso_estructura, observaciones: ciudadano.observaciones,
+      calle: ciudadano.calle, n_ext_mz: ciudadano.n_ext_mz, n_int_lt: ciudadano.n_int_lt,
+      n_casa: ciudadano.n_casa, movilizador: ciudadano.movilizador, c_p: ciudadano.c_p,
+      col_loc: ciudadano.col_loc, latitud: ciudadano.latitud, longitud: ciudadano.longitud,
+      url_foto_perfil: ciudadano.url_foto_perfil, url_foto_ine1: ciudadano.url_foto_ine1,
+      url_foto_ine2: ciudadano.url_foto_ine2, cuenta_inst: ciudadano.cuenta_inst,
+      cuenta_fb: ciudadano.cuenta_fb, cuenta_x: ciudadano.cuenta_x,
+    }).eq("id", id);
+    setSaving(false);
+    if (error) alert("Error al guardar: " + error.message);
+    else alert("Datos actualizados correctamente");
   }
 
-  async function handleFileUpload(event, fieldName) {
-    const file = event.target.files[0];
-    if (!file) return;
+  // ── renders ──────────────────────────────────────────────────────────────────
 
-    // const filePath = `ciudadanos/${id}/${fieldName}-${file.name}`;
-    // const curp = nuevoCiudadano.curp.trim().toUpperCase();
-    const filePath = `ciudadanos/${fieldName}-`+ciudadano.curp;
-    const { data, error } = await supabase.storage.from("fotos_estructura").upload(filePath, file, { upsert: true });
+  if (loading) return (
+    <div className="flex items-center justify-center min-h-screen bg-slate-50">
+      <div className="text-center">
+        <div className="w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto mb-3" />
+        <p className="text-sm text-slate-400">Cargando ficha…</p>
+      </div>
+    </div>
+  );
 
-    if (error) {
-      console.error("Error subiendo imagen:", error);
-      return;
-    }
-
-    const { data: urlData } = supabase.storage.from("fotos_estructura").getPublicUrl(filePath);
-    setCiudadano((prev) => ({ ...prev, [fieldName]: urlData.publicUrl }));
-  }
-
-  if (loading) return <p>Cargando...</p>;
+  if (!ciudadano) return <p className="p-4 text-red-500">Ciudadano no encontrado.</p>;
 
   return (
-    <div className="p-4">
-      <h1 className="text-xl font-bold mb-4">Ficha del Ciudadano</h1>
-
-      {/* Imágenes con opción de carga flex flex-nowrap*/}
-      <div className="flex flex-wrap justify md:justify-start mb-4">
-        <div>
-          <img src={ciudadano.url_foto_perfil} alt="Perfil" className="w-auto h-64 object-cover rounded-lg m-auto" />
-          <input type="file" onChange={(e) => handleFileUpload(e, "url_foto_perfil")} class="block w-full text-sm text-gray-500
-        file:me-4 file:py-2 file:px-4
-        file:rounded-lg file:border-0
-        file:text-sm file:font-semibold
-        file:bg-blue-600 file:text-white
-        hover:file:bg-blue-700
-        file:disabled:opacity-50 file:disabled:pointer-events-none
-        dark:text-neutral-500
-        dark:file:bg-blue-500
-        dark:hover:file:bg-blue-400 mt-6"/>
-        </div>
-        <div className="mx-16"></div>
-        <div>
-          <img src={ciudadano.url_foto_ine1} alt="INE Frente" className="w-auto h-64 object-cover rounded-lg m-auto" />
-          <input type="file" onChange={(e) => handleFileUpload(e, "url_foto_ine1")} class="block w-full text-sm text-gray-500
-        file:me-4 file:py-2 file:px-4
-        file:rounded-lg file:border-0
-        file:text-sm file:font-semibold
-        file:bg-blue-600 file:text-white
-        hover:file:bg-blue-700
-        file:disabled:opacity-50 file:disabled:pointer-events-none
-        dark:text-neutral-500
-        dark:file:bg-blue-500
-        dark:hover:file:bg-blue-400 mt-6" />
-       
-       
-        </div>
-        <div className="mx-16"></div>
-        <div>
-          <img src={ciudadano.url_foto_ine2} alt="INE Reverso" className="w-auto h-64 object-cover rounded-lg m-auto" />
-          <input type="file" onChange={(e) => handleFileUpload(e, "url_foto_ine2")} class="block w-full text-sm text-gray-500
-        file:me-4 file:py-2 file:px-4
-        file:rounded-lg file:border-0
-        file:text-sm file:font-semibold
-        file:bg-blue-600 file:text-white
-        hover:file:bg-blue-700
-        file:disabled:opacity-50 file:disabled:pointer-events-none
-        dark:text-neutral-500
-        dark:file:bg-blue-500
-        dark:hover:file:bg-blue-400 mt-6" />
-        </div>
+    <div className="min-h-screen bg-slate-50">
+      {/* Header */}
+      <div className="bg-gradient-to-r from-blue-600 to-blue-700 px-4 py-4 flex items-center justify-between sticky top-0 z-10 shadow-md">
+        <button onClick={() => navigate(-1)} className="text-white/80 hover:text-white text-sm">
+          ← Regresar
+        </button>
+        <h1 className="text-white font-bold text-sm">Ficha del Ciudadano</h1>
+        <button
+          onClick={handleSave}
+          disabled={saving}
+          className="bg-white text-blue-700 font-bold text-xs px-3 py-1.5 rounded-lg hover:bg-blue-50 disabled:opacity-60 transition-colors"
+        >
+          {saving ? "Guardando…" : "Guardar"}
+        </button>
       </div>
 
-      {/* Formulario en dos columnas */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-      <label>
-          Distrito Federal:
-          <input
-            type="text"
-            value={ciudadano.dtto_fed}
-            onChange={(e) => setCiudadano({ ...ciudadano, dtto_fed: e.target.value})}
-            className="border p-2 w-full"
-            required
-          />
-        </label>
+      {/* Contenido — ancho amplio en desktop */}
+      <div className="w-full max-w-6xl mx-auto px-4 sm:px-6 py-6 space-y-4">
 
-        <label>
-          Distrito Local:
-          <input
-            type="text"
-            value={ciudadano.dtto_loc}
-            onChange={(e) => setCiudadano({ ...ciudadano, dtto_loc: e.target.value })}
-            className="border p-2 w-full"
-            required
-          />
-        </label>
-
-
-        <label>
-          Poligono:
-          <input
-            type="text"
-            value={ciudadano.poligono}
-            onChange={(e) => setCiudadano({ ...ciudadano, poligono: e.target.value})}
-            className="border p-2 w-full"
-            required
-          />
-        </label>
-
-        <label>
-          Sección:
-          <input
-            type="text"
-            value={ciudadano.seccion}
-            onChange={(e) => setCiudadano({ ...ciudadano, seccion: e.target.value })}
-            className="border p-2 w-full"
-            required
-          />
-        </label>
-
-        <label>
-          UBT:
-          <input
-            type="text"
-            value={ciudadano.ubt}
-            onChange={(e) => setCiudadano({ ...ciudadano, ubt: e.target.value })}
-            className="border p-2 w-full"
-            required
-          />
-        </label>
-
-        <label>
-          Area:
-          <input
-            type="text"
-            value={ciudadano.area_adscripcion}
-            onChange={(e) => setCiudadano({ ...ciudadano, area_adscripcion: e.target.value.toUpperCase() })}
-            className="border p-2 w-full"
-            required
-          />
-        </label>
-        <label>
-          Dependencia:
-          <input
-            type="text"
-            value={ciudadano.dependencia}
-            onChange={(e) => setCiudadano({ ...ciudadano, dependencia: e.target.value.toUpperCase() })}
-            className="border p-2 w-full"
-            required
-          />
-        </label>
-
-        <label>
-          Nombre:
-          <input
-            type="text"
-            value={ciudadano.nombre}
-            onChange={(e) => setCiudadano({ ...ciudadano, nombre: e.target.value.toUpperCase() })}
-            className="border p-2 w-full"
-            required
-          />
-        </label>
-        <label>
-          Apellido Paterno:
-          <input
-            type="text"
-            value={ciudadano.a_paterno}
-            onChange={(e) => setCiudadano({ ...ciudadano, a_paterno: e.target.value.toUpperCase() })}
-            className="border p-2 w-full"
-            required
-          />
-        </label>
-        <label>
-          Apellido Materno:
-          <input
-            type="text"
-            value={ciudadano.a_materno}
-            onChange={(e) => setCiudadano({ ...ciudadano, a_materno: e.target.value.toUpperCase() })}
-            className="border p-2 w-full"
-            required
-          />
-        </label>
-        <label>
-          CURP:
-          <input
-            type="text"
-            value={ciudadano.curp}
-            maxLength="18"
-            onChange={(e) => setCiudadano({ ...ciudadano, curp: e.target.value.toUpperCase() })}
-            className="border p-2 w-full"
-            required
-          />
-        </label>
-
-        <label>
-          Usuario:
-          <input
-            type="text"
-            value={ciudadano.usuario}
-            // maxLength="18"
-            onChange={(e) => setCiudadano({ ...ciudadano, usuario: e.target.value })}
-            className="border p-2 w-full"
-            required
-          />
-        </label>
-
-        <label>
-          Contraseña:
-          <input
-            type="text"
-            value={ciudadano.password}
-            maxLength="18"
-            onChange={(e) => setCiudadano({ ...ciudadano, password: e.target.value})}
-            className="border p-2 w-full"
-            required
-          />
-        </label>
-
-        <label>
-          Ingreso a la estructura:
-          <input
-            type="date"
-            value={ciudadano.ingreso_estructura}
-            onChange={(e) => setCiudadano({ ...ciudadano, ingreso_estructura: e.target.value })}
-            className="border p-2 w-full"
-            required
-          />
-        </label>
-
-        <label>
-          Observaciones:
-          <input
-            type="text"
-            value={ciudadano.observaciones}
-            onChange={(e) => setCiudadano({ ...ciudadano, observaciones: e.target.value.toUpperCase() })}
-            className="border p-2 w-full"
-            required
-          />
-        </label>
-
-        <label>
-          Movilizador:
-          <input
-            type="text"
-            value={ciudadano.movilizador}
-            onChange={(e) => setCiudadano({ ...ciudadano, movilizador: e.target.value.toUpperCase() })}
-            className="border p-2 w-full"
-            required
-          />
-        </label>
-
-        <label>
-          Teléfono:
-          <input
-            type="text"
-            value={ciudadano.telefono_1}
-            maxLength="10"
-            onChange={(e) => setCiudadano({ ...ciudadano, telefono_1: e.target.value })}
-            className="border p-2 w-full"
-          />
-        </label>
-
-        <label>
-          Teléfono Alterno:
-          <input
-            type="text"
-            value={ciudadano.telefono_2}
-            maxLength="10"
-            onChange={(e) => setCiudadano({ ...ciudadano, telefono_2: e.target.value })}
-            className="border p-2 w-full"
-          />
-        </label>
-
-
-        <div className="md:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-4 items-start">
-          <div className="space-y-4">
-            <label>
-              Calle:
-              <input
-                type="text"
-                value={ciudadano.calle}
-                onChange={(e) => setCiudadano({ ...ciudadano, calle: e.target.value })}
-                className="border p-2 w-full"
-              />
-            </label>
-
-            <label>
-              N° Ext (MZ):
-              <input
-                type="text"
-                value={ciudadano.n_ext_mz}
-                onChange={(e) => setCiudadano({ ...ciudadano, n_ext_mz: e.target.value })}
-                className="border p-2 w-full"
-              />
-            </label>
-
-            <label>
-              N° Int (LT):
-              <input
-                type="text"
-                value={ciudadano.n_int_lt}
-                onChange={(e) => setCiudadano({ ...ciudadano, n_int_lt: e.target.value })}
-                className="border p-2 w-full"
-              />
-            </label>
-
-            <label>
-              N° Casa:
-              <input
-                type="text"
-                value={ciudadano.n_casa}
-                onChange={(e) => setCiudadano({ ...ciudadano, n_casa: e.target.value })}
-                className="border p-2 w-full"
-              />
-            </label>
-
-            <label>
-              Codigo Postal:
-              <input
-                type="text"
-                value={ciudadano.c_p}
-                onChange={(e) => setCiudadano({ ...ciudadano, c_p: e.target.value })}
-                className="border p-2 w-full"
-              />
-            </label>
-
-            <label>
-              Localidad o Colonia:
-              <input
-                type="text"
-                value={ciudadano.col_loc}
-                onChange={(e) => setCiudadano({ ...ciudadano, col_loc: e.target.value })}
-                className="border p-2 w-full"
-              />
-            </label>
-
-            {!viewerEsSM && (
-              <button
-                type="button"
-                onClick={handleObtenerUbicacion}
-                className="bg-slate-600 hover:bg-slate-700 text-white px-4 py-2 rounded text-sm"
-              >
-                📍 Usar mi ubicación actual
-              </button>
-            )}
+        {/* ── Fotografías ── */}
+        <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-6">
+          <SectionTitle>Fotografías</SectionTitle>
+          {/* En desktop: 3 columnas; en móvil: una columna */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 items-start">
+            <PhotoCard
+              url={ciudadano.url_foto_perfil}
+              alt="Foto de perfil"
+              shape="portrait"
+              onUpload={e => handleFileUpload(e, "url_foto_perfil")}
+              uploading={uploading.url_foto_perfil}
+            />
+            <PhotoCard
+              url={ciudadano.url_foto_ine1}
+              alt="INE Frente"
+              shape="landscape"
+              onUpload={e => handleFileUpload(e, "url_foto_ine1")}
+              uploading={uploading.url_foto_ine1}
+            />
+            <PhotoCard
+              url={ciudadano.url_foto_ine2}
+              alt="INE Reverso"
+              shape="landscape"
+              onUpload={e => handleFileUpload(e, "url_foto_ine2")}
+              uploading={uploading.url_foto_ine2}
+            />
           </div>
+        </div>
 
+        {/* ── Ubicación territorial ── */}
+        <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-6">
+          <SectionTitle>Ubicación Territorial</SectionTitle>
           {viewerEsSM ? (
-            <div className="rounded-lg border bg-slate-50 p-4 space-y-2">
-              <p className="text-xs font-bold uppercase tracking-widest text-slate-400">Ubicación territorial</p>
-              <p className="text-sm"><span className="font-semibold text-slate-500">Sector:</span> {ciudadano.poligono || "—"}</p>
-              <p className="text-sm"><span className="font-semibold text-slate-500">Sección:</span> {ciudadano.seccion || "—"}</p>
-              <p className="text-sm"><span className="font-semibold text-slate-500">Fracción:</span> {ciudadano.ubt || "—"}</p>
+            <div className="grid grid-cols-3 gap-3">
+              {[["Sector", ciudadano.poligono], ["Sección", ciudadano.seccion], ["Fracción", ciudadano.ubt]].map(([label, val]) => (
+                <div key={label} className="bg-slate-50 rounded-xl p-3 text-center">
+                  <p className="text-[9px] font-bold uppercase tracking-widest text-slate-400 mb-1">{label}</p>
+                  <p className="text-lg font-bold text-slate-800">{val || "—"}</p>
+                </div>
+              ))}
             </div>
           ) : (
-            <div className="rounded-lg overflow-hidden border" style={{ height: "300px" }}>
-              <MapTerritorial
-                secciones={seccionGeo ? [seccionGeo] : []}
-                fraccionesGeo={fracciones}
-                selectedSeccion={seccionGeo?.seccion}
-                editableLocation={
-                  ciudadano.latitud && ciudadano.longitud
-                    ? { lat: Number(ciudadano.latitud), lng: Number(ciudadano.longitud) }
-                    : null
-                }
-                onEditableLocationChange={(lat, lng, fraccion) =>
-                  setCiudadano((prev) => ({
-                    ...prev,
-                    latitud: lat,
-                    longitud: lng,
-                    ...(fraccion != null ? { ubt: fraccion } : {}),
-                  }))
-                }
-              />
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
+              <Field label="Distrito Federal">
+                <select className={selectCls} value={curDttoFed} onChange={e => handleDttoFed(e.target.value)}>
+                  <option value="">Seleccionar…</option>
+                  {dttosFed.map(v => <option key={v} value={v}>{v}</option>)}
+                </select>
+              </Field>
+              <Field label="Distrito Local">
+                <select className={selectCls} value={curDttoLoc} onChange={e => handleDttoLoc(e.target.value)}>
+                  <option value="">Seleccionar…</option>
+                  {dttosLoc.map(v => <option key={v} value={v}>{v}</option>)}
+                </select>
+              </Field>
+              <Field label="Sector (Polígono)">
+                <select className={selectCls} value={curPoligono} onChange={e => handleSector(e.target.value)}>
+                  <option value="">Seleccionar…</option>
+                  {sectores.map(v => <option key={v} value={v}>{v}</option>)}
+                </select>
+              </Field>
+              <Field label="Sección">
+                <select className={selectCls} value={curSeccion} onChange={e => handleSeccion(e.target.value)}>
+                  <option value="">Seleccionar…</option>
+                  {secciones.map(v => <option key={v} value={v}>{v}</option>)}
+                </select>
+              </Field>
+              <Field label="Fracción (UBT)">
+                <select
+                  className={selectCls}
+                  value={curUbt}
+                  onChange={e => set("ubt", e.target.value)}
+                  disabled={!curSeccion && ubts.length <= 1}
+                >
+                  <option value="">Seleccionar…</option>
+                  {ubts.map(v => <option key={v} value={v}>{v}</option>)}
+                </select>
+              </Field>
             </div>
           )}
         </div>
 
-        <label>
-          INSTAGRAM:
-          <input
-            type="text"
-            value={ciudadano.cuenta_inst}
-            onChange={(e) => setCiudadano({ ...ciudadano, cuenta_inst: e.target.value })}
-            className="border p-2 w-full"
-          />
-        </label>
-        <label>
-          FACEBOOK:
-          <input
-            type="text"
-            value={ciudadano.cuenta_fb}
-            onChange={(e) => setCiudadano({ ...ciudadano, cuenta_fb: e.target.value })}
-            className="border p-2 w-full"
-          />
-        </label>
-        <label>
-          X (TWITTER):
-          <input
-            type="text"
-            value={ciudadano.cuenta_x}
-            onChange={(e) => setCiudadano({ ...ciudadano, cuenta_x: e.target.value })}
-            className="border p-2 w-full"
-          />
-        </label>
-      </div>
+        {/* ── Datos personales ── */}
+        <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-6">
+          <SectionTitle>Datos Personales</SectionTitle>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            <Field label="Nombre">
+              <input className={inputCls} value={ciudadano.nombre || ""} onChange={e => set("nombre", e.target.value.toUpperCase())} />
+            </Field>
+            <Field label="Apellido Paterno">
+              <input className={inputCls} value={ciudadano.a_paterno || ""} onChange={e => set("a_paterno", e.target.value.toUpperCase())} />
+            </Field>
+            <Field label="Apellido Materno">
+              <input className={inputCls} value={ciudadano.a_materno || ""} onChange={e => set("a_materno", e.target.value.toUpperCase())} />
+            </Field>
+            <Field label="CURP">
+              <input className={inputCls} value={ciudadano.curp || ""} maxLength="18" onChange={e => set("curp", e.target.value.toUpperCase())} />
+            </Field>
+            <Field label="Teléfono">
+              <input className={inputCls} value={ciudadano.telefono_1 || ""} maxLength="10" onChange={e => set("telefono_1", e.target.value)} />
+            </Field>
+            <Field label="Teléfono Alterno">
+              <input className={inputCls} value={ciudadano.telefono_2 || ""} maxLength="10" onChange={e => set("telefono_2", e.target.value)} />
+            </Field>
+            <Field label="Ingreso a la Estructura">
+              <input type="date" className={inputCls} value={ciudadano.ingreso_estructura || ""} onChange={e => set("ingreso_estructura", e.target.value)} />
+            </Field>
+            <Field label="Movilizador">
+              <input className={inputCls} value={ciudadano.movilizador || ""} onChange={e => set("movilizador", e.target.value.toUpperCase())} />
+            </Field>
+            <div className="sm:col-span-2 lg:col-span-1">
+              <Field label="Observaciones">
+                <input className={inputCls} value={ciudadano.observaciones || ""} onChange={e => set("observaciones", e.target.value.toUpperCase())} />
+              </Field>
+            </div>
+          </div>
+        </div>
 
-      {/* Botón de guardar cambios */}
-      <div className="mt-4">
+        {/* ── Acceso al sistema ── */}
+        <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-6">
+          <SectionTitle>Acceso al Sistema</SectionTitle>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <Field label="Usuario">
+              <input className={inputCls} value={ciudadano.usuario || ""} onChange={e => set("usuario", e.target.value)} />
+            </Field>
+            <Field label="Contraseña">
+              <input className={inputCls} value={ciudadano.password || ""} maxLength="18" onChange={e => set("password", e.target.value)} />
+            </Field>
+          </div>
+        </div>
+
+        {/* ── Domicilio + Mapa ── */}
+        <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-6">
+          <SectionTitle>Domicilio</SectionTitle>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-4">
+            <Field label="Calle">
+              <input className={inputCls} value={ciudadano.calle || ""} onChange={e => set("calle", e.target.value)} />
+            </Field>
+            <Field label="N° Ext (MZ)">
+              <input className={inputCls} value={ciudadano.n_ext_mz || ""} onChange={e => set("n_ext_mz", e.target.value)} />
+            </Field>
+            <Field label="N° Int (LT)">
+              <input className={inputCls} value={ciudadano.n_int_lt || ""} onChange={e => set("n_int_lt", e.target.value)} />
+            </Field>
+            <Field label="N° Casa">
+              <input className={inputCls} value={ciudadano.n_casa || ""} onChange={e => set("n_casa", e.target.value)} />
+            </Field>
+            <Field label="Código Postal">
+              <input className={inputCls} value={ciudadano.c_p || ""} onChange={e => set("c_p", e.target.value)} />
+            </Field>
+            <Field label="Localidad / Colonia">
+              <input className={inputCls} value={ciudadano.col_loc || ""} onChange={e => set("col_loc", e.target.value)} />
+            </Field>
+          </div>
+          {!viewerEsSM && (
+            <>
+              <button
+                type="button"
+                onClick={handleUbicacion}
+                className="mb-4 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold px-4 py-2 rounded-lg transition-colors"
+              >
+                📍 Usar mi ubicación actual
+              </button>
+              <div className="rounded-xl overflow-hidden border border-slate-200" style={{ height: 320 }}>
+                <MapTerritorial
+                  secciones={seccionGeo ? [seccionGeo] : []}
+                  fraccionesGeo={fracciones}
+                  selectedSeccion={seccionGeo?.seccion}
+                  editableLocation={
+                    ciudadano.latitud && ciudadano.longitud
+                      ? { lat: Number(ciudadano.latitud), lng: Number(ciudadano.longitud) }
+                      : null
+                  }
+                  onEditableLocationChange={(lat, lng, fraccion) =>
+                    setCiudadano(prev => ({
+                      ...prev, latitud: lat, longitud: lng,
+                      ...(fraccion != null ? { ubt: fraccion } : {}),
+                    }))
+                  }
+                />
+              </div>
+            </>
+          )}
+        </div>
+
+        {/* ── Redes sociales ── */}
+        <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-6">
+          <SectionTitle>Redes Sociales</SectionTitle>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <Field label="Instagram">
+              <input className={inputCls} value={ciudadano.cuenta_inst || ""} onChange={e => set("cuenta_inst", e.target.value)} />
+            </Field>
+            <Field label="Facebook">
+              <input className={inputCls} value={ciudadano.cuenta_fb || ""} onChange={e => set("cuenta_fb", e.target.value)} />
+            </Field>
+            <Field label="X (Twitter)">
+              <input className={inputCls} value={ciudadano.cuenta_x || ""} onChange={e => set("cuenta_x", e.target.value)} />
+            </Field>
+          </div>
+        </div>
+
+        {/* Guardar */}
         <button
           onClick={handleSave}
-          className="bg-green-500 text-white px-4 py-2 rounded"
+          disabled={saving}
+          className="w-full bg-gradient-to-r from-blue-600 to-blue-700 text-white font-bold py-3.5 rounded-xl shadow-md shadow-blue-200/50 hover:from-blue-700 hover:to-blue-800 disabled:opacity-60 transition-all text-sm"
         >
-          Guardar Cambios
+          {saving ? "Guardando cambios…" : "Guardar Cambios"}
         </button>
       </div>
     </div>
