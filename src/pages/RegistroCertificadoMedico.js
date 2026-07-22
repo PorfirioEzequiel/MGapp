@@ -919,7 +919,7 @@ const RegistroCertificadoMedico = () => {
                     <path strokeLinecap="round" strokeLinejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                   </svg>
                   <p className="text-xs text-blue-700 leading-relaxed font-medium">
-                    En el siguiente paso escanearás la CURP de cada menor. Solo aplica para menores de 15 años.
+                    En el siguiente paso escanearás la CURP de cada menor. Solo aplica para menores de 18 años.
                   </p>
                 </div>
               </div>
@@ -982,7 +982,7 @@ const RegistroCertificadoMedico = () => {
                     onClick={() => { setScannerMenorActivo(true); setErrorEscaneo(""); setTextoEscaneadoCrudo(""); }}
                     titulo={`Escanear CURP del menor ${menores.length + 1}`}
                     subtitulo="Acerca la CURP impresa o descargada del menor a la cámara."
-                    badge="Menor de 15 años"
+                    badge="Menor de 18 años"
                   />
                 ) : (
                   <div className="animate-fade-in-up">
@@ -999,8 +999,8 @@ const RegistroCertificadoMedico = () => {
                 onConfirmar={confirmarMenorActual}
                 onReescanear={() => setMenorCurpDatos(null)}
                 error={errorMenor}
-                edadMaxima={15}
-                textoRequisito="Este beneficio es solo para menores de 15 años. Esta CURP no cumple el requisito."
+                edadMaxima={18}
+                textoRequisito="Este beneficio es solo para menores de 18 años. Esta CURP no cumple el requisito."
               />
             )}
           </div>
