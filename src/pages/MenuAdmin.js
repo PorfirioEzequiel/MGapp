@@ -2,7 +2,7 @@ import React from 'react';
 import {
   LiaUserFriendsSolid, LiaMapMarkedAltSolid, LiaCookieBiteSolid,
   LiaBlackTie, LiaFileContractSolid, LiaSitemapSolid, LiaWeixin,
-  LiaWalletSolid, LiaUsersSolid, LiaCalendarCheckSolid,
+  LiaWalletSolid, LiaUsersSolid, LiaCalendarCheckSolid, LiaFileMedicalSolid,
 } from "react-icons/lia";
 import { useNavigate } from 'react-router-dom';
 
@@ -53,6 +53,7 @@ const MenuAdmin = () => {
           <MenuItem icon={LiaCookieBiteSolid} label="ESTADÍSTICA" onClick={() => navigate('/admin/reporte')} />
           <MenuItem icon={LiaSitemapSolid} label="ESTRUCTURA" onClick={() => navigate('/admin/base')} />
           <MenuItem icon={LiaCalendarCheckSolid} label="ACTIVIDADES" onClick={() => navigate('/admin/actividades')} color="violet" />
+          <MenuItem icon={LiaFileMedicalSolid} label="CERTIFICADOS" onClick={() => navigate('/admin/certificados')} color="emerald" />
         </div>
 
         {/* Sección operación */}

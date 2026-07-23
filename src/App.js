@@ -23,6 +23,7 @@ import ReportePoligonos from './admin/ReportePoligonos';
 import ExcelDownloader from './admin/ExcelDownloader';
 import ProgramasSociales from './admin/ProgramasSociales';
 import Actividades from './admin/Actividades';
+import ReporteCertificados from './admin/ReporteCertificados';
 import Apoyos from './pages/Apoyos';
 import RegistroCertificadoMedico from './pages/RegistroCertificadoMedico';
 import ReagendarCertificado from './pages/ReagendarCertificado';
@@ -55,6 +56,7 @@ function App() {
         <Route path="/admin/base" element={<PrivateRoute><ExcelDownloader /></PrivateRoute>} />
         <Route path="/admin/programas" element={<PrivateRoute><ProgramasSociales /></PrivateRoute>} />
         <Route path="/admin/actividades" element={<PrivateRoute><Actividades /></PrivateRoute>} />
+        <Route path="/admin/certificados" element={<PrivateRoute><ReporteCertificados /></PrivateRoute>} />
         <Route path="/apoyos/:usuario" element={<PrivateRoute><Apoyos /></PrivateRoute>} />
         <Route path="/menu/:usuario" element={<PrivateRoute><MeniAdmin /></PrivateRoute>} />
         <Route path="/perfil/:usuario" element={<PrivateRoute><Perfil /></PrivateRoute>} />
