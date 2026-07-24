@@ -3,6 +3,7 @@ import {
   LiaUserFriendsSolid, LiaMapMarkedAltSolid, LiaCookieBiteSolid,
   LiaBlackTie, LiaFileContractSolid, LiaSitemapSolid, LiaWeixin,
   LiaWalletSolid, LiaUsersSolid, LiaCalendarCheckSolid, LiaFileMedicalSolid,
+  LiaQrcodeSolid,
 } from "react-icons/lia";
 import { useNavigate } from 'react-router-dom';
 
@@ -54,6 +55,7 @@ const MenuAdmin = () => {
           <MenuItem icon={LiaSitemapSolid} label="ESTRUCTURA" onClick={() => navigate('/admin/base')} />
           <MenuItem icon={LiaCalendarCheckSolid} label="ACTIVIDADES" onClick={() => navigate('/admin/actividades')} color="violet" />
           <MenuItem icon={LiaFileMedicalSolid} label="CERTIFICADOS" onClick={() => navigate('/admin/certificados')} color="emerald" />
+          <MenuItem icon={LiaQrcodeSolid} label="CHECK-IN" onClick={() => navigate('/registro-certificado-medico/checkin')} color="emerald" />
         </div>
 
         {/* Sección operación */}

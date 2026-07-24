@@ -1,16 +1,18 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import supabase from '../supabase/client';
 
-const CUPO_POR_DIA = 80;
+const CUPO_POR_DIA = 100;
 
 const JORNADAS = [
-  { fecha: "2026-07-23", sector: 6, label: "Sector 6", dia: "Jueves 23 de julio", color: "blue" },
+  { fecha: "2026-07-23", sector: 6, label: "Sector 6", dia: "Jueves 23 de julio",  color: "blue" },
   { fecha: "2026-07-24", sector: 5, label: "Sector 5", dia: "Viernes 24 de julio", color: "violet" },
+  { fecha: "2026-07-27", sector: 0, label: "Jornada 3", dia: "Lunes 27 de julio",  color: "emerald" },
 ];
 
 const COLOR = {
-  blue:   { tab: "bg-blue-600 text-white",   badge: "bg-blue-100 text-blue-700",   bar: "bg-blue-500",   ring: "ring-blue-200" },
-  violet: { tab: "bg-violet-600 text-white", badge: "bg-violet-100 text-violet-700", bar: "bg-violet-500", ring: "ring-violet-200" },
+  blue:    { tab: "bg-blue-600 text-white",    badge: "bg-blue-100 text-blue-700",    bar: "bg-blue-500",    ring: "ring-blue-200" },
+  violet:  { tab: "bg-violet-600 text-white",  badge: "bg-violet-100 text-violet-700",  bar: "bg-violet-500",  ring: "ring-violet-200" },
+  emerald: { tab: "bg-emerald-600 text-white", badge: "bg-emerald-100 text-emerald-700", bar: "bg-emerald-500", ring: "ring-emerald-200" },
 };
 
 const STATUS_CFG = {
@@ -140,14 +142,14 @@ const ReporteCertificados = () => {
             const c = COLOR[j.color ?? "blue"];
             const pctColor = m.pct >= 90 ? "bg-red-500" : m.pct >= 60 ? "bg-amber-500" : c.bar;
             return (
-              <div key={j.fecha} className={`bg-white rounded-xl border-2 p-4 cursor-pointer transition-all ${jornadaActiva === j.fecha ? `border-current ${j.color === "violet" ? "text-violet-600" : "text-blue-600"}` : "border-slate-200 text-slate-400 hover:border-slate-300"}`}
+              <div key={j.fecha} className={`bg-white rounded-xl border-2 p-4 cursor-pointer transition-all ${jornadaActiva === j.fecha ? `border-current ${j.color === "violet" ? "text-violet-600" : j.color === "emerald" ? "text-emerald-600" : "text-blue-600"}` : "border-slate-200 text-slate-400 hover:border-slate-300"}`}
                 onClick={() => { setJornadaActiva(j.fecha); setBusqueda(""); }}>
                 <div className="flex items-start justify-between mb-3">
                   <div>
                     <p className="font-bold text-slate-900 text-sm">{j.label}</p>
                     <p className="text-xs text-slate-500 mt-0.5">{j.dia}</p>
                   </div>
-                  <span className={`text-xs font-bold px-2 py-1 rounded-full ${j.color === "violet" ? "bg-violet-100 text-violet-700" : "bg-blue-100 text-blue-700"}`}>
+                  <span className={`text-xs font-bold px-2 py-1 rounded-full ${COLOR[j.color ?? "blue"].badge}`}>
                     {m.pct}%
                   </span>
                 </div>
@@ -167,7 +169,7 @@ const ReporteCertificados = () => {
         {jornada && (
           <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
             {/* Cabecera */}
-            <div className={`px-4 py-3 flex items-center justify-between ${jornada.color === "violet" ? "bg-violet-600" : "bg-blue-600"}`}>
+            <div className={`px-4 py-3 flex items-center justify-between ${COLOR[jornada.color ?? "blue"].tab}`}>
               <div>
                 <p className="text-white font-bold text-sm">{jornada.label} — {jornada.dia}</p>
                 <p className="text-white/70 text-xs mt-0.5">

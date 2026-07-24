@@ -91,6 +91,16 @@ const Login = () => {
       </form>
 
       {error && <p className="text-red-600 mt-2">{error}</p>}
+
+      <div className="mt-6 pt-4 border-t border-gray-200 text-center">
+        <button
+          type="button"
+          onClick={() => navigate('/registro-certificado-medico/checkin')}
+          className="text-sm text-emerald-700 hover:text-emerald-900 font-medium underline"
+        >
+          Check-in Certificado Médico (personal de evento)
+        </button>
+      </div>
     </div>
   );
 };
