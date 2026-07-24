@@ -7,12 +7,14 @@ const JORNADAS = [
   { fecha: "2026-07-23", sector: 6, label: "Sector 6", dia: "Jueves 23 de julio",  color: "blue" },
   { fecha: "2026-07-24", sector: 5, label: "Sector 5", dia: "Viernes 24 de julio", color: "violet" },
   { fecha: "2026-07-27", sector: 0, label: "Jornada 3", dia: "Lunes 27 de julio",  color: "emerald" },
+  { fecha: "2026-07-28", sector: 4, label: "Sector 4", dia: "Martes 28 de julio", color: "orange" },
 ];
 
 const COLOR = {
   blue:    { tab: "bg-blue-600 text-white",    badge: "bg-blue-100 text-blue-700",    bar: "bg-blue-500",    ring: "ring-blue-200" },
   violet:  { tab: "bg-violet-600 text-white",  badge: "bg-violet-100 text-violet-700",  bar: "bg-violet-500",  ring: "ring-violet-200" },
   emerald: { tab: "bg-emerald-600 text-white", badge: "bg-emerald-100 text-emerald-700", bar: "bg-emerald-500", ring: "ring-emerald-200" },
+  orange:  { tab: "bg-orange-600 text-white",  badge: "bg-orange-100 text-orange-700",  bar: "bg-orange-500",  ring: "ring-orange-200" },
 };
 
 const STATUS_CFG = {
