@@ -19,6 +19,9 @@ const JORNADAS = [
   { fecha: "2026-07-24", horaInicio: "09:30", ubicacionMapsUrl: "https://maps.app.goo.gl/W4ibcZLkT7qthe32A?g_st=iw" },
   { fecha: "2026-07-27", horaInicio: "09:30", ubicacionMapsUrl: "https://maps.app.goo.gl/HGMWn7msVAjFDozV9" },
   { fecha: "2026-07-28", horaInicio: "09:30", ubicacionMapsUrl: "https://maps.app.goo.gl/y63DapjkRtPfSx3S7" },
+  { fecha: "2026-07-29", horaInicio: "09:30", ubicacionMapsUrl: "https://maps.app.goo.gl/iKMZTYk7sPtEuoLG6c" },
+  { fecha: "2026-07-30", horaInicio: "09:30", ubicacionMapsUrl: "https://maps.app.goo.gl/pQQeH3j53RYWuty27" },
+  { fecha: "2026-07-31", horaInicio: "09:30", ubicacionMapsUrl: "https://maps.app.goo.gl/uhkSqwfzhHK4jMZR7" },
 ];
 const INTERVALO_MINUTOS = 10;
 const CUPO_POR_SLOT = 3;

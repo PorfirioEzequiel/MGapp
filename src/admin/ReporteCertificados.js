@@ -6,8 +6,11 @@ const CUPO_POR_DIA = 100;
 const JORNADAS = [
   { fecha: "2026-07-23", sector: 6, label: "Sector 6", dia: "Jueves 23 de julio",  color: "blue" },
   { fecha: "2026-07-24", sector: 5, label: "Sector 5", dia: "Viernes 24 de julio", color: "violet" },
-  { fecha: "2026-07-27", sector: 0, label: "Jornada 3", dia: "Lunes 27 de julio",  color: "emerald" },
+  { fecha: "2026-07-27", sector: 7, label: "Sector 7", dia: "Lunes 27 de julio",  color: "emerald" },
   { fecha: "2026-07-28", sector: 4, label: "Sector 4", dia: "Martes 28 de julio", color: "orange" },
+  { fecha: "2026-07-29", sector: 8, label: "Sector 8", dia: "Miércoles 29 de julio", color: "rose" },
+  { fecha: "2026-07-30", sector: 3, label: "Sector 3", dia: "Jueves 30 de julio", color: "cyan" },
+  { fecha: "2026-07-31", sector: 2, label: "Sector 2", dia: "Viernes 31 de julio", color: "indigo" },
 ];
 
 const COLOR = {
@@ -15,6 +18,9 @@ const COLOR = {
   violet:  { tab: "bg-violet-600 text-white",  badge: "bg-violet-100 text-violet-700",  bar: "bg-violet-500",  ring: "ring-violet-200" },
   emerald: { tab: "bg-emerald-600 text-white", badge: "bg-emerald-100 text-emerald-700", bar: "bg-emerald-500", ring: "ring-emerald-200" },
   orange:  { tab: "bg-orange-600 text-white",  badge: "bg-orange-100 text-orange-700",  bar: "bg-orange-500",  ring: "ring-orange-200" },
+  rose:    { tab: "bg-rose-600 text-white",    badge: "bg-rose-100 text-rose-700",    bar: "bg-rose-500",    ring: "ring-rose-200" },
+  cyan:    { tab: "bg-cyan-600 text-white",    badge: "bg-cyan-100 text-cyan-700",    bar: "bg-cyan-500",    ring: "ring-cyan-200" },
+  indigo:  { tab: "bg-indigo-600 text-white",  badge: "bg-indigo-100 text-indigo-700",  bar: "bg-indigo-500",  ring: "ring-indigo-200" },
 };
 
 const STATUS_CFG = {
