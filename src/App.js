@@ -28,6 +28,7 @@ import Apoyos from './pages/Apoyos';
 import RegistroCertificadoMedico from './pages/RegistroCertificadoMedico';
 import ReagendarCertificado from './pages/ReagendarCertificado';
 import CheckInCertificado from './pages/CheckInCertificado';
+import MapaEdomex from './admin/MapaEdomex';
 
 // Componente para proteger rutas privadas
 const PrivateRoute = ({ children }) => {
@@ -57,6 +58,7 @@ function App() {
         <Route path="/admin/programas" element={<PrivateRoute><ProgramasSociales /></PrivateRoute>} />
         <Route path="/admin/actividades" element={<PrivateRoute><Actividades /></PrivateRoute>} />
         <Route path="/admin/certificados" element={<PrivateRoute><ReporteCertificados /></PrivateRoute>} />
+        <Route path="/admin/mapa-edomex" element={<PrivateRoute><MapaEdomex /></PrivateRoute>} />
         <Route path="/apoyos/:usuario" element={<PrivateRoute><Apoyos /></PrivateRoute>} />
         <Route path="/menu/:usuario" element={<PrivateRoute><MeniAdmin /></PrivateRoute>} />
         <Route path="/perfil/:usuario" element={<PrivateRoute><Perfil /></PrivateRoute>} />

@@ -4,6 +4,7 @@ import {
   LiaBlackTie, LiaFileContractSolid, LiaSitemapSolid, LiaWeixin,
   LiaWalletSolid, LiaUsersSolid, LiaCalendarCheckSolid, LiaFileMedicalSolid,
   LiaQrcodeSolid,
+  LiaGlobeSolid,
 } from "react-icons/lia";
 import { useNavigate } from 'react-router-dom';
 
@@ -46,6 +47,7 @@ const MenuAdmin = () => {
           <MenuItem icon={LiaBlackTie} label="CIUDADANOS" onClick={() => navigate('/admin')} color="red" />
           <MenuItem icon={LiaUserFriendsSolid} label="MAPA TERRITORIAL" onClick={() => navigate('/tablero')} />
           <MenuItem icon={LiaMapMarkedAltSolid} label="TERRITORIO" onClick={() => navigate('/territorio')} />
+          <MenuItem icon={LiaGlobeSolid} label="MAPA EDOMEX" onClick={() => navigate('/admin/mapa-edomex')} color="emerald" />
         </div>
 
         {/* Sección análisis */}

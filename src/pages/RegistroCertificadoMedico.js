@@ -22,10 +22,15 @@ const JORNADAS = [
   { fecha: "2026-07-29", horaInicio: "09:30", ubicacionMapsUrl: "https://maps.app.goo.gl/iKMZTYk7sPtEuoLG6c" },
   { fecha: "2026-07-30", horaInicio: "09:30", ubicacionMapsUrl: "https://maps.app.goo.gl/pQQeH3j53RYWuty27" },
   { fecha: "2026-07-31", horaInicio: "09:30", ubicacionMapsUrl: "https://maps.app.goo.gl/uhkSqwfzhHK4jMZR7" },
+  { fecha: "2026-08-03", horaInicio: "09:30", ubicacionMapsUrl: "https://maps.app.goo.gl/tJ86wFqzqVNGexdi6" },
+  { fecha: "2026-08-04", horaInicio: "09:30", ubicacionMapsUrl: "https://maps.app.goo.gl/vUfq4mvMZ9zTD64Q8" },
+  { fecha: "2026-08-05", horaInicio: "09:30", ubicacionMapsUrl: "https://maps.app.goo.gl/kEz2APpfQCd4bZeP8" },
+  { fecha: "2026-08-06", horaInicio: "09:30", ubicacionMapsUrl: "https://maps.app.goo.gl/SBcG5XGuQme8t6zv7" },
+  { fecha: "2026-08-07", horaInicio: "09:30", ubicacionMapsUrl: "https://maps.app.goo.gl/unNKGj5soRPHFJi27" },
 ];
 const INTERVALO_MINUTOS = 10;
 const CUPO_POR_SLOT = 3;
-const CUPO_TOTAL_DIA = 100;
+const CUPO_TOTAL_DIA = 81;
 
 // ── Helpers puros ────────────────────────────────────────────────────────────
 const generarFolio = () => {

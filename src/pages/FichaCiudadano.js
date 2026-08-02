@@ -166,11 +166,16 @@ const FichaCiudadano = () => {
 
   const ubts = useMemo(() => {
     if (!curSeccion) return ensureOption([], curUbt);
-    return ensureOption(
-      catalogo.filter(r => r.seccion === curSeccion).map(r => r.fraccion).filter(Boolean).sort(),
-      curUbt
-    );
-  }, [catalogo, curSeccion, curUbt]);
+    const fromCatalog = catalogo
+      .filter(r => r.seccion === curSeccion)
+      .map(r => r.fraccion)
+      .filter(Boolean)
+      .sort();
+    if (fromCatalog.length > 0) return ensureOption(fromCatalog, curUbt);
+    // Fallback: usar fracciones geográficas ya cargadas para esta sección
+    const fromFracciones = [...new Set(fracciones.map(r => String(r.fraccion)).filter(Boolean))].sort();
+    return ensureOption(fromFracciones, curUbt);
+  }, [catalogo, curSeccion, curUbt, fracciones]);
 
   // ── handlers de cascada ─────────────────────────────────────────────────────
 
@@ -346,7 +351,7 @@ const FichaCiudadano = () => {
                   className={selectCls}
                   value={curUbt}
                   onChange={e => set("ubt", e.target.value)}
-                  disabled={!curSeccion && ubts.length <= 1}
+                  disabled={!curSeccion}
                 >
                   <option value="">Seleccionar…</option>
                   {ubts.map(v => <option key={v} value={v}>{v}</option>)}
