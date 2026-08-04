@@ -3,24 +3,21 @@ import supabase from '../supabase/client';
 
 const CUPO_POR_DIA = 100;
 
-const JORNADAS = [
-  { fecha: "2026-07-23", sector: 6, label: "Sector 6", dia: "Jueves 23 de julio",  color: "blue" },
-  { fecha: "2026-07-24", sector: 5, label: "Sector 5", dia: "Viernes 24 de julio", color: "violet" },
-  { fecha: "2026-07-27", sector: 7, label: "Sector 7", dia: "Lunes 27 de julio",  color: "emerald" },
-  { fecha: "2026-07-28", sector: 4, label: "Sector 4", dia: "Martes 28 de julio", color: "orange" },
-  { fecha: "2026-07-29", sector: 8, label: "Sector 8", dia: "Miércoles 29 de julio", color: "rose" },
-  { fecha: "2026-07-30", sector: 3, label: "Sector 3", dia: "Jueves 30 de julio", color: "cyan" },
-  { fecha: "2026-07-31", sector: 2, label: "Sector 2", dia: "Viernes 31 de julio", color: "indigo" },
-];
+const COLOR_POOL = ["blue","violet","emerald","orange","rose","cyan","indigo","teal","amber","sky","purple","pink"];
 
 const COLOR = {
-  blue:    { tab: "bg-blue-600 text-white",    badge: "bg-blue-100 text-blue-700",    bar: "bg-blue-500",    ring: "ring-blue-200" },
-  violet:  { tab: "bg-violet-600 text-white",  badge: "bg-violet-100 text-violet-700",  bar: "bg-violet-500",  ring: "ring-violet-200" },
-  emerald: { tab: "bg-emerald-600 text-white", badge: "bg-emerald-100 text-emerald-700", bar: "bg-emerald-500", ring: "ring-emerald-200" },
-  orange:  { tab: "bg-orange-600 text-white",  badge: "bg-orange-100 text-orange-700",  bar: "bg-orange-500",  ring: "ring-orange-200" },
-  rose:    { tab: "bg-rose-600 text-white",    badge: "bg-rose-100 text-rose-700",    bar: "bg-rose-500",    ring: "ring-rose-200" },
-  cyan:    { tab: "bg-cyan-600 text-white",    badge: "bg-cyan-100 text-cyan-700",    bar: "bg-cyan-500",    ring: "ring-cyan-200" },
-  indigo:  { tab: "bg-indigo-600 text-white",  badge: "bg-indigo-100 text-indigo-700",  bar: "bg-indigo-500",  ring: "ring-indigo-200" },
+  blue:    { tab: "bg-blue-600 text-white",    badge: "bg-blue-100 text-blue-700",      bar: "bg-blue-500",    text: "text-blue-600" },
+  violet:  { tab: "bg-violet-600 text-white",  badge: "bg-violet-100 text-violet-700",  bar: "bg-violet-500",  text: "text-violet-600" },
+  emerald: { tab: "bg-emerald-600 text-white", badge: "bg-emerald-100 text-emerald-700",bar: "bg-emerald-500", text: "text-emerald-600" },
+  orange:  { tab: "bg-orange-600 text-white",  badge: "bg-orange-100 text-orange-700",  bar: "bg-orange-500",  text: "text-orange-600" },
+  rose:    { tab: "bg-rose-600 text-white",    badge: "bg-rose-100 text-rose-700",      bar: "bg-rose-500",    text: "text-rose-600" },
+  cyan:    { tab: "bg-cyan-600 text-white",    badge: "bg-cyan-100 text-cyan-700",      bar: "bg-cyan-500",    text: "text-cyan-600" },
+  indigo:  { tab: "bg-indigo-600 text-white",  badge: "bg-indigo-100 text-indigo-700",  bar: "bg-indigo-500",  text: "text-indigo-600" },
+  teal:    { tab: "bg-teal-600 text-white",    badge: "bg-teal-100 text-teal-700",      bar: "bg-teal-500",    text: "text-teal-600" },
+  amber:   { tab: "bg-amber-600 text-white",   badge: "bg-amber-100 text-amber-700",    bar: "bg-amber-500",   text: "text-amber-600" },
+  sky:     { tab: "bg-sky-600 text-white",     badge: "bg-sky-100 text-sky-700",        bar: "bg-sky-500",     text: "text-sky-600" },
+  purple:  { tab: "bg-purple-600 text-white",  badge: "bg-purple-100 text-purple-700",  bar: "bg-purple-500",  text: "text-purple-600" },
+  pink:    { tab: "bg-pink-600 text-white",    badge: "bg-pink-100 text-pink-700",      bar: "bg-pink-500",    text: "text-pink-600" },
 };
 
 const STATUS_CFG = {
@@ -29,6 +26,16 @@ const STATUS_CFG = {
   CHECKIN:    { label: "Check-in",   cls: "bg-emerald-100 text-emerald-700" },
   ASISTIDA:   { label: "Asistida",   cls: "bg-emerald-100 text-emerald-700" },
   CANCELADA:  { label: "Cancelada",  cls: "bg-red-100 text-red-700" },
+};
+
+const formatDia = (isoDate) => {
+  if (!isoDate) return "";
+  const [y, m, d] = isoDate.split("-");
+  const date = new Date(+y, +m - 1, +d);
+  const weekday = date.toLocaleDateString("es-MX", { weekday: "long" });
+  const day = date.getDate();
+  const month = date.toLocaleDateString("es-MX", { month: "long" });
+  return `${weekday.charAt(0).toUpperCase() + weekday.slice(1)} ${day} de ${month}`;
 };
 
 const StatusBadge = ({ status }) => {
@@ -48,14 +55,58 @@ const Stat = ({ label, value, sub }) => (
   </div>
 );
 
+const Campo = ({ label, required, children }) => (
+  <div className="space-y-1">
+    <label className="flex items-center gap-1 text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+      {label}{required && <span className="text-red-500">*</span>}
+    </label>
+    {children}
+  </div>
+);
+
+const InputField = ({ className = "", ...props }) => (
+  <input
+    {...props}
+    className={`w-full px-3.5 py-2.5 rounded-xl border border-slate-200 bg-white text-slate-900 placeholder-slate-400 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all ${className}`}
+  />
+);
+
 const ReporteCertificados = () => {
+  const [jornadas, setJornadas] = useState([]);
   const [registros, setRegistros] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [jornadaActiva, setJornadaActiva] = useState(JORNADAS[0].fecha);
+  const [jornadaActiva, setJornadaActiva] = useState(null);
   const [busqueda, setBusqueda] = useState("");
   const [lastRefresh, setLastRefresh] = useState(null);
 
-  useEffect(() => { fetchRegistros(); }, []);
+  // Modal nueva jornada
+  const [mostrarForm, setMostrarForm] = useState(false);
+  const [formJornada, setFormJornada] = useState({ fecha: "", sector: "", horaInicio: "09:30", ubicacionUrl: "" });
+  const [guardando, setGuardando] = useState(false);
+  const [errorForm, setErrorForm] = useState("");
+
+  useEffect(() => { fetchJornadas(); fetchRegistros(); }, []);
+
+  const fetchJornadas = async () => {
+    const { data } = await supabase
+      .from("jornadas_certificados")
+      .select("*")
+      .eq("activa", true)
+      .order("fecha", { ascending: true });
+    if (data) {
+      const mapped = data.map((j, i) => ({
+        fecha: j.fecha,
+        sector: j.sector,
+        label: j.sector_label,
+        dia: formatDia(j.fecha),
+        color: j.color || COLOR_POOL[i % COLOR_POOL.length],
+        horaInicio: j.hora_inicio,
+        ubicacionMapsUrl: j.ubicacion_maps_url,
+      }));
+      setJornadas(mapped);
+      setJornadaActiva(prev => prev ?? (mapped[0]?.fecha ?? null));
+    }
+  };
 
   const fetchRegistros = async () => {
     setLoading(true);
@@ -69,13 +120,41 @@ const ReporteCertificados = () => {
     setLoading(false);
   };
 
+  const guardarJornada = async () => {
+    if (!formJornada.fecha || !formJornada.sector) {
+      setErrorForm("La fecha y el sector son obligatorios.");
+      return;
+    }
+    setGuardando(true);
+    setErrorForm("");
+    const nextColor = COLOR_POOL[jornadas.length % COLOR_POOL.length];
+    const { error } = await supabase.from("jornadas_certificados").insert([{
+      fecha: formJornada.fecha,
+      sector: parseInt(formJornada.sector, 10),
+      sector_label: `Sector ${formJornada.sector}`,
+      hora_inicio: formJornada.horaInicio || "09:30",
+      ubicacion_maps_url: formJornada.ubicacionUrl.trim() || null,
+      color: nextColor,
+      activa: true,
+    }]);
+    if (error) {
+      setErrorForm(error.message.includes("unique") ? "Ya existe una jornada para esa fecha." : "Error al guardar: " + error.message);
+      setGuardando(false);
+      return;
+    }
+    setMostrarForm(false);
+    setFormJornada({ fecha: "", sector: "", horaInicio: "09:30", ubicacionUrl: "" });
+    await fetchJornadas();
+    setGuardando(false);
+  };
+
   const totalRegistros = registros.length;
   const totalMenores = registros.reduce((s, r) => s + (r.numero_menores || 0), 0);
   const totalFamilias = registros.length;
 
   const metricasPorFecha = useMemo(() => {
     const map = {};
-    JORNADAS.forEach(j => {
+    jornadas.forEach(j => {
       const rows = registros.filter(r => r.fecha_cita === j.fecha);
       const statusCount = {};
       rows.forEach(r => { statusCount[r.status] = (statusCount[r.status] || 0) + 1; });
@@ -87,10 +166,9 @@ const ReporteCertificados = () => {
       };
     });
     return map;
-  }, [registros]);
+  }, [registros, jornadas]);
 
-  const jornada = JORNADAS.find(j => j.fecha === jornadaActiva);
-  const colores = COLOR[jornada?.color ?? "blue"];
+  const jornada = jornadas.find(j => j.fecha === jornadaActiva);
   const metricas = metricasPorFecha[jornadaActiva] ?? { total: 0, menores: 0, statusCount: {}, pct: 0 };
 
   const registrosFiltrados = useMemo(() => {
@@ -122,36 +200,135 @@ const ReporteCertificados = () => {
             <h1 className="text-white font-bold text-xl leading-tight">Certificados Médicos</h1>
             <p className="text-blue-200 text-xs mt-0.5">Reporte de registros por sector</p>
           </div>
-          <button
-            onClick={fetchRegistros}
-            disabled={loading}
-            className="flex items-center gap-1.5 bg-white/15 hover:bg-white/25 text-white text-xs font-bold px-3 py-2 rounded-lg transition-colors disabled:opacity-50"
-          >
-            <svg className={`w-3.5 h-3.5 ${loading ? "animate-spin" : ""}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-            </svg>
-            Actualizar
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => { setMostrarForm(true); setErrorForm(""); }}
+              className="flex items-center gap-1.5 bg-white text-blue-700 text-xs font-bold px-3 py-2 rounded-lg hover:bg-blue-50 transition-colors"
+            >
+              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
+              </svg>
+              Nueva Jornada
+            </button>
+            <button
+              onClick={() => { fetchJornadas(); fetchRegistros(); }}
+              disabled={loading}
+              className="flex items-center gap-1.5 bg-white/15 hover:bg-white/25 text-white text-xs font-bold px-3 py-2 rounded-lg transition-colors disabled:opacity-50"
+            >
+              <svg className={`w-3.5 h-3.5 ${loading ? "animate-spin" : ""}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+              </svg>
+              Actualizar
+            </button>
+          </div>
         </div>
       </div>
+
+      {/* Modal: Nueva Jornada */}
+      {mostrarForm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden">
+            {/* Cabecera modal */}
+            <div className="bg-gradient-to-r from-blue-600 to-blue-700 px-5 py-4 flex items-center justify-between">
+              <div>
+                <h2 className="text-white font-bold text-base">Nueva Jornada</h2>
+                <p className="text-blue-200 text-xs mt-0.5">Agrega una nueva fecha de certificados médicos</p>
+              </div>
+              <button onClick={() => setMostrarForm(false)} className="text-white/70 hover:text-white transition-colors p-1">
+                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            {/* Formulario */}
+            <div className="px-5 py-5 space-y-4">
+              <Campo label="Fecha" required>
+                <InputField
+                  type="date"
+                  value={formJornada.fecha}
+                  onChange={e => setFormJornada(f => ({ ...f, fecha: e.target.value }))}
+                />
+              </Campo>
+
+              <Campo label="Número de sector" required>
+                <InputField
+                  type="number"
+                  min={1}
+                  max={20}
+                  placeholder="Ej. 5"
+                  value={formJornada.sector}
+                  onChange={e => setFormJornada(f => ({ ...f, sector: e.target.value }))}
+                />
+              </Campo>
+
+              <Campo label="Horario de inicio">
+                <InputField
+                  type="time"
+                  value={formJornada.horaInicio}
+                  onChange={e => setFormJornada(f => ({ ...f, horaInicio: e.target.value }))}
+                />
+              </Campo>
+
+              <Campo label="URL de ubicación (Google Maps)">
+                <InputField
+                  type="url"
+                  placeholder="https://maps.app.goo.gl/..."
+                  value={formJornada.ubicacionUrl}
+                  onChange={e => setFormJornada(f => ({ ...f, ubicacionUrl: e.target.value }))}
+                />
+              </Campo>
+
+              {errorForm && (
+                <p className="text-sm text-red-600 font-semibold bg-red-50 border border-red-100 rounded-xl px-3 py-2.5">
+                  {errorForm}
+                </p>
+              )}
+
+              <div className="flex gap-2 pt-1">
+                <button
+                  onClick={guardarJornada}
+                  disabled={guardando}
+                  className="flex-1 bg-blue-700 hover:bg-blue-800 text-white text-sm font-bold px-4 py-2.5 rounded-xl transition-colors disabled:opacity-50"
+                >
+                  {guardando ? "Guardando…" : "Guardar jornada"}
+                </button>
+                <button
+                  onClick={() => { setMostrarForm(false); setErrorForm(""); }}
+                  className="px-4 py-2.5 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-50 text-sm font-semibold transition-colors"
+                >
+                  Cancelar
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="max-w-5xl mx-auto px-4 space-y-6 pb-10">
         {/* Stats globales */}
         <div className="grid grid-cols-3 gap-3">
-          <Stat label="Total registros" value={totalRegistros} sub={`de ${JORNADAS.length * CUPO_POR_DIA} cupos totales`} />
+          <Stat label="Total registros" value={totalRegistros} sub={`de ${jornadas.length * CUPO_POR_DIA} cupos totales`} />
           <Stat label="Familias" value={totalFamilias} />
           <Stat label="Menores beneficiarios" value={totalMenores} />
         </div>
 
         {/* Resumen por jornada */}
         <div className="grid gap-3 sm:grid-cols-2">
-          {JORNADAS.map(j => {
+          {jornadas.map(j => {
             const m = metricasPorFecha[j.fecha] ?? { total: 0, menores: 0, pct: 0 };
             const c = COLOR[j.color ?? "blue"];
             const pctColor = m.pct >= 90 ? "bg-red-500" : m.pct >= 60 ? "bg-amber-500" : c.bar;
             return (
-              <div key={j.fecha} className={`bg-white rounded-xl border-2 p-4 cursor-pointer transition-all ${jornadaActiva === j.fecha ? `border-current ${j.color === "violet" ? "text-violet-600" : j.color === "emerald" ? "text-emerald-600" : "text-blue-600"}` : "border-slate-200 text-slate-400 hover:border-slate-300"}`}
-                onClick={() => { setJornadaActiva(j.fecha); setBusqueda(""); }}>
+              <div
+                key={j.fecha}
+                className={`bg-white rounded-xl border-2 p-4 cursor-pointer transition-all ${
+                  jornadaActiva === j.fecha
+                    ? `border-current ${COLOR[j.color ?? "blue"].text}`
+                    : "border-slate-200 text-slate-400 hover:border-slate-300"
+                }`}
+                onClick={() => { setJornadaActiva(j.fecha); setBusqueda(""); }}
+              >
                 <div className="flex items-start justify-between mb-3">
                   <div>
                     <p className="font-bold text-slate-900 text-sm">{j.label}</p>

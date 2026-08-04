@@ -9,25 +9,6 @@ import codigosPostalesData from "../codigospostales.json";
 import { datosDesdeTextoQR } from "../utils/curp";
 
 // ── Constantes ─────────────────────────────────────────────────────────────────
-// Dos jornadas (jueves 23 y viernes 24 de julio), cada una en una ubicación
-// distinta pero con el mismo esquema: 3 módulos de atención en paralelo, una
-// cita cada 10 min, tope de 80 citas en total por jornada. La ubicación real
-// es interna (sector) y por eso nunca se muestra ese nombre en texto público
-// — solo el link del mapa.
-const JORNADAS = [
-  { fecha: "2026-07-23", horaInicio: "09:30", ubicacionMapsUrl: "https://maps.app.goo.gl/pPw3DfKM8y18VrwF6" },
-  { fecha: "2026-07-24", horaInicio: "09:30", ubicacionMapsUrl: "https://maps.app.goo.gl/W4ibcZLkT7qthe32A?g_st=iw" },
-  { fecha: "2026-07-27", horaInicio: "09:30", ubicacionMapsUrl: "https://maps.app.goo.gl/HGMWn7msVAjFDozV9" },
-  { fecha: "2026-07-28", horaInicio: "09:30", ubicacionMapsUrl: "https://maps.app.goo.gl/y63DapjkRtPfSx3S7" },
-  { fecha: "2026-07-29", horaInicio: "09:30", ubicacionMapsUrl: "https://maps.app.goo.gl/iKMZTYk7sPtEuoLG6c" },
-  { fecha: "2026-07-30", horaInicio: "09:30", ubicacionMapsUrl: "https://maps.app.goo.gl/pQQeH3j53RYWuty27" },
-  { fecha: "2026-07-31", horaInicio: "09:30", ubicacionMapsUrl: "https://maps.app.goo.gl/uhkSqwfzhHK4jMZR7" },
-  { fecha: "2026-08-03", horaInicio: "09:30", ubicacionMapsUrl: "https://maps.app.goo.gl/tJ86wFqzqVNGexdi6" },
-  { fecha: "2026-08-04", horaInicio: "09:30", ubicacionMapsUrl: "https://maps.app.goo.gl/vUfq4mvMZ9zTD64Q8" },
-  { fecha: "2026-08-05", horaInicio: "09:30", ubicacionMapsUrl: "https://maps.app.goo.gl/kEz2APpfQCd4bZeP8" },
-  { fecha: "2026-08-06", horaInicio: "09:30", ubicacionMapsUrl: "https://maps.app.goo.gl/SBcG5XGuQme8t6zv7" },
-  { fecha: "2026-08-07", horaInicio: "09:30", ubicacionMapsUrl: "https://maps.app.goo.gl/unNKGj5soRPHFJi27" },
-];
 const INTERVALO_MINUTOS = 10;
 const CUPO_POR_SLOT = 3;
 const CUPO_TOTAL_DIA = 81;
@@ -408,6 +389,23 @@ const RegistroCertificadoMedico = () => {
   const navigate = useNavigate();
   const [paso, setPaso] = useState("tutor-scan");
 
+  // Jornadas cargadas desde Supabase
+  const [jornadas, setJornadas] = useState([]);
+  useEffect(() => {
+    supabase
+      .from("jornadas_certificados")
+      .select("fecha, hora_inicio, ubicacion_maps_url")
+      .eq("activa", true)
+      .order("fecha", { ascending: true })
+      .then(({ data }) => {
+        if (data) setJornadas(data.map(j => ({
+          fecha: j.fecha,
+          horaInicio: j.hora_inicio,
+          ubicacionMapsUrl: j.ubicacion_maps_url,
+        })));
+      });
+  }, []);
+
   // UI state para scanner (solo presentación)
   const [scannerTutorActivo, setScannerTutorActivo] = useState(false);
   const [scannerMenorActivo, setScannerMenorActivo] = useState(false);
@@ -436,7 +434,7 @@ const RegistroCertificadoMedico = () => {
 
   // Cita: se elige entre las jornadas disponibles (JORNADAS)
   const [fechaCita, setFechaCita] = useState("");
-  const jornadaSeleccionada = useMemo(() => JORNADAS.find((j) => j.fecha === fechaCita) || null, [fechaCita]);
+  const jornadaSeleccionada = useMemo(() => jornadas.find((j) => j.fecha === fechaCita) || null, [fechaCita, jornadas]);
   const horarios = useMemo(() => (jornadaSeleccionada ? horariosDelDia(jornadaSeleccionada) : []), [jornadaSeleccionada]);
   const [horaCita, setHoraCita] = useState("");
   const [ocupacion, setOcupacion] = useState({});
@@ -1029,7 +1027,7 @@ const RegistroCertificadoMedico = () => {
             <Card className="px-4 py-3.5">
               <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2.5">Selecciona el día</p>
               <div className="flex flex-wrap gap-1.5">
-                {JORNADAS.map((j) => (
+                {jornadas.map((j) => (
                   <button key={j.fecha} type="button"
                     onClick={() => { setFechaCita(j.fecha); setHoraCita(""); }}
                     className={`px-3 py-1.5 rounded-xl text-xs font-bold border transition-all capitalize ${
