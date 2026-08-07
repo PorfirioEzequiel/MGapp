@@ -1,6 +1,6 @@
 import { useEffect, useState, useMemo } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import supabase from "../supabase/client";
+import supabase, { supabaseStorage } from "../supabase/client";
 import MapTerritorial from "../map/MapTerritorial";
 
 // ── helpers ──────────────────────────────────────────────────────────────────
@@ -44,6 +44,7 @@ const PhotoCard = ({ url, alt, shape, onUpload, uploading }) => {
       <div className={`${containerCls} rounded-xl overflow-hidden border border-slate-200 shadow-sm bg-slate-100 flex items-center justify-center`}>
         {url ? (
           <img
+            key={url}
             src={url}
             alt={alt}
             className="w-full h-full object-cover"
@@ -84,6 +85,7 @@ const FichaCiudadano = () => {
   const [seccionGeo, setSeccionGeo] = useState(null);
   const [fracciones, setFracciones] = useState([]);
   const [catalogo, setCatalogo] = useState([]);
+  const [fraccionesCat, setFraccionesCat] = useState([]);
 
   let viewer = null;
   try { viewer = JSON.parse(sessionStorage.getItem("user")); } catch { viewer = null; }
@@ -102,10 +104,9 @@ const FichaCiudadano = () => {
     supabase
       .from("ubt_catalogo")
       .select("dtto_fed, dtto_loc, poligono, sector, seccion, fraccion")
+      .limit(10000)
       .then(({ data }) => {
         if (!data) return;
-        // Normalizar: usar 'poligono' como campo principal del sector;
-        // si está vacío en alguna fila, usar 'sector' como fallback.
         const norm = data.map(r => ({
           ...r,
           poligono: r.poligono != null && r.poligono !== "" ? String(r.poligono) : String(r.sector ?? ""),
@@ -117,6 +118,18 @@ const FichaCiudadano = () => {
         setCatalogo(norm);
       });
   }, []);
+
+  // Fracciones del catálogo para el select de UBT — consulta directa por sección
+  useEffect(() => {
+    if (!ciudadano?.seccion) { setFraccionesCat([]); return; }
+    supabase
+      .from("ubt_catalogo")
+      .select("fraccion")
+      .eq("seccion", ciudadano.seccion)
+      .then(({ data }) => {
+        setFraccionesCat((data ?? []).map(r => r.fraccion).filter(Boolean));
+      });
+  }, [ciudadano?.seccion]);
 
   // Geometría de la sección para el mapa
   useEffect(() => {
@@ -165,17 +178,15 @@ const FichaCiudadano = () => {
   }, [catalogo, curPoligono, curSeccion]);
 
   const ubts = useMemo(() => {
+    // Prioridad: resultado de consulta directa por sección
+    if (fraccionesCat.length > 0) return ensureOption([...new Set(fraccionesCat)].sort(), curUbt);
+    // Fallback: filtrar del catálogo general
     if (!curSeccion) return ensureOption([], curUbt);
-    const fromCatalog = catalogo
-      .filter(r => r.seccion === curSeccion)
-      .map(r => r.fraccion)
-      .filter(Boolean)
-      .sort();
-    if (fromCatalog.length > 0) return ensureOption(fromCatalog, curUbt);
-    // Fallback: usar fracciones geográficas ya cargadas para esta sección
-    const fromFracciones = [...new Set(fracciones.map(r => String(r.fraccion)).filter(Boolean))].sort();
-    return ensureOption(fromFracciones, curUbt);
-  }, [catalogo, curSeccion, curUbt, fracciones]);
+    const fromCatalog = [...new Set(
+      catalogo.filter(r => r.seccion === curSeccion).map(r => r.fraccion).filter(Boolean)
+    )].sort();
+    return ensureOption(fromCatalog, curUbt);
+  }, [fraccionesCat, catalogo, curSeccion, curUbt]);
 
   // ── handlers de cascada ─────────────────────────────────────────────────────
 
@@ -205,12 +216,20 @@ const FichaCiudadano = () => {
   async function handleFileUpload(e, fieldName) {
     const file = e.target.files[0];
     if (!file || !ciudadano) return;
+    if (!ciudadano.curp) { alert("El registro no tiene CURP. Guarda primero el CURP para poder subir fotos."); return; }
     setUploading(prev => ({ ...prev, [fieldName]: true }));
     const filePath = `ciudadanos/${fieldName}-${ciudadano.curp}`;
-    const { error } = await supabase.storage.from("fotos_estructura").upload(filePath, file, { upsert: true });
-    if (!error) {
-      const { data: urlData } = supabase.storage.from("fotos_estructura").getPublicUrl(filePath);
-      set(fieldName, urlData.publicUrl);
+    const { error: uploadError } = await supabaseStorage.storage
+      .from("fotos_estructura")
+      .upload(filePath, file, { upsert: true });
+    if (uploadError) {
+      alert("Error al subir la foto: " + uploadError.message);
+    } else {
+      const { data: urlData } = supabaseStorage.storage.from("fotos_estructura").getPublicUrl(filePath);
+      const urlFinal = `${urlData.publicUrl}?t=${Date.now()}`;
+      set(fieldName, urlFinal);
+      const { error: dbError } = await supabase.from("ciudadania").update({ [fieldName]: urlFinal }).eq("id", id);
+      if (dbError) alert("Foto subida pero error al guardar en base de datos: " + dbError.message);
     }
     setUploading(prev => ({ ...prev, [fieldName]: false }));
   }
@@ -312,13 +331,24 @@ const FichaCiudadano = () => {
         <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-6">
           <SectionTitle>Ubicación Territorial</SectionTitle>
           {viewerEsSM ? (
-            <div className="grid grid-cols-3 gap-3">
-              {[["Sector", ciudadano.poligono], ["Sección", ciudadano.seccion], ["Fracción", ciudadano.ubt]].map(([label, val]) => (
+            <div className="grid grid-cols-3 gap-3 items-end">
+              {[["Sector", ciudadano.poligono], ["Sección", ciudadano.seccion]].map(([label, val]) => (
                 <div key={label} className="bg-slate-50 rounded-xl p-3 text-center">
                   <p className="text-[9px] font-bold uppercase tracking-widest text-slate-400 mb-1">{label}</p>
                   <p className="text-lg font-bold text-slate-800">{val || "—"}</p>
                 </div>
               ))}
+              <Field label="Fracción (UBT)">
+                <select
+                  className={selectCls}
+                  value={curUbt}
+                  onChange={e => set("ubt", e.target.value)}
+                  disabled={!curSeccion}
+                >
+                  <option value="">Seleccionar…</option>
+                  {ubts.map(v => <option key={v} value={v}>{v}</option>)}
+                </select>
+              </Field>
             </div>
           ) : (
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">

@@ -45,15 +45,15 @@ const FichaCiudadanoEdit = () => {
 
         if (sectionError) throw sectionError;
 
-        // Load UBTs for this section
+        // Load fracciones for this section
         const { data: ubtData, error: ubtError } = await supabase
           .from('ubt_catalogo')
-          .select('ubt')
+          .select('fraccion')
           .eq('seccion', ciudadano.seccion);
 
         if (ubtError) throw ubtError;
 
-        setUbts(ubtData.map(item => item.ubt));
+        setUbts(ubtData.map(item => item.fraccion).filter(Boolean));
       } catch (error) {
         console.error('Error loading section data:', error);
         setError('Error al cargar datos de la sección');
