@@ -13,5 +13,11 @@ const supabaseUrl = process.env.REACT_APP_SUPABASE_URL;
 const supabaseAnonKey = process.env.REACT_APP_SUPABASE_ANON_KEY;
 const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
+// Cliente con service role usado exclusivamente para subir archivos a Storage
+// (evita el RLS de storage.objects que bloquea al rol anon)
+export const supabaseStorage = createClient(
+  supabaseUrl,
+  process.env.REACT_APP_SUPABASE_SERVICE_KEY
+);
+
 export default supabase;
-// export const supabase = createClient(supabaseUrl, supabaseAnonKey);
