@@ -2,8 +2,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { GoogleMap, useJsApiLoader, Polygon, InfoWindow } from '@react-google-maps/api';
 import { useNavigate } from 'react-router-dom';
 import supabase from '../supabase/client';
-
-const GOOGLE_MAPS_KEY = 'AIzaSyCq9lepK0chTwx6vDjQlCftmP-IpCSBuPM';
+import { GOOGLE_MAPS_API_KEY, GOOGLE_MAPS_LIBRARIES } from '../utils/googleMapsConfig';
 
 const EDOMEX_CENTER = { lat: 19.35, lng: -99.65 };
 
@@ -58,7 +57,7 @@ const MapaEdomex = () => {
   const [filtroDistrito, setFiltroDistrito] = useState('');
   const [selectedId, setSelectedId] = useState(null);
 
-  const { isLoaded } = useJsApiLoader({ googleMapsApiKey: GOOGLE_MAPS_KEY });
+  const { isLoaded } = useJsApiLoader({ googleMapsApiKey: GOOGLE_MAPS_API_KEY, libraries: GOOGLE_MAPS_LIBRARIES });
 
   const fetchPoligonos = useCallback(async () => {
     setLoading(true);

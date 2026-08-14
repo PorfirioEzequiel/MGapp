@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { GoogleMap, useJsApiLoader, Polygon, InfoWindow, Marker } from '@react-google-maps/api';
 import { useLocation, useParams } from 'react-router-dom';
 import supabase from '../supabase/client';
+import { GOOGLE_MAPS_API_KEY, GOOGLE_MAPS_LIBRARIES } from '../utils/googleMapsConfig';
 
 // Función para parsear multipolígonos WKT
 const parseMultipolygon = (wkt) => {
@@ -152,8 +153,8 @@ const MapComponent2 = (props) => {
         };
     };
     const { isLoaded } = useJsApiLoader({
-        googleMapsApiKey: 'AIzaSyCq9lepK0chTwx6vDjQlCftmP-IpCSBuPM'
-        //googleMapsApiKey: 'AIzaSyD0ZPIg4fiV9cQTESVzIrPXYEaXNpw7G3Q'
+        googleMapsApiKey: GOOGLE_MAPS_API_KEY,
+        libraries: GOOGLE_MAPS_LIBRARIES,
     });
 
     if (!isLoaded) return <div className="p-4 text-center">Cargando mapa...</div>;

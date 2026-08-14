@@ -1,5 +1,6 @@
 import React, { useCallback, useRef, useState } from 'react';
 import { GoogleMap, useJsApiLoader, Polygon } from '@react-google-maps/api';
+import { GOOGLE_MAPS_API_KEY, GOOGLE_MAPS_LIBRARIES } from '../utils/googleMapsConfig';
 
 
 
@@ -37,7 +38,8 @@ const center = {
 };
 const MapComponent = (props) => {
   const { isLoaded } = useJsApiLoader({
-    googleMapsApiKey: 'AIzaSyD0ZPIg4fiV9cQTESVzIrPXYEaXNpw7G3Q'
+    googleMapsApiKey: GOOGLE_MAPS_API_KEY,
+    libraries: GOOGLE_MAPS_LIBRARIES,
   });
  const path=parseMultipolygon(props.mapa);
   
