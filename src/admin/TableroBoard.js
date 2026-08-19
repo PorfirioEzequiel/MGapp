@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom';
 import supabase from '../supabase/client';
 import MapTerritorial from '../map/MapTerritorial';
+import MapaEstadoMexico from '../map/MapaEstadoMexico';
 import AFILIACION from '../data/afiliacion.json';
 
 const fullName = (p) => p ? `${p.nombre} ${p.a_paterno} ${p.a_materno}`.trim() : null;
@@ -216,6 +217,7 @@ const EmptyGuide = ({ children }) => (
 const TableroBoard = () => {
   const navigate = useNavigate();
 
+  const [mapScope, setMapScope] = useState('tecamac'); // 'tecamac' | 'edomex'
   const [allSecciones,  setAllSecciones]  = useState([]);
   const [loadingMap,    setLoadingMap]    = useState(true);
   const [selectedDistrito, setSelectedDistrito] = useState(null);
@@ -1208,7 +1210,27 @@ const TableroBoard = () => {
               ))}
             </nav>
           </div>
-          {!loadingMap && (
+
+          <div className="hidden sm:flex items-center gap-0.5 bg-slate-100 rounded-lg p-0.5 flex-shrink-0">
+            <button
+              onClick={() => setMapScope('tecamac')}
+              className={`px-3 py-1.5 rounded-md text-xs font-semibold whitespace-nowrap transition-all ${
+                mapScope === 'tecamac' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'
+              }`}
+            >
+              Tablero Territorial Tecámac
+            </button>
+            <button
+              onClick={() => setMapScope('edomex')}
+              className={`px-3 py-1.5 rounded-md text-xs font-semibold whitespace-nowrap transition-all ${
+                mapScope === 'edomex' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'
+              }`}
+            >
+              Mapa Territorial Estado de México
+            </button>
+          </div>
+
+          {!loadingMap && mapScope === 'tecamac' && (
             <div className="flex items-center gap-4 ml-auto flex-shrink-0">
               <div className="hidden md:flex items-center gap-4">
                 <div className="text-right">
@@ -1242,6 +1264,9 @@ const TableroBoard = () => {
         </div>
       </header>
 
+      {mapScope === 'edomex' ? (
+        <MapaEstadoMexico />
+      ) : (
       <div className="flex flex-col lg:flex-row" style={{ height: 'calc(100vh - 56px)' }}>
         <aside className="w-full lg:w-72 xl:w-80 flex-shrink-0 bg-white border-b lg:border-b-0 lg:border-r border-slate-100 overflow-y-auto">
           <div className="px-4 pt-4 pb-3 border-b border-slate-50">
@@ -1375,6 +1400,7 @@ const TableroBoard = () => {
           )}
         </main>
       </div>
+      )}
     </div>
   );
 };

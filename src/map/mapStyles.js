@@ -1,0 +1,62 @@
+// Copia exacta de MAP_STYLE_DEFS en MapTerritorial.js — se mantiene como archivo
+// separado (no se importa desde ahí) para no tocar el componente de Tecámac.
+export const MAP_STYLE_DEFS = {
+  claro: {
+    label: 'Claro',
+    mapTypeId: 'roadmap',
+    styles: [
+      { featureType: 'poi',     stylers: [{ visibility: 'off' }] },
+      { featureType: 'transit', stylers: [{ visibility: 'off' }] },
+      { elementType: 'geometry', stylers: [{ color: '#f5f5f5' }] },
+      { featureType: 'water', elementType: 'geometry', stylers: [{ color: '#c9d9e0' }] },
+      { featureType: 'road', elementType: 'geometry', stylers: [{ color: '#ffffff' }] },
+      { featureType: 'road.arterial', elementType: 'geometry.stroke', stylers: [{ color: '#e0e0e0' }] },
+      { featureType: 'administrative', elementType: 'geometry.stroke', stylers: [{ color: '#c9c9c9' }] },
+      { elementType: 'labels.text.fill', stylers: [{ color: '#1a1a2e' }] },
+      { elementType: 'labels.text.stroke', stylers: [{ color: '#ffffff', weight: 4 }] },
+      { featureType: 'road', elementType: 'labels.text.fill', stylers: [{ color: '#1a1a2e' }] },
+      { featureType: 'road.arterial', elementType: 'labels.text.fill', stylers: [{ color: '#1a1a2e' }] },
+      { featureType: 'road.highway', elementType: 'labels.text.fill', stylers: [{ color: '#1a1a2e' }] },
+      { featureType: 'administrative.neighborhood', elementType: 'labels.text.fill', stylers: [{ color: '#374151', visibility: 'on' }] },
+      { featureType: 'administrative.neighborhood', elementType: 'labels.text.stroke', stylers: [{ color: '#ffffff', weight: 4 }] },
+      { featureType: 'administrative.locality', elementType: 'labels.text.fill', stylers: [{ color: '#1e3a5f' }] },
+      { featureType: 'administrative.locality', elementType: 'labels.text.stroke', stylers: [{ color: '#ffffff', weight: 4 }] },
+    ],
+  },
+  oscuro: {
+    label: 'Oscuro',
+    mapTypeId: 'roadmap',
+    styles: [
+      { elementType: 'geometry', stylers: [{ color: '#16213e' }] },
+      { elementType: 'labels.text.fill', stylers: [{ color: '#8a8aaa' }] },
+      { elementType: 'labels.text.stroke', stylers: [{ color: '#16213e' }] },
+      { featureType: 'poi',     stylers: [{ visibility: 'off' }] },
+      { featureType: 'transit', stylers: [{ visibility: 'off' }] },
+      { featureType: 'water', elementType: 'geometry', stylers: [{ color: '#0a0a1a' }] },
+      { featureType: 'road', elementType: 'geometry', stylers: [{ color: '#283060' }] },
+      { featureType: 'road.arterial', elementType: 'geometry', stylers: [{ color: '#353575' }] },
+      { featureType: 'administrative', elementType: 'geometry.stroke', stylers: [{ color: '#2a2a6a' }] },
+      { featureType: 'administrative.locality', elementType: 'labels.text.fill', stylers: [{ color: '#9999cc' }] },
+    ],
+  },
+  minimal: {
+    label: 'Mínimo',
+    mapTypeId: 'roadmap',
+    styles: [
+      { featureType: 'all', elementType: 'labels', stylers: [{ visibility: 'off' }] },
+      { featureType: 'administrative.locality', elementType: 'labels.text.fill',   stylers: [{ visibility: 'on', color: '#888' }] },
+      { featureType: 'administrative.locality', elementType: 'labels.text.stroke', stylers: [{ visibility: 'on', color: '#fff' }] },
+      { featureType: 'poi',     stylers: [{ visibility: 'off' }] },
+      { featureType: 'transit', stylers: [{ visibility: 'off' }] },
+      { elementType: 'geometry', stylers: [{ color: '#eeeeee' }] },
+      { featureType: 'water', elementType: 'geometry', stylers: [{ color: '#d0e4f0' }] },
+      { featureType: 'road', elementType: 'geometry', stylers: [{ color: '#ffffff' }] },
+      { featureType: 'administrative', elementType: 'geometry.stroke', stylers: [{ color: '#dddddd' }] },
+    ],
+  },
+  satelite: {
+    label: 'Satélite',
+    mapTypeId: 'hybrid',
+    styles: [],
+  },
+};
