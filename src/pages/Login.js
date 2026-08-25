@@ -92,11 +92,18 @@ const Login = () => {
 
       {error && <p className="text-red-600 mt-2">{error}</p>}
 
-      <div className="mt-6 pt-4 border-t border-gray-200 text-center">
+      <div className="mt-6 pt-4 border-t border-gray-200 text-center space-y-2">
+        <button
+          type="button"
+          onClick={() => navigate('/registro-apoyos')}
+          className="block w-full text-sm text-blue-700 hover:text-blue-900 font-medium underline"
+        >
+          Registro de Apoyos — Tinaco · Calentador Solar · Mercado Solidario
+        </button>
         <button
           type="button"
           onClick={() => navigate('/registro-certificado-medico/checkin')}
-          className="text-sm text-emerald-700 hover:text-emerald-900 font-medium underline"
+          className="block w-full text-sm text-emerald-700 hover:text-emerald-900 font-medium underline"
         >
           Check-in Certificado Médico (personal de evento)
         </button>

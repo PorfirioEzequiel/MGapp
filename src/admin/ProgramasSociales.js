@@ -1,6 +1,12 @@
 import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import supabase from "../supabase/client";
+import { supabaseStorage as supabaseAdmin } from "../supabase/client";
+
+const toSlug = (nombre) =>
+  nombre.toLowerCase()
+    .normalize("NFD").replace(/\p{Mn}/gu, "")
+    .replace(/\s+/g, "-")
+    .replace(/[^a-z0-9-]/g, "");
 
 const emptyForm = { nombre: "", descripcion: "", frecuencia: "SEMANAL" };
 
@@ -13,7 +19,7 @@ const ProgramasSociales = () => {
 
   const cargar = async () => {
     setLoading(true);
-    const { data, error } = await supabase.from("programas_sociales").select("*").order("nombre");
+    const { data, error } = await supabaseAdmin.from("programas_sociales").select("*").order("nombre");
     if (error) console.error("Error cargando programas:", error.message);
     setProgramas(data ?? []);
     setLoading(false);
@@ -31,7 +37,7 @@ const ProgramasSociales = () => {
     }
     setGuardando(true);
     try {
-      const { error } = await supabase.from("programas_sociales").insert([{
+      const { error } = await supabaseAdmin.from("programas_sociales").insert([{
         nombre: form.nombre.trim().toUpperCase(),
         descripcion: form.descripcion.trim() || null,
         frecuencia: form.frecuencia,
@@ -47,7 +53,7 @@ const ProgramasSociales = () => {
   };
 
   const toggleActivo = async (programa) => {
-    const { error } = await supabase
+    const { error } = await supabaseAdmin
       .from("programas_sociales")
       .update({ activo: !programa.activo })
       .eq("id", programa.id);
@@ -108,15 +114,29 @@ const ProgramasSociales = () => {
                 <th className="p-2">Nombre</th>
                 <th className="p-2">Descripción</th>
                 <th className="p-2">Frecuencia</th>
+                <th className="p-2">URL de registro</th>
                 <th className="p-2">Estatus</th>
               </tr>
             </thead>
             <tbody className="divide-y">
-              {programas.map((p) => (
+              {programas.map((p) => {
+                const slug = toSlug(p.nombre);
+                const url = `/registro-apoyos/${slug}`;
+                return (
                 <tr key={p.id}>
                   <td className="p-2 font-medium">{p.nombre}</td>
                   <td className="p-2 text-slate-500">{p.descripcion || "—"}</td>
                   <td className="p-2">{p.frecuencia}</td>
+                  <td className="p-2">
+                    <a
+                      href={url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-xs text-blue-600 hover:underline font-mono"
+                    >
+                      {url}
+                    </a>
+                  </td>
                   <td className="p-2">
                     <button
                       onClick={() => toggleActivo(p)}
@@ -130,7 +150,8 @@ const ProgramasSociales = () => {
                     </button>
                   </td>
                 </tr>
-              ))}
+                );
+              })}
             </tbody>
           </table>
         )}
