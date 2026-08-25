@@ -7,6 +7,7 @@ import {
   LiaGlobeSolid,
   LiaTruckSolid,
   LiaHandHoldingHeartSolid,
+  LiaChartBarSolid,
 } from "react-icons/lia";
 import { useNavigate } from 'react-router-dom';
 
@@ -69,6 +70,7 @@ const MenuAdmin = () => {
           <MenuItem icon={LiaUsersSolid} label="APOYOS" onClick={() => navigate('/admin/programas')} />
           <MenuItem icon={LiaTruckSolid} label="MERCADO SOLIDARIO" onClick={() => navigate('/admin/mercado')} color="emerald" />
           <MenuItem icon={LiaHandHoldingHeartSolid} label="SOLICITUDES APOYOS" onClick={() => navigate('/admin/solicitudes-apoyos')} color="emerald" />
+          <MenuItem icon={LiaChartBarSolid} label="REPORTE MS" onClick={() => navigate('/admin/reporte-mercado')} color="violet" />
           <MenuItem icon={LiaWalletSolid} label="BAJA DE INFO" disabled />
           <MenuItem icon={LiaWeixin} label="REDES SOCIALES" disabled />
         </div>
