@@ -33,15 +33,32 @@ const ensureOption = (options, value) => {
 // ── foto card ────────────────────────────────────────────────────────────────
 
 const PhotoCard = ({ url, alt, shape, onUpload, uploading }) => {
-  // shape: 'portrait' | 'landscape'
+  const [dragging, setDragging] = useState(false);
+
   const containerCls =
     shape === "landscape"
-      ? "w-full max-w-xs h-40"   // credencial INE: ~2.5:1
-      : "w-40 h-52";             // foto perfil: ~0.77:1
+      ? "w-full max-w-xs h-40"
+      : "w-40 h-52";
+
+  const handleDragOver  = (e) => { e.preventDefault(); setDragging(true); };
+  const handleDragLeave = ()  => setDragging(false);
+  const handleDrop = (e) => {
+    e.preventDefault();
+    setDragging(false);
+    const file = e.dataTransfer.files[0];
+    if (file && file.type.startsWith("image/"))
+      onUpload({ target: { files: [file] } });
+  };
 
   return (
     <div className="flex flex-col items-center gap-2">
-      <div className={`${containerCls} rounded-xl overflow-hidden border border-slate-200 shadow-sm bg-slate-100 flex items-center justify-center`}>
+      <div
+        className={`${containerCls} relative rounded-xl overflow-hidden border-2 shadow-sm bg-slate-100 flex items-center justify-center transition-all duration-150
+          ${dragging ? "border-blue-500 bg-blue-50 scale-105" : "border-slate-200"}`}
+        onDragOver={handleDragOver}
+        onDragLeave={handleDragLeave}
+        onDrop={handleDrop}
+      >
         {url ? (
           <img
             key={url}
@@ -59,9 +76,26 @@ const PhotoCard = ({ url, alt, shape, onUpload, uploading }) => {
           style={{ display: url ? "none" : "flex" }}
         >
           <span className="text-3xl">📷</span>
-          <span className="text-[10px] text-slate-400 mt-1 text-center px-2">Sin imagen</span>
+          <span className="text-[10px] text-slate-400 mt-1 text-center px-2">Arrastra o usa el botón</span>
         </div>
+
+        {/* Overlay al arrastrar */}
+        {dragging && (
+          <div className="absolute inset-0 flex items-center justify-center bg-blue-500/20 z-10">
+            <p className="text-blue-700 font-bold text-sm bg-white/90 px-3 py-1.5 rounded-lg shadow">
+              Suelta aquí
+            </p>
+          </div>
+        )}
+
+        {/* Spinner mientras sube */}
+        {uploading && (
+          <div className="absolute inset-0 flex items-center justify-center bg-white/80 z-10">
+            <div className="w-5 h-5 rounded-full border-[3px] border-blue-700 border-t-transparent animate-spin" />
+          </div>
+        )}
       </div>
+
       <label className="cursor-pointer">
         <span className="text-[10px] font-semibold text-blue-600 hover:text-blue-700 bg-blue-50 hover:bg-blue-100 px-3 py-1.5 rounded-lg transition-colors block text-center">
           {uploading ? "Subiendo…" : "Cambiar foto"}

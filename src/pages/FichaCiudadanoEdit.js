@@ -2,96 +2,75 @@ import { useEffect, useRef, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import supabase, { supabaseStorage } from "../supabase/client";
 
-// ── Zona de arrastre para fotos ────────────────────────────────────────────────
-const DropZonePhoto = ({ fieldName, label, shape, url, uploading, onFile }) => {
+// ── Tarjeta de foto con drag-and-drop ─────────────────────────────────────────
+const PhotoCard = ({ fieldName, label, shape, url, uploading, onUpload }) => {
   const [dragging, setDragging] = useState(false);
   const inputRef = useRef(null);
 
-  const isLandscape = shape === "landscape";
-  const containerCls = isLandscape
-    ? "w-full h-36"   // credencial INE
-    : "w-full h-52";  // foto perfil
+  const containerCls = shape === "landscape" ? "w-full h-36" : "w-full h-52";
 
-  const handleDragOver = (e) => { e.preventDefault(); setDragging(true); };
-  const handleDragLeave = () => setDragging(false);
+  const handleDragOver  = (e) => { e.preventDefault(); setDragging(true); };
+  const handleDragLeave = ()  => setDragging(false);
   const handleDrop = (e) => {
     e.preventDefault();
     setDragging(false);
     const file = e.dataTransfer.files[0];
-    if (file && file.type.startsWith("image/")) onFile(file, fieldName);
-  };
-  const handleChange = (e) => {
-    const file = e.target.files[0];
-    if (file) onFile(file, fieldName);
+    if (file && file.type.startsWith("image/"))
+      onUpload({ target: { files: [file] } }, fieldName);
   };
 
   return (
     <div className="flex flex-col gap-2">
       <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500">{label}</p>
+
+      {/* Área de foto — arrastra aquí o pulsa el botón */}
       <div
-        className={`${containerCls} relative rounded-xl border-2 transition-all duration-200 overflow-hidden cursor-pointer
-          ${dragging
-            ? "border-blue-500 bg-blue-50 scale-[1.01]"
-            : url
-            ? "border-slate-200"
-            : "border-dashed border-slate-300 bg-slate-50 hover:border-blue-400 hover:bg-blue-50"
-          }`}
+        className={`${containerCls} relative rounded-xl overflow-hidden border-2 shadow-sm bg-slate-100 flex items-center justify-center transition-all duration-150
+          ${dragging ? "border-blue-500 bg-blue-50 scale-[1.02]" : "border-slate-200"}`}
         onDragOver={handleDragOver}
         onDragLeave={handleDragLeave}
         onDrop={handleDrop}
-        onClick={() => !uploading && inputRef.current?.click()}
       >
-        {/* Imagen actual */}
-        {url && (
-          <img
-            src={url}
-            alt={label}
-            className="w-full h-full object-cover"
-          />
+        {url && <img src={url} alt={label} className="w-full h-full object-cover" />}
+
+        {!url && (
+          <div className="flex flex-col items-center justify-center gap-2 select-none">
+            <span className="text-3xl">📷</span>
+            <p className="text-xs text-slate-400 text-center px-4">Arrastra o usa el botón</p>
+          </div>
         )}
 
-        {/* Overlay al hacer drag */}
+        {/* Overlay al arrastrar */}
         {dragging && (
-          <div className="absolute inset-0 bg-blue-500/20 flex items-center justify-center z-10">
-            <p className="text-blue-700 font-bold text-sm">Suelta la imagen aquí</p>
+          <div className="absolute inset-0 flex items-center justify-center bg-blue-500/20 z-10">
+            <p className="text-blue-700 font-bold text-sm bg-white/90 px-3 py-1.5 rounded-lg shadow">
+              Suelta aquí
+            </p>
           </div>
         )}
 
         {/* Spinner mientras sube */}
         {uploading && (
-          <div className="absolute inset-0 bg-white/80 flex items-center justify-center z-10">
-            <div className="w-6 h-6 rounded-full border-[3px] border-blue-700 border-t-transparent animate-spin" />
+          <div className="absolute inset-0 flex items-center justify-center bg-white/80 z-10">
+            <div className="w-5 h-5 rounded-full border-[3px] border-blue-700 border-t-transparent animate-spin" />
           </div>
         )}
+      </div>
 
-        {/* Placeholder cuando no hay imagen */}
-        {!url && !uploading && !dragging && (
-          <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 select-none">
-            <svg className="w-8 h-8 text-slate-300" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5" />
-            </svg>
-            <p className="text-xs text-slate-400 text-center px-4">Arrastra o toca para subir</p>
-          </div>
-        )}
-
-        {/* Botón editar encima de la imagen */}
-        {url && !uploading && !dragging && (
-          <div className="absolute inset-0 bg-black/0 hover:bg-black/30 flex items-center justify-center opacity-0 hover:opacity-100 transition-all duration-200">
-            <span className="text-white text-xs font-bold bg-black/50 px-3 py-1.5 rounded-lg">
-              Cambiar foto
-            </span>
-          </div>
-        )}
-
+      {/* Botón selector de archivo */}
+      <label className="cursor-pointer">
+        <span className="text-[10px] font-semibold text-blue-600 hover:text-blue-700 bg-blue-50 hover:bg-blue-100 px-3 py-1.5 rounded-lg transition-colors block text-center">
+          {uploading ? "Subiendo…" : "Seleccionar archivo"}
+        </span>
         <input
           ref={inputRef}
           type="file"
           accept="image/*"
           className="hidden"
-          onChange={handleChange}
+          onChange={(e) => onUpload(e, fieldName)}
           disabled={uploading}
         />
-      </div>
+      </label>
     </div>
   );
 };
@@ -108,46 +87,25 @@ const FichaCiudadanoEdit = () => {
   const puestosc = ["MOVILIZADOR", "INVITADO"];
 
   useEffect(() => {
-    async function fetchCiudadano() {
-      const { data, error } = await supabase
-        .from("ciudadania")
-        .select("*")
-        .eq("id", id)
-        .single();
-
-      if (error) {
-        console.error("Error obteniendo ciudadano:", error);
-        setError("Error al cargar los datos del ciudadano");
-      } else {
-        setCiudadano(data);
-      }
-      setLoading(false);
-    }
-    fetchCiudadano();
+    supabase
+      .from("ciudadania")
+      .select("*")
+      .eq("id", id)
+      .single()
+      .then(({ data, error }) => {
+        if (error) setError("Error al cargar los datos del ciudadano");
+        else setCiudadano(data);
+        setLoading(false);
+      });
   }, [id]);
 
   useEffect(() => {
-    const loadSectionData = async () => {
-      if (!ciudadano?.seccion) return;
-
-      setLoading(true);
-      try {
-        const { data: ubtData, error: ubtError } = await supabase
-          .from("ubt_catalogo")
-          .select("fraccion")
-          .eq("seccion", ciudadano.seccion);
-
-        if (ubtError) throw ubtError;
-        setUbts(ubtData.map((item) => item.fraccion).filter(Boolean));
-      } catch (err) {
-        console.error("Error loading section data:", err);
-        setError("Error al cargar datos de la sección");
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    if (ciudadano) loadSectionData();
+    if (!ciudadano?.seccion) return;
+    supabase
+      .from("ubt_catalogo")
+      .select("fraccion")
+      .eq("seccion", ciudadano.seccion)
+      .then(({ data }) => setUbts((data ?? []).map((r) => r.fraccion).filter(Boolean)));
   }, [ciudadano?.seccion]);
 
   async function handleSave() {
@@ -173,12 +131,10 @@ const FichaCiudadanoEdit = () => {
           col_loc: ciudadano.col_loc,
         })
         .eq("id", ciudadano.id);
-
       if (error) throw error;
       alert("Datos actualizados correctamente");
       navigate(-1);
     } catch (err) {
-      console.error("Error actualizando ciudadano:", err);
       setError("Error al guardar los cambios");
     } finally {
       setLoading(false);
@@ -189,16 +145,16 @@ const FichaCiudadanoEdit = () => {
     const { name, value } = e.target;
     setCiudadano((prev) => ({
       ...prev,
-      [name]:
-        name === "curp" || name === "nombre" || name === "a_paterno" || name === "a_materno"
-          ? value.toUpperCase()
-          : value,
+      [name]: ["curp", "nombre", "a_paterno", "a_materno"].includes(name)
+        ? value.toUpperCase()
+        : value,
     }));
   };
 
-  // ── Upload de foto (drag-drop o selector) ─────────────────────────────────────
-  async function handlePhotoFile(file, fieldName) {
-    if (!ciudadano) return;
+  // Upload de foto — acepta evento de input o evento simulado desde drop
+  async function handlePhotoUpload(e, fieldName) {
+    const file = e.target.files[0];
+    if (!file || !ciudadano) return;
     if (!ciudadano.curp) {
       alert("El registro no tiene CURP. Guarda primero el CURP para poder subir fotos.");
       return;
@@ -208,7 +164,6 @@ const FichaCiudadanoEdit = () => {
     const { error: uploadError } = await supabaseStorage.storage
       .from("fotos_estructura")
       .upload(filePath, file, { upsert: true });
-
     if (uploadError) {
       alert("Error al subir la foto: " + uploadError.message);
     } else {
@@ -221,7 +176,7 @@ const FichaCiudadanoEdit = () => {
         .from("ciudadania")
         .update({ [fieldName]: urlFinal })
         .eq("id", id);
-      if (dbError) alert("Foto subida pero error al guardar en base de datos: " + dbError.message);
+      if (dbError) alert("Foto subida pero error al guardar: " + dbError.message);
     }
     setUploading((prev) => ({ ...prev, [fieldName]: false }));
   }
@@ -235,85 +190,65 @@ const FichaCiudadanoEdit = () => {
 
       {error && <div className="text-red-500 mb-4">{error}</div>}
 
-      {/* ── Fotos ── */}
+      {/* ── Fotos — arrastra directamente sobre la imagen ── */}
       <div className="mb-6 p-4 bg-slate-50 rounded-xl border border-slate-200">
-        <p className="text-sm font-bold text-slate-700 mb-4">Fotografías</p>
+        <p className="text-sm font-bold text-slate-700 mb-1">Fotografías</p>
         <p className="text-xs text-slate-400 mb-4">
-          Arrastra una imagen directamente sobre el recuadro o tócalo para seleccionar desde tus archivos.
+          Arrastra una imagen encima del recuadro, o usa el botón para elegir desde tus archivos.
         </p>
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-          <DropZonePhoto
+          <PhotoCard
             fieldName="url_foto_perfil"
             label="Foto de perfil"
             shape="portrait"
             url={ciudadano.url_foto_perfil}
             uploading={uploading.url_foto_perfil}
-            onFile={handlePhotoFile}
+            onUpload={handlePhotoUpload}
           />
-          <DropZonePhoto
+          <PhotoCard
             fieldName="url_foto_ine1"
-            label="INE (frente)"
+            label="INE — frente"
             shape="landscape"
             url={ciudadano.url_foto_ine1}
             uploading={uploading.url_foto_ine1}
-            onFile={handlePhotoFile}
+            onUpload={handlePhotoUpload}
           />
-          <DropZonePhoto
+          <PhotoCard
             fieldName="url_foto_ine2"
-            label="INE (reverso)"
+            label="INE — reverso"
             shape="landscape"
             url={ciudadano.url_foto_ine2}
             uploading={uploading.url_foto_ine2}
-            onFile={handlePhotoFile}
+            onUpload={handlePhotoUpload}
           />
         </div>
       </div>
 
       {/* ── Campos de texto ── */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {/* UBT */}
         <div className="mb-4">
           <label className="block text-sm font-medium text-gray-700 mb-1">UBT:</label>
           {ubts.length > 0 ? (
-            <select
-              name="ubt"
-              value={ciudadano.ubt || ""}
-              onChange={handleChange}
-              className="border border-gray-300 rounded-md p-2 w-full"
-            >
+            <select name="ubt" value={ciudadano.ubt || ""} onChange={handleChange}
+              className="border border-gray-300 rounded-md p-2 w-full">
               <option value="">Seleccionar UBT</option>
-              {ubts.map((ubt, i) => (
-                <option key={i} value={ubt}>{ubt}</option>
-              ))}
+              {ubts.map((u, i) => <option key={i} value={u}>{u}</option>)}
             </select>
           ) : (
-            <input
-              type="text"
-              name="ubt"
-              value={ciudadano.ubt || ""}
-              onChange={handleChange}
-              className="border p-2 w-full rounded-md"
-            />
+            <input type="text" name="ubt" value={ciudadano.ubt || ""} onChange={handleChange}
+              className="border border-gray-300 rounded-md p-2 w-full" />
           )}
         </div>
 
-        {/* Puesto */}
         <div className="mb-4">
           <label className="block text-sm font-medium text-gray-700 mb-1">Puesto:</label>
-          <select
-            name="puesto"
-            value={ciudadano.puesto || ""}
-            onChange={handleChange}
-            className="border border-gray-300 rounded-md p-2 w-full"
-          >
+          <select name="puesto" value={ciudadano.puesto || ""} onChange={handleChange}
+            className="border border-gray-300 rounded-md p-2 w-full">
             <option value="">Seleccionar puesto</option>
-            {puestosc.map((p, i) => (
-              <option key={i} value={p}>{p}</option>
-            ))}
+            {puestosc.map((p, i) => <option key={i} value={p}>{p}</option>)}
           </select>
         </div>
 
-        {/* Campos de texto genéricos */}
         {[
           { name: "nombre",      label: "Nombre" },
           { name: "a_paterno",   label: "Apellido Paterno" },
@@ -329,9 +264,7 @@ const FichaCiudadanoEdit = () => {
           { name: "col_loc",     label: "Localidad o Colonia" },
         ].map((field) => (
           <div key={field.name} className="mb-4">
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              {field.label}:
-            </label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">{field.label}:</label>
             <input
               type="text"
               name={field.name}
@@ -345,17 +278,11 @@ const FichaCiudadanoEdit = () => {
       </div>
 
       <div className="mt-4 flex gap-2">
-        <button
-          onClick={handleSave}
-          disabled={loading}
-          className="bg-green-500 text-white px-4 py-2 rounded disabled:bg-green-300"
-        >
+        <button onClick={handleSave} disabled={loading}
+          className="bg-green-500 text-white px-4 py-2 rounded disabled:bg-green-300">
           {loading ? "Guardando..." : "Guardar Cambios"}
         </button>
-        <button
-          onClick={() => navigate(-1)}
-          className="bg-gray-500 text-white px-4 py-2 rounded"
-        >
+        <button onClick={() => navigate(-1)} className="bg-gray-500 text-white px-4 py-2 rounded">
           Cancelar
         </button>
       </div>
