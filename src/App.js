@@ -31,6 +31,7 @@ import ReagendarCertificado from './pages/ReagendarCertificado';
 import CheckInCertificado from './pages/CheckInCertificado';
 import MapaEdomex from './admin/MapaEdomex';
 import MercadoControl from './admin/MercadoControl';
+import VisorConsultor from './pages/VisorConsultor';
 import SolicitudesApoyos from './admin/SolicitudesApoyos';
 import ReporteMercado from './admin/ReporteMercado';
 
@@ -45,6 +46,9 @@ function App() {
     <Router>
       <Routes>
         <Route path="/" element={<Login />} />
+
+        {/* Visor territorial — cargo consultor, solo lectura */}
+        <Route path="/visor" element={<PrivateRoute><VisorConsultor /></PrivateRoute>} />
 
         {/* Registro público de apoyos sociales: sin login a propósito */}
         <Route path="/registro-apoyos" element={<RegistroApoyos />} />

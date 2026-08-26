@@ -40,7 +40,8 @@ const Login = () => {
         'sp': `/coordinador/${data.usuario}`,
         seccional: `/perfil/${data.usuario}`,
         'sm': `/reporte/${data.usuario}`,
-        enlace: `/enlace/${data.usuario}`
+        enlace: `/enlace/${data.usuario}`,
+        consultor: '/visor',
       };
 
       const ruta = rutas[data.puesto.toLowerCase()] || null;

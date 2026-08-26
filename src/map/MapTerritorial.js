@@ -708,6 +708,7 @@ const MapTerritorial = ({
   onEditableLocationChange = null,
   electoralModeExternal = null,
   onElectoralModeChange = null,
+  readOnly = false,
 }) => {
   const mapRef        = useRef(null);
   const containerRef  = useRef(null);
@@ -1415,8 +1416,8 @@ const MapTerritorial = ({
           )}
         </div>
 
-        {/* Botones de exportación (solo cuando no hay modo editable) */}
-        {!onEditableLocationChange && (
+        {/* Botones de exportación (solo cuando no hay modo editable y no es visor readOnly) */}
+        {!onEditableLocationChange && !readOnly && (
           <div className="no-print absolute top-3 right-3 z-10 flex items-center gap-1.5">
             <button
               onClick={() => window.print()}
