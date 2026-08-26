@@ -26,9 +26,13 @@ import Actividades from './admin/Actividades';
 import ReporteCertificados from './admin/ReporteCertificados';
 import Apoyos from './pages/Apoyos';
 import RegistroCertificadoMedico from './pages/RegistroCertificadoMedico';
+import RegistroApoyos from './pages/RegistroApoyos';
 import ReagendarCertificado from './pages/ReagendarCertificado';
 import CheckInCertificado from './pages/CheckInCertificado';
 import MapaEdomex from './admin/MapaEdomex';
+import MercadoControl from './admin/MercadoControl';
+import SolicitudesApoyos from './admin/SolicitudesApoyos';
+import ReporteMercado from './admin/ReporteMercado';
 
 // Componente para proteger rutas privadas
 const PrivateRoute = ({ children }) => {
@@ -41,6 +45,10 @@ function App() {
     <Router>
       <Routes>
         <Route path="/" element={<Login />} />
+
+        {/* Registro público de apoyos sociales: sin login a propósito */}
+        <Route path="/registro-apoyos" element={<RegistroApoyos />} />
+        <Route path="/registro-apoyos/:slug" element={<RegistroApoyos />} />
 
         {/* Registro público del beneficio de Certificado Médico: sin login a propósito */}
         <Route path="/registro-certificado-medico" element={<RegistroCertificadoMedico />} />
@@ -59,6 +67,9 @@ function App() {
         <Route path="/admin/actividades" element={<PrivateRoute><Actividades /></PrivateRoute>} />
         <Route path="/admin/certificados" element={<PrivateRoute><ReporteCertificados /></PrivateRoute>} />
         <Route path="/admin/mapa-edomex" element={<PrivateRoute><MapaEdomex /></PrivateRoute>} />
+        <Route path="/admin/mercado" element={<PrivateRoute><MercadoControl /></PrivateRoute>} />
+        <Route path="/admin/solicitudes-apoyos" element={<PrivateRoute><SolicitudesApoyos /></PrivateRoute>} />
+        <Route path="/admin/reporte-mercado" element={<PrivateRoute><ReporteMercado /></PrivateRoute>} />
         <Route path="/apoyos/:usuario" element={<PrivateRoute><Apoyos /></PrivateRoute>} />
         <Route path="/menu/:usuario" element={<PrivateRoute><MeniAdmin /></PrivateRoute>} />
         <Route path="/perfil/:usuario" element={<PrivateRoute><Perfil /></PrivateRoute>} />
