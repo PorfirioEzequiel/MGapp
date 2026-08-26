@@ -9,6 +9,31 @@ const fullName = (p) => p ? `${p.nombre} ${p.a_paterno} ${p.a_materno}`.trim() :
 const fmt      = (n)  => n != null ? Number(n).toLocaleString('es-MX') : null;
 const pct      = (a, b) => b ? `${((a / b) * 100).toFixed(1)}%` : null;
 
+// ── Análisis político dinámico (Senaduría) ────────────────────────────────────
+// Genera un párrafo de lectura rápida a partir del desglose por unidad
+// (distrito/sector/sección) del nivel de filtrado activo.
+const buildSenadoInsight = (breakdown, groupLevel, scopeLabel) => {
+  if (!breakdown || !breakdown.length) return null;
+  const unidad     = groupLevel === 'seccion' ? 'secciones' : groupLevel === 'sector' ? 'sectores' : 'distritos';
+  const unidadSing = groupLevel === 'seccion' ? 'sección'   : groupLevel === 'sector' ? 'sector'   : 'distrito';
+  const ganados    = breakdown.filter((u) => u.won).length;
+  const total      = breakdown.length;
+  const mejor       = breakdown[0];
+  const peor        = breakdown[breakdown.length - 1];
+
+  const partes = [];
+  partes.push(`En ${scopeLabel}, Mariela gana en ${ganados} de ${total} ${unidad} (${total ? Math.round((ganados / total) * 100) : 0}%).`);
+  if (mejor) {
+    partes.push(`Su bastión más fuerte es ${mejor.label}, con ${mejor.margin >= 0 ? '+' : ''}${mejor.margin.toFixed(1)} pts sobre Fuerza x México.`);
+  }
+  if (peor && peor.key !== mejor?.key) {
+    partes.push(peor.won
+      ? `${peor.label} es el ${unidadSing} más competido: lo gana por apenas ${peor.margin.toFixed(1)} pts, conviene reforzarlo.`
+      : `${peor.label} se pierde por ${Math.abs(peor.margin).toFixed(1)} pts — foco prioritario de movilización.`);
+  }
+  return partes.join(' ');
+};
+
 // ── Colores de partidos ───────────────────────────────────────────────────────
 const PARTY_FILL = {
   MORENA: '#6B0B20',
@@ -142,9 +167,18 @@ const CoverageBar = ({ label, value, total, colorClass = 'bg-emerald-500' }) => 
   );
 };
 
-const AfilCard = ({ afiliados, credenciales }) => {
+const AfilCard = ({ afiliados, credenciales, data }) => {
+  const [showMore, setShowMore] = React.useState(false);
   if (!afiliados) return null;
   const p = Math.min((credenciales / afiliados) * 100, 100);
+  const pipeline = data ? [
+    { label: 'Impresiones',    value: data.impresiones,    color: 'text-slate-500' },
+    { label: 'Loteadas',       value: data.loteadas,       color: 'text-blue-500' },
+    { label: 'En stock',       value: data.en_stock,       color: 'text-violet-500' },
+    { label: 'Entregadas SP',  value: data.entregadas_sp,  color: 'text-amber-600' },
+    { label: 'Comprobadas',    value: data.comprobadas,    color: 'text-teal-600' },
+    { label: 'Sin entregar',   value: data.sin_entregar,   color: 'text-rose-500' },
+  ].filter(r => r.value != null) : [];
   return (
     <div>
       <div className="grid grid-cols-2 gap-1 mb-2">
@@ -153,7 +187,7 @@ const AfilCard = ({ afiliados, credenciales }) => {
           <p className="text-xl font-bold tabular-nums text-teal-700">{fmt(afiliados)}</p>
         </div>
         <div className="bg-teal-50 rounded-lg p-2 text-center">
-          <p className="text-[9px] font-bold uppercase tracking-widest text-teal-400 leading-none mb-1">Credenciales</p>
+          <p className="text-[9px] font-bold uppercase tracking-widest text-teal-400 leading-none mb-1">Comprobadas</p>
           <p className="text-xl font-bold tabular-nums text-teal-700">{fmt(credenciales)}</p>
         </div>
       </div>
@@ -164,6 +198,27 @@ const AfilCard = ({ afiliados, credenciales }) => {
       <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
         <div className="h-full bg-teal-500 rounded-full transition-all duration-500" style={{ width: `${p}%` }} />
       </div>
+      {pipeline.length > 0 && (
+        <button
+          onClick={() => setShowMore(v => !v)}
+          className="mt-2 w-full text-[9px] font-bold uppercase tracking-widest text-teal-500 hover:text-teal-700 transition-colors py-1 border-t border-slate-100"
+        >
+          {showMore ? 'Ver menos ▲' : 'Ver más ▼'}
+        </button>
+      )}
+      {showMore && pipeline.length > 0 && (
+        <div className="mt-1 rounded-lg border border-slate-100 overflow-hidden">
+          <div className="bg-slate-50 px-2.5 py-1 grid grid-cols-2 text-[9px] font-bold uppercase tracking-widest text-slate-400 border-b border-slate-100">
+            <span>Etapa</span><span className="text-right">Total</span>
+          </div>
+          {pipeline.map(({ label, value, color }) => (
+            <div key={label} className="grid grid-cols-2 px-2.5 py-1.5 text-[11px] border-b border-slate-50 last:border-0">
+              <span className="text-slate-500">{label}</span>
+              <span className={`text-right tabular-nums font-bold ${color}`}>{fmt(value)}</span>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 };
@@ -372,34 +427,49 @@ const TableroBoard = () => {
       return row ? { mode: 'seccion', seccion: row } : null;
     }
 
-    const viewSecs = selectedSector
-      ? allSecciones.filter(s => s.pologono === selectedSector)
-      : selectedDistrito
-        ? allSecciones.filter(s => s.distrito_federal === selectedDistrito)
-        : allSecciones;
+    // Build DB lookup for district context (join by seccion number)
+    const dbBySec = {};
+    allSecciones.forEach(s => { dbBySec[s.seccion] = s; });
+
+    // Filter JSON data directly so sections without DB geometry are still counted
+    const source = AFILIACION.filter(r => {
+      if (selectedSector   != null) return String(r.sp) === String(selectedSector);
+      if (selectedDistrito != null) {
+        const db = dbBySec[r.seccion];
+        return db && db.distrito_federal === selectedDistrito;
+      }
+      return true;
+    });
 
     const bySector   = {};
     const byDistrito = {};
+    const PIPE_KEYS = ['impresiones','loteadas','sin_datos','en_stock','entregadas_sp','comprobadas','sin_entregar'];
+    const zeroPipe  = () => PIPE_KEYS.reduce((o, k) => ({ ...o, [k]: 0 }), {});
     let totalAf = 0, totalCred = 0;
+    const totalPipe = zeroPipe();
 
-    viewSecs.forEach(s => {
-      const af = afiliacionBySec[s.seccion];
-      if (!af) return;
+    source.forEach(af => {
+      const dbSec = dbBySec[af.seccion];
       const spKey = String(af.sp);
-      const dKey  = String(s.distrito_federal ?? '');
+      const dKey  = String(dbSec?.distrito_federal ?? '');
       totalAf   += af.afiliados;
       totalCred += af.credenciales_entregadas;
-      if (!bySector[spKey])   bySector[spKey]   = { afiliados: 0, credenciales: 0 };
-      if (!byDistrito[dKey])  byDistrito[dKey]  = { afiliados: 0, credenciales: 0 };
+      PIPE_KEYS.forEach(k => { totalPipe[k] += af[k] ?? 0; });
+      if (!bySector[spKey])   bySector[spKey]   = { afiliados: 0, credenciales: 0, ...zeroPipe() };
+      if (!byDistrito[dKey])  byDistrito[dKey]  = { afiliados: 0, credenciales: 0, ...zeroPipe() };
       bySector[spKey].afiliados    += af.afiliados;
       bySector[spKey].credenciales += af.credenciales_entregadas;
       byDistrito[dKey].afiliados   += af.afiliados;
       byDistrito[dKey].credenciales += af.credenciales_entregadas;
+      PIPE_KEYS.forEach(k => {
+        bySector[spKey][k]   += af[k] ?? 0;
+        byDistrito[dKey][k]  += af[k] ?? 0;
+      });
     });
 
     return {
       mode: selectedSector ? 'sector' : selectedDistrito ? 'distrito' : 'municipio',
-      total: { afiliados: totalAf, credenciales: totalCred },
+      total: { afiliados: totalAf, credenciales: totalCred, ...totalPipe },
       bySector,
       byDistrito,
     };
@@ -429,6 +499,15 @@ const TableroBoard = () => {
     let morena_solo_total = 0, pt_solo_total = 0, naem_solo_total = 0;
     let rosi_vs_aaron_total = 0, mg_vs_fuerza_total = 0;
     let votos_nulos_total = 0;
+
+    // Nivel de agrupación para el desglose "agrupa por el filtrado seleccionado":
+    // sin nada seleccionado -> por distrito; con distrito -> por sector; con sector -> por sección.
+    // Con sección ya seleccionada (nivel hoja) no hay desglose adicional.
+    const groupLevel = selectedSeccion != null ? null
+      : selectedSector   != null ? 'seccion'
+      : selectedDistrito != null ? 'sector'
+      : 'distrito';
+    const senadoBuckets = {};
 
     for (const s of mapSecciones) {
       const canonical = dataSource[s.seccion] !== undefined
@@ -462,6 +541,22 @@ const TableroBoard = () => {
         }
         mg_vs_fuerza_total += mg_vs_fuerza;
         votos_nulos_total  += votos_nulos;
+
+        if (groupLevel) {
+          const groupKey = groupLevel === 'seccion' ? s.seccion : groupLevel === 'sector' ? s.pologono : s.distrito_federal;
+          if (groupKey != null) {
+            if (!senadoBuckets[groupKey]) {
+              senadoBuckets[groupKey] = { key: groupKey, secciones: 0, mariela: 0, fuerza: 0, mc: 0, total: 0, ganadas: 0 };
+            }
+            const bucket = senadoBuckets[groupKey];
+            bucket.secciones += 1;
+            bucket.mariela += morena_coalicion;
+            bucket.fuerza  += fuerza_x_mexico;
+            bucket.mc      += senado_mc > 0 ? senado_mc : 0;
+            bucket.total   += morena_coalicion + fuerza_x_mexico + (senado_mc > 0 ? senado_mc : 0);
+            if (ganador === 'MARIELA') bucket.ganadas += 1;
+          }
+        }
       } else if (isDip) {
         const { ganador, morena = 0, pri = 0, mc = 0 } = d;
         secGanadas[ganador] = (secGanadas[ganador] || 0) + 1;
@@ -496,12 +591,32 @@ const TableroBoard = () => {
     const marginVotos = winner ? (totals[winner] - (sorted[1]?.[1] ?? 0)) : 0;
     const marginPct   = grandTotal ? ((marginVotos / grandTotal) * 100).toFixed(1) : '0';
 
+    const senadoBreakdown = (isSenado && groupLevel)
+      ? Object.values(senadoBuckets).map((b) => {
+          const marielaPct = b.total ? (b.mariela / b.total) * 100 : 0;
+          const fuerzaPct  = b.total ? (b.fuerza  / b.total) * 100 : 0;
+          return {
+            key: b.key,
+            label: groupLevel === 'seccion' ? `Sección ${b.key}` : groupLevel === 'sector' ? `Sector ${b.key}` : `Distrito ${b.key}`,
+            secciones: b.secciones,
+            total: b.total,
+            mariela: b.mariela,
+            fuerza: b.fuerza,
+            marielaPct,
+            fuerzaPct,
+            margin: marielaPct - fuerzaPct,
+            won: b.mariela > b.fuerza,
+          };
+        }).sort((a, b) => b.margin - a.margin)
+      : null;
+
     return { totals, grandTotal, winner, secGanadas, secciones, sorted, marginVotos, marginPct,
              isIEEM, is2024, is2024IEEM, isSenado, isDip, isDip2024,
              morena_solo_total, pt_solo_total, naem_solo_total,
-             rosi_vs_aaron_total, mg_vs_fuerza_total, votos_nulos_total };
+             rosi_vs_aaron_total, mg_vs_fuerza_total, votos_nulos_total,
+             groupLevel, senadoBreakdown };
   }, [electoralData, electoralDataIEEM, electoralData2024, electoralData2024IEEM, electoralDataSenado,
-      electoralDataDip2024, electoralMode, mapSecciones]);
+      electoralDataDip2024, electoralMode, mapSecciones, selectedSeccion, selectedSector, selectedDistrito]);
 
   // ── Fetch sector ──────────────────────────────────────────────────────────
   useEffect(() => {
@@ -510,7 +625,7 @@ const TableroBoard = () => {
       const [spRes, geoRes] = await Promise.all([
         supabase.from('ciudadania').select('nombre, a_paterno, a_materno')
           .eq('puesto', 'SP').eq('poligono', selectedSector).eq('status', 'ACTIVO').maybeSingle(),
-        supabase.from('ciudadania').select('id, nombre, a_paterno, a_materno, latitud, longitud, puesto, ubt, seccion')
+        supabase.from('ciudadania').select('id, nombre, a_paterno, a_materno, latitud, longitud, puesto, ubt, seccion, url_foto_perfil')
           .eq('poligono', selectedSector).eq('status', 'ACTIVO').not('latitud', 'is', null),
       ]);
       setSp(spRes.data ?? null);
@@ -531,12 +646,12 @@ const TableroBoard = () => {
       const [rsRes, smRes, fracRes, regRes, geoRes, fracGeoRes] = await Promise.all([
         supabase.from('ciudadania').select('nombre, a_paterno, a_materno')
           .eq('puesto', 'SECCIONAL').eq('seccion', selectedSeccion).eq('status', 'ACTIVO').maybeSingle(),
-        supabase.from('ciudadania').select('nombre, a_paterno, a_materno, ubt, telefono_1, latitud, longitud')
+        supabase.from('ciudadania').select('nombre, a_paterno, a_materno, ubt, telefono_1, latitud, longitud, url_foto_perfil')
           .eq('puesto', 'SM').eq('seccion', selectedSeccion).eq('status', 'ACTIVO').order('ubt', { ascending: true }),
         supabase.from('ubt_catalogo').select('fraccion').eq('seccion', selectedSeccion).order('fraccion', { ascending: true }),
         supabase.from('ciudadania').select('id', { count: 'exact', head: true })
           .eq('seccion', selectedSeccion).eq('status', 'ACTIVO'),
-        supabase.from('ciudadania').select('id, nombre, a_paterno, a_materno, latitud, longitud, puesto, ubt, seccion')
+        supabase.from('ciudadania').select('id, nombre, a_paterno, a_materno, latitud, longitud, puesto, ubt, seccion, url_foto_perfil')
           .eq('seccion', selectedSeccion).eq('status', 'ACTIVO').not('latitud', 'is', null),
         supabase.from('fracciones').select('fraccion, seccion, geometry').eq('seccion', selectedSeccion),
       ]);
@@ -650,7 +765,16 @@ const TableroBoard = () => {
     const { totals, grandTotal, winner, secGanadas, secciones, sorted, marginVotos, marginPct,
             isIEEM, is2024, is2024IEEM, isSenado, isDip, isDip2024,
             morena_solo_total, pt_solo_total, naem_solo_total,
-            rosi_vs_aaron_total, mg_vs_fuerza_total, votos_nulos_total } = electoralStats;
+            rosi_vs_aaron_total, mg_vs_fuerza_total, votos_nulos_total,
+            groupLevel, senadoBreakdown } = electoralStats;
+    const marielaGanadas  = secGanadas['MARIELA'] || 0;
+    const marielaPerdidas = Math.max(0, secciones - marielaGanadas);
+    const senadoInsight   = isSenado ? buildSenadoInsight(senadoBreakdown, groupLevel, scopeLabel) : null;
+    const drillInto = (unit) => {
+      if (groupLevel === 'seccion') selectSeccion(unit.key);
+      else if (groupLevel === 'sector') selectSector(unit.key);
+      else selectDistrito(unit.key);
+    };
     const is2024Any    = is2024 || is2024IEEM;
     const candTable    = isSenado ? CANDIDATOS_SENADO : isDip ? CANDIDATOS_DIP : is2024Any ? CANDIDATOS_2024 : CANDIDATOS_2021;
     const winnerCand   = candTable[winner];
@@ -796,6 +920,78 @@ const TableroBoard = () => {
                 <span className="text-[11px] font-bold tabular-nums text-slate-500">{fmt(votos_nulos_total)}</span>
               </div>
             )}
+          </div>
+        )}
+
+        {/* Secciones ganadas vs perdidas (solo senado_2024) */}
+        {isSenado && (
+          <div className="bg-white border border-slate-100 rounded-xl p-3 shadow-sm">
+            <SectionTitle accent="bg-rose-900">Secciones ganadas vs perdidas · Mariela</SectionTitle>
+            <div className="grid grid-cols-2 gap-2 mb-2">
+              <div className="rounded-lg bg-emerald-50 border border-emerald-100 p-2 text-center">
+                <p className="text-[9px] font-bold uppercase tracking-widest text-emerald-500 leading-none mb-1">Ganadas</p>
+                <p className="text-xl font-bold tabular-nums text-emerald-700">{marielaGanadas}</p>
+                <p className="text-[9px] text-emerald-400 mt-0.5">{pct(marielaGanadas, secciones)}</p>
+              </div>
+              <div className="rounded-lg bg-rose-50 border border-rose-100 p-2 text-center">
+                <p className="text-[9px] font-bold uppercase tracking-widest text-rose-500 leading-none mb-1">Perdidas</p>
+                <p className="text-xl font-bold tabular-nums text-rose-700">{marielaPerdidas}</p>
+                <p className="text-[9px] text-rose-400 mt-0.5">{pct(marielaPerdidas, secciones)}</p>
+              </div>
+            </div>
+            <div className="h-2 bg-slate-100 rounded-full overflow-hidden flex">
+              <div className="h-full bg-emerald-500 transition-all duration-700" style={{ width: pct(marielaGanadas, secciones) ?? '0%' }} />
+              <div className="h-full bg-rose-400 transition-all duration-700" style={{ width: pct(marielaPerdidas, secciones) ?? '0%' }} />
+            </div>
+          </div>
+        )}
+
+        {/* Análisis político dinámico + desglose agrupado (solo senado_2024) */}
+        {isSenado && senadoInsight && (
+          <div className="rounded-xl border border-rose-100 bg-rose-50/60 px-3 py-2.5">
+            <SectionTitle accent="bg-rose-900">Lectura política</SectionTitle>
+            <p className="text-[10.5px] text-rose-900/80 leading-relaxed">{senadoInsight}</p>
+          </div>
+        )}
+
+        {isSenado && senadoBreakdown && senadoBreakdown.length > 0 && (
+          <div className="bg-white border border-slate-100 rounded-xl p-3 shadow-sm">
+            <SectionTitle accent="bg-rose-900">
+              Desglose por {groupLevel === 'seccion' ? 'sección' : groupLevel === 'sector' ? 'sector' : 'distrito'} · Mariela vs Fuerza
+            </SectionTitle>
+            <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
+              {senadoBreakdown.map((unit) => (
+                <button
+                  key={unit.key}
+                  onClick={() => drillInto(unit)}
+                  className="w-full text-left group"
+                  title={`Ver detalle de ${unit.label}`}
+                >
+                  <div className="flex items-center justify-between mb-0.5">
+                    <span className="text-[11px] font-bold text-slate-700 group-hover:text-rose-800 transition-colors flex items-center gap-1.5">
+                      {unit.label}
+                      <span className={`text-[8px] font-bold px-1.5 py-0.5 rounded-full ${unit.won ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700'}`}>
+                        {unit.won ? 'GANA' : 'PIERDE'}
+                      </span>
+                    </span>
+                    <span className="text-[10px] text-slate-400 tabular-nums">
+                      {unit.margin >= 0 ? '+' : ''}{unit.margin.toFixed(1)} pts
+                    </span>
+                  </div>
+                  <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden flex">
+                    <div className="h-full bg-[#6B0B20] transition-all duration-500" style={{ width: `${unit.marielaPct}%` }} />
+                    <div className="h-full bg-[#1460A8] transition-all duration-500" style={{ width: `${unit.fuerzaPct}%` }} />
+                  </div>
+                  <div className="flex justify-between mt-0.5">
+                    <span className="text-[9px] text-slate-400">{unit.secciones} sec. · {fmt(unit.total)} votos</span>
+                    <span className="text-[9px] text-slate-400">{unit.marielaPct.toFixed(0)}% / {unit.fuerzaPct.toFixed(0)}%</span>
+                  </div>
+                </button>
+              ))}
+            </div>
+            <p className="mt-2 pt-2 border-t border-slate-100 text-[9px] text-slate-400">
+              Ordenado de mayor a menor ventaja de Mariela · toca una fila para entrar a su detalle.
+            </p>
           </div>
         )}
 
@@ -986,7 +1182,7 @@ const TableroBoard = () => {
             {afSec && (
               <div className={fracciones.length > 0 ? 'pt-2 mt-1 border-t border-slate-100' : ''}>
                 <SectionTitle accent="bg-teal-500">Actividad · Afiliación</SectionTitle>
-                <AfilCard afiliados={afSec.afiliados} credenciales={afSec.credenciales_entregadas} />
+                <AfilCard afiliados={afSec.afiliados} credenciales={afSec.credenciales_entregadas} data={afSec} />
               </div>
             )}
           </div>
@@ -1108,7 +1304,7 @@ const TableroBoard = () => {
           {afSect && (
             <div className="bg-white border border-slate-100 rounded-xl p-3 shadow-sm">
               <SectionTitle accent="bg-teal-500">Actividad · Afiliación Sector {selectedSector}</SectionTitle>
-              <AfilCard afiliados={afSect.afiliados} credenciales={afSect.credenciales} />
+              <AfilCard afiliados={afSect.afiliados} credenciales={afSect.credenciales} data={afSect} />
               <AfilTable rows={secRows} />
             </div>
           )}
@@ -1143,7 +1339,7 @@ const TableroBoard = () => {
           {afDist && (
             <div className="bg-white border border-slate-100 rounded-xl p-3 shadow-sm">
               <SectionTitle accent="bg-teal-500">Actividad · Afiliación Dto. {selectedDistrito}</SectionTitle>
-              <AfilCard afiliados={afDist.afiliados} credenciales={afDist.credenciales} />
+              <AfilCard afiliados={afDist.afiliados} credenciales={afDist.credenciales} data={afDist} />
               <AfilTable rows={sectRows} />
             </div>
           )}
@@ -1172,7 +1368,7 @@ const TableroBoard = () => {
         {afTotal?.afiliados > 0 && (
           <div className="bg-white border border-slate-100 rounded-xl p-3 shadow-sm">
             <SectionTitle accent="bg-teal-500">Actividad · Afiliación Municipal</SectionTitle>
-            <AfilCard afiliados={afTotal.afiliados} credenciales={afTotal.credenciales} />
+            <AfilCard afiliados={afTotal.afiliados} credenciales={afTotal.credenciales} data={afTotal} />
             <AfilTable rows={sectorRows} />
           </div>
         )}

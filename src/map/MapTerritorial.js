@@ -19,16 +19,16 @@ const pointInPolygon = (point, ring) => {
 
 // ── Paleta de sectores ───────────────────────────────────────────────────────
 const SECTOR_COLORS = [
-  { fill: '#3B82F6', stroke: '#1D4ED8' },
-  { fill: '#10B981', stroke: '#047857' },
-  { fill: '#F59E0B', stroke: '#B45309' },
-  { fill: '#EF4444', stroke: '#B91C1C' },
-  { fill: '#8B5CF6', stroke: '#6D28D9' },
-  { fill: '#EC4899', stroke: '#BE185D' },
-  { fill: '#14B8A6', stroke: '#0F766E' },
-  { fill: '#F97316', stroke: '#C2410C' },
-  { fill: '#6366F1', stroke: '#4338CA' },
-  { fill: '#84CC16', stroke: '#4D7C0F' },
+  { fill: '#2563EB', stroke: '#1E40AF' },  // azul
+  { fill: '#059669', stroke: '#065F46' },  // esmeralda
+  { fill: '#D97706', stroke: '#92400E' },  // ámbar
+  { fill: '#DC2626', stroke: '#991B1B' },  // rojo
+  { fill: '#7C3AED', stroke: '#4C1D95' },  // violeta
+  { fill: '#84CC16', stroke: '#3F6212' },  // lima
+  { fill: '#0891B2', stroke: '#0E4F63' },  // cian
+  { fill: '#EA580C', stroke: '#7C2D12' },  // naranja
+  { fill: '#4F46E5', stroke: '#312E81' },  // índigo
+  { fill: '#65A30D', stroke: '#365314' },  // lima
 ];
 
 // ── Colores de partidos políticos ───────────────────────────────────────────
@@ -92,6 +92,9 @@ const PUESTO_COLOR = {
 };
 const getPuestoColor = (puesto) =>
   PUESTO_COLOR[(puesto || '').toUpperCase()] ?? '#6B7280';
+
+// [W, H] per zoom tier (tier 0 = very far out, tier 3 = very close in)
+const CASILLA_SIZES = [[20, 26], [27, 35], [34, 44], [44, 57]];
 
 // ── Estilos de mapa ──────────────────────────────────────────────────────────
 const MAP_STYLE_DEFS = {
@@ -449,12 +452,28 @@ const HoverTooltip = ({ data, pos, containerRef, isDark, tipo = 'seccion', secci
           </span>
         </div>
         {sms.length > 0 && (
-          <div className="space-y-0.5 max-h-[72px] overflow-y-auto">
-            {sms.map((c, i) => (
-              <p key={i} className={`text-xs truncate ${val}`}>
-                {[c.nombre, c.a_paterno, c.a_materno].filter(Boolean).join(' ')}
-              </p>
-            ))}
+          <div className="space-y-1 max-h-[96px] overflow-y-auto">
+            {sms.map((c, i) => {
+              const hasPhoto = Boolean(c.url_foto_perfil);
+              const name = [c.nombre, c.a_paterno].filter(Boolean).join(' ');
+              return (
+                <div key={i} className="flex items-center gap-2">
+                  <div className={`w-6 h-6 rounded-full flex-shrink-0 overflow-hidden flex items-center justify-center border ${
+                    isDark ? 'border-gray-600 bg-gray-700' : 'border-gray-200 bg-gray-100'
+                  }`}>
+                    {hasPhoto ? (
+                      <img src={c.url_foto_perfil} alt="" className="w-full h-full object-cover" />
+                    ) : (
+                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none">
+                        <circle cx="12" cy="8" r="4" fill={isDark ? '#475569' : '#94a3b8'}/>
+                        <path d="M4 20c0-4 3.6-7 8-7s8 3 8 7" stroke={isDark ? '#475569' : '#94a3b8'} strokeWidth="2" strokeLinecap="round" fill="none"/>
+                      </svg>
+                    )}
+                  </div>
+                  <span className={`text-xs truncate ${val}`}>{name || '—'}</span>
+                </div>
+              );
+            })}
           </div>
         )}
       </div>
@@ -614,6 +633,64 @@ const HoverTooltip = ({ data, pos, containerRef, isDark, tipo = 'seccion', secci
   );
 };
 
+// ── Parser de dirección de casilla ───────────────────────────────────────────
+const parseCasillaUbicacion = (texto) => {
+  if (!texto) return { nombre: '', calle: '', colonia: '', cp: '', referencia: '' };
+  const parts = texto.split(', ');
+  const toTitle = (s) => s ? s.toLowerCase().replace(/(^|\s)\S/g, l => l.toUpperCase()) : '';
+
+  const nombre = parts[0] || '';
+
+  const cpIdx = parts.findIndex(p => /^C[OÓ]DIGO POSTAL\s+\d{5}/i.test(p));
+  const cp = cpIdx >= 0 ? parts[cpIdx].replace(/C[OÓ]DIGO POSTAL\s+/i, '').trim() : '';
+
+  const refIdx = parts.findIndex(p => /^(ENTRE|A UN |FRENTE|JUNTO|DIAGONAL|CONTIGUO)/i.test(p));
+  const referencia = refIdx >= 0 ? parts.slice(refIdx).join(', ') : '';
+
+  const calleRaw = parts[1] || '';
+  const isStreet = /^(CALLE|AVENIDA|AV\b|BOULEVARD|BLVD|CARRETERA|PRIVADA|CERRADA|CALZADA|CAMINO|CIRCUITO|PASEO|PROLONGACI[OÓ]N|ACCESO|RETORNO)/i.test(calleRaw);
+
+  let calle = '';
+  let coloniaStart = 1;
+
+  if (isStreet) {
+    const numRaw = (parts[2] || '').trim();
+    if (/^SIN N[UÚ]MERO$/i.test(numRaw)) {
+      calle = `${calleRaw} S/N`;
+      coloniaStart = 3;
+    } else if (/^N[UÚ]MERO\s+\S+/i.test(numRaw)) {
+      calle = `${calleRaw} #${numRaw.replace(/^N[UÚ]MERO\s+/i, '')}`;
+      coloniaStart = 3;
+    } else {
+      calle = calleRaw;
+      coloniaStart = 2;
+    }
+  }
+
+  const coloniaEnd = cpIdx >= 0 ? cpIdx : (refIdx >= 0 ? refIdx : parts.length);
+  const colonia = parts
+    .slice(coloniaStart, coloniaEnd)
+    .filter(p => !/^(TEC[AÁ]MAC|M[EÉ]XICO|ESTADO DE M[EÉ]XICO)$/i.test(p))
+    .join(', ');
+
+  return {
+    nombre: toTitle(nombre),
+    calle:  toTitle(calle),
+    colonia: toTitle(colonia),
+    cp,
+    referencia: referencia ? toTitle(referencia) : '',
+  };
+};
+
+// ── Ícono de casilla (reutilizable en botones, leyenda e InfoWindow) ──────────
+const BallotSvg = ({ size = 10 }) => (
+  <svg width={size} height={size} viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" style={{ display: 'inline-block', verticalAlign: 'middle', flexShrink: 0 }}>
+    <rect x="1.5" y="6" width="11" height="7" rx="1.2" stroke="currentColor" strokeWidth="1.4"/>
+    <rect x="3" y="2" width="8" height="4.5" rx="0.9" stroke="currentColor" strokeWidth="1.3"/>
+    <line x1="4.5" y1="4" x2="9.5" y2="4" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round"/>
+  </svg>
+);
+
 // ── Componente principal ──────────────────────────────────────────────────────
 const MapTerritorial = ({
   secciones = [],
@@ -679,6 +756,39 @@ const MapTerritorial = ({
   const assignedFraccion = editableLocation
     ? findFraccionAt(editableLocation.lat, editableLocation.lng)
     : null;
+
+  // Casillas PJEM (Poder Judicial del Estado de México) — ubicaciones físicas
+  // de casillas, una por sección, geolocalizadas a partir de las ligas cortas
+  // de Google Maps del archivo fuente "TECAMAC CASILLAS PJEM".
+  const [casillasPjem, setCasillasPjem] = useState([]);
+  const [showCasillasPjem, setShowCasillasPjem] = useState(false);
+  const [activeCasilla, setActiveCasilla] = useState(null);
+  useEffect(() => {
+    fetch('/tecamac_casillas_pjem.json')
+      .then(r => r.json())
+      .then(setCasillasPjem)
+      .catch(() => {});
+  }, []);
+
+  // Sólo se pintan las casillas de las secciones que el mapa ya trae cargadas
+  // (mismo universo que los polígonos visibles), no las 209 completas siempre.
+  const casillasVisibles = useMemo(() => {
+    if (!showCasillasPjem || !casillasPjem.length || !secciones.length) return [];
+    const seccionesCargadas = new Set(secciones.map(s => Number(s.seccion)));
+    return casillasPjem.filter(c => seccionesCargadas.has(Number(c.seccion)) && c.lat && c.lng);
+  }, [showCasillasPjem, casillasPjem, secciones]);
+
+  const casillaTier = currentZoom >= 16 ? 3 : currentZoom >= 14 ? 2 : currentZoom >= 12 ? 1 : 0;
+  const urnaIcon = useMemo(() => {
+    if (!window.google || !isLoaded) return undefined;
+    const [W, H] = CASILLA_SIZES[casillaTier];
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 34 44"><ellipse cx="17" cy="41.5" rx="5.5" ry="1.8" fill="rgba(0,0,0,0.20)"/><path d="M17 2C9.8 2 4 7.8 4 15c0 10 13 26.5 13 26.5S30 25 30 15C30 7.8 24.2 2 17 2z" fill="#F59E0B" stroke="#D97706" stroke-width="1.2"/><circle cx="17" cy="14.5" r="10" fill="rgba(255,255,255,0.12)"/><rect x="10" y="10" width="14" height="3.5" rx="1.2" fill="rgba(255,255,255,0.97)"/><rect x="13" y="10.8" width="8" height="1.6" rx="0.7" fill="#92400E"/><polygon points="11,13.5 23,13.5 22,22 12,22" fill="rgba(255,255,255,0.93)"/><line x1="13" y1="17.5" x2="21" y2="17.5" stroke="rgba(146,64,14,0.20)" stroke-width="0.8"/><rect x="12.5" y="22" width="2.5" height="1.5" rx="0.4" fill="rgba(255,255,255,0.85)"/><rect x="19" y="22" width="2.5" height="1.5" rx="0.4" fill="rgba(255,255,255,0.85)"/></svg>`;
+    return {
+      url: 'data:image/svg+xml;base64,' + btoa(svg),
+      scaledSize: new window.google.maps.Size(W, H),
+      anchor: new window.google.maps.Point(Math.round(W / 2), H - 1),
+    };
+  }, [isLoaded, casillaTier]);
 
   // Dataset electoral interno (Ayuntamiento 2021)
   useEffect(() => {
@@ -1228,7 +1338,7 @@ const MapTerritorial = ({
                 }`}
                 title="Datos internos — Ayuntamiento 2021"
               >
-                🗳 Ayuntamiento 2021 - interno
+                <BallotSvg /> Ayuntamiento 2021 - interno
               </button>
               <button
                 onClick={() => handleSetElectoralMode(electoralMode === 'ayu_2021_ieem' ? null : 'ayu_2021_ieem')}
@@ -1239,7 +1349,7 @@ const MapTerritorial = ({
                 }`}
                 title="Cómputo oficial IEEM — Ayuntamiento 2021"
               >
-                🗳 Ayuntamiento 2021 - IEEM
+                <BallotSvg /> Ayuntamiento 2021 - IEEM
               </button>
               <button
                 onClick={() => handleSetElectoralMode(electoralMode === 'ayu_2024' ? null : 'ayu_2024')}
@@ -1250,7 +1360,7 @@ const MapTerritorial = ({
                 }`}
                 title="Ayuntamiento 2024 — Rosi Wong vs Aaron Urbina (datos internos)"
               >
-                🗳 Ayuntamiento 2024 - Rosi Wong
+                <BallotSvg /> Ayuntamiento 2024 - Rosi Wong
               </button>
               <button
                 onClick={() => handleSetElectoralMode(electoralMode === 'ayu_2024_ieem' ? null : 'ayu_2024_ieem')}
@@ -1261,7 +1371,7 @@ const MapTerritorial = ({
                 }`}
                 title="Ayuntamiento 2024 — Cómputo oficial IEEM"
               >
-                🗳 Ayuntamiento 2024 - IEEM
+                <BallotSvg /> Ayuntamiento 2024 - IEEM
               </button>
               <button
                 onClick={() => handleSetElectoralMode(electoralMode === 'senado_2024' ? null : 'senado_2024')}
@@ -1272,7 +1382,7 @@ const MapTerritorial = ({
                 }`}
                 title="Senaduría 2024 — Mariela Gutiérrez vs Fuerza x México"
               >
-                🗳 Senaduría 2024 - Mariela Gutiérrez
+                <BallotSvg /> Senaduría 2024 - Mariela Gutiérrez
               </button>
               <button
                 onClick={() => handleSetElectoralMode(electoralMode === 'dip_2024' ? null : 'dip_2024')}
@@ -1283,7 +1393,23 @@ const MapTerritorial = ({
                 }`}
                 title="Diputación Local 2024 — datos internos"
               >
-                🗳 Diputación Local 2024 - Interno
+                <BallotSvg /> Diputación Local 2024 - Interno
+              </button>
+            </>
+          )}
+          {casillasPjem.length > 0 && (
+            <>
+              <div className="w-full h-px bg-gray-200 my-0.5" />
+              <button
+                onClick={() => setShowCasillasPjem(v => !v)}
+                className={`w-full px-2.5 py-1 rounded-md text-xs font-medium transition-all text-left leading-tight ${
+                  showCasillasPjem
+                    ? 'bg-amber-700 text-white shadow-sm'
+                    : 'text-gray-600 hover:bg-gray-100'
+                }`}
+                title="Ubicaciones físicas de casillas — PJEM"
+              >
+                <BallotSvg /> Casillas PJEM
               </button>
             </>
           )}
@@ -1453,7 +1579,7 @@ const MapTerritorial = ({
           })()}
 
           {/* ── Etiquetas de sección (zoom-aware) ──────────────────── */}
-          {currentZoom >= 13 && secciones.map((sec, idx) => {
+          {currentZoom >= 12 && secciones.map((sec, idx) => {
             const paths = parseWKT(sec.geometry);
             if (!paths.length) return null;
             const center = getCenter(paths);
@@ -1474,7 +1600,11 @@ const MapTerritorial = ({
                         : false;
             // Suppressed: group label handles aliased sections
             if (isAliased && electoralMode) return null;
-            const fontSize = Math.max(9, Math.min(13, currentZoom - 1));
+            // Sector 8 has too many sections — labels overlap; rely on hover + dashboard list
+            if (sec.pologono === 8 && !isSelected) return null;
+            // Below zoom 14 only render the selected section label to avoid overlap
+            if (currentZoom < 14 && !isSelected) return null;
+            const fontSize = Math.max(10, Math.min(14, currentZoom));
             return (
               <OverlayView
                 key={`lbl-sec-${sec.id ?? idx}`}
@@ -1483,38 +1613,42 @@ const MapTerritorial = ({
               >
                 <div style={{ position: 'absolute', transform: 'translate(-50%,-50%)', pointerEvents: 'none', userSelect: 'none' }}>
                   {isSelected ? (
-                    // Selected: amber pill with border
+                    // Selected: amber pill with stronger glow
                     <span style={{
                       display: 'inline-block',
                       fontSize,
                       fontWeight: 800,
                       fontFamily: 'system-ui,-apple-system,sans-serif',
-                      lineHeight: 1.2,
+                      lineHeight: 1,
                       whiteSpace: 'nowrap',
-                      padding: '3px 7px',
-                      borderRadius: 5,
-                      color: '#78350f',
+                      letterSpacing: '0.02em',
+                      padding: '3px 9px',
+                      borderRadius: 7,
+                      color: '#7c2d12',
                       background: 'rgba(251,191,36,0.98)',
-                      border: '1.5px solid rgba(120,53,15,0.5)',
-                      boxShadow: '0 2px 6px rgba(0,0,0,0.3)',
+                      border: '1.5px solid rgba(180,83,9,0.45)',
+                      boxShadow: '0 2px 8px rgba(180,83,9,0.28), 0 0 0 2.5px rgba(251,191,36,0.22)',
                     }}>
                       {sec.seccion}
                     </span>
                   ) : (
-                    // Normal: crisp white pill with dark text, always readable over any polygon color
+                    // Normal/compact: crisp pill — minimal at low zoom, full at high zoom
                     <span style={{
                       display: 'inline-block',
                       fontSize,
                       fontWeight: 700,
                       fontFamily: 'system-ui,-apple-system,sans-serif',
-                      lineHeight: 1.2,
+                      lineHeight: 1,
                       whiteSpace: 'nowrap',
-                      padding: '2px 6px',
-                      borderRadius: 4,
-                      color: isDark ? '#f8fafc' : '#0f172a',
-                      background: isDark ? 'rgba(15,23,42,0.94)' : 'rgba(255,255,255,0.96)',
-                      border: isDark ? '1px solid rgba(255,255,255,0.18)' : '1px solid rgba(0,0,0,0.22)',
-                      boxShadow: '0 1px 4px rgba(0,0,0,0.22)',
+                      letterSpacing: '0.01em',
+                      padding: '2.5px 7px',
+                      borderRadius: 6,
+                      color: isDark ? '#f1f5f9' : '#1e293b',
+                      background: isDark ? 'rgba(2,6,23,0.88)' : 'rgba(255,255,255,0.95)',
+                      border: isDark ? '1px solid rgba(255,255,255,0.13)' : '1px solid rgba(15,23,42,0.16)',
+                      boxShadow: isDark
+                        ? '0 1px 5px rgba(0,0,0,0.42), 0 0 0 1px rgba(255,255,255,0.04)'
+                        : '0 1px 5px rgba(0,0,0,0.16), 0 0 0 1px rgba(0,0,0,0.04)',
                     }}>
                       {sec.seccion}
                     </span>
@@ -1524,8 +1658,53 @@ const MapTerritorial = ({
             );
           })}
 
+          {/* ── Etiquetas de sector (municipio y distrito) ──────────── */}
+          {(() => {
+            const uniqueSectors = [...new Set(secciones.map(s => s.pologono))].filter(Boolean);
+            if (uniqueSectors.length <= 1) return null;
+            return uniqueSectors.map(sector => {
+              const secsInSector = secciones.filter(s => s.pologono === sector);
+              const centroids = secsInSector
+                .map(s => { const p = parseWKT(s.geometry); return p.length ? getCenter(p) : null; })
+                .filter(Boolean);
+              if (!centroids.length) return null;
+              const lat = centroids.reduce((s, c) => s + c.lat, 0) / centroids.length;
+              const lng = centroids.reduce((s, c) => s + c.lng, 0) / centroids.length;
+              const color = sectorColorMap[sector] ?? SECTOR_COLORS[0];
+              return (
+                <OverlayView
+                  key={`lbl-sector-${sector}`}
+                  position={{ lat, lng }}
+                  mapPaneName="floatPane"
+                >
+                  <div style={{ position: 'absolute', transform: 'translate(-50%,-50%)', pointerEvents: 'none', userSelect: 'none' }}>
+                    <span style={{
+                      display: 'inline-block',
+                      fontSize: 12,
+                      fontWeight: 700,
+                      fontFamily: 'system-ui,-apple-system,sans-serif',
+                      lineHeight: 1,
+                      whiteSpace: 'nowrap',
+                      letterSpacing: '0.01em',
+                      padding: '2.5px 7px',
+                      borderRadius: 6,
+                      color: isDark ? '#f1f5f9' : '#1e293b',
+                      background: isDark ? 'rgba(2,6,23,0.88)' : 'rgba(255,255,255,0.95)',
+                      border: isDark ? '1px solid rgba(255,255,255,0.13)' : '1px solid rgba(15,23,42,0.16)',
+                      boxShadow: isDark
+                        ? '0 1px 5px rgba(0,0,0,0.42), 0 0 0 1px rgba(255,255,255,0.04)'
+                        : '0 1px 5px rgba(0,0,0,0.16), 0 0 0 1px rgba(0,0,0,0.04)',
+                    }}>
+                      Sector {sector}
+                    </span>
+                  </div>
+                </OverlayView>
+              );
+            });
+          })()}
+
           {/* ── Etiquetas de grupo (secciones históricas aliased) ───── */}
-          {electoralMode && currentZoom >= 12 && (() => {
+          {electoralMode && currentZoom >= 14 && (() => {
             // Group aliased sections by their alias target and compute a shared centroid
             const groups = {};
             for (const sec of secciones) {
@@ -1683,28 +1862,329 @@ const MapTerritorial = ({
               icon={markerIcon(c.puesto)}
               onClick={() => setActiveMarker(activeMarker?.id === c.id ? null : c)}
               zIndex={30}
-            >
-              {activeMarker?.id === c.id && (
-                <InfoWindow onCloseClick={() => setActiveMarker(null)}>
-                  <div className="font-sans text-gray-800 text-xs min-w-[160px]">
-                    <p className="font-bold text-sm mb-0.5">
-                      {[c.nombre, c.a_paterno, c.a_materno].filter(Boolean).join(' ')}
-                    </p>
-                    {c.puesto && (
-                      <span
-                        className="inline-block px-1.5 py-0.5 rounded text-white text-xs font-medium mb-1"
-                        style={{ backgroundColor: getPuestoColor(c.puesto) }}
-                      >
-                        {c.puesto}
-                      </span>
-                    )}
-                    {c.ubt     && <p className="text-gray-500">Fracción: <span className="font-medium text-gray-700">{c.ubt}</span></p>}
-                    {c.seccion && <p className="text-gray-500">Sección: <span className="font-medium text-gray-700">{c.seccion}</span></p>}
-                  </div>
-                </InfoWindow>
-              )}
-            </Marker>
+            />
           ))}
+
+          {/* ── Card de contacto SM ──────────────────────────────────── */}
+          {activeMarker && (() => {
+            const m = activeMarker;
+            const hasPhoto = Boolean(m.url_foto_perfil);
+            const fullName = [m.nombre, m.a_paterno, m.a_materno].filter(Boolean).join(' ');
+            const accent   = getPuestoColor(m.puesto);
+            const cardBg   = isDark ? '#1e293b' : '#ffffff';
+            const labelClr = isDark ? '#94a3b8' : '#64748b';
+            const valueClr = isDark ? '#f1f5f9' : '#0f172a';
+            const divClr   = isDark ? 'rgba(255,255,255,0.07)' : 'rgba(0,0,0,0.07)';
+            const hdrBg    = isDark
+              ? 'linear-gradient(135deg,#0f172a 0%,#1e293b 100%)'
+              : 'linear-gradient(135deg,#1e3a5f 0%,#1e40af 100%)';
+            return (
+              <OverlayView
+                key={`card-mk-${m.id}`}
+                position={{ lat: Number(m.latitud), lng: Number(m.longitud) }}
+                mapPaneName="floatPane"
+              >
+                <div style={{ position: 'absolute', transform: 'translate(-50%, calc(-100% - 12px))', pointerEvents: 'none' }}>
+                  <div style={{
+                    width: 192,
+                    background: cardBg,
+                    borderRadius: 14,
+                    boxShadow: '0 8px 32px rgba(0,0,0,0.22), 0 2px 8px rgba(0,0,0,0.14)',
+                    overflow: 'hidden',
+                    fontFamily: 'system-ui,-apple-system,sans-serif',
+                    pointerEvents: 'auto',
+                  }}>
+                    {/* Header — foto de fondo o placeholder azul */}
+                    <div style={{ position: 'relative', height: 130, background: hdrBg, overflow: 'hidden' }}>
+                      {hasPhoto && (
+                        <img
+                          src={m.url_foto_perfil} alt=""
+                          style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', objectPosition: 'center top', display: 'block' }}
+                        />
+                      )}
+                      {/* Silueta centrada cuando no hay foto */}
+                      {!hasPhoto && (
+                        <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
+                          <svg width="44" height="44" viewBox="0 0 24 24" fill="none">
+                            <circle cx="12" cy="8" r="4.5" fill="rgba(255,255,255,0.22)"/>
+                            <path d="M3 21c0-4.5 4-8 9-8s9 3.5 9 8" stroke="rgba(255,255,255,0.22)" strokeWidth="1.8" strokeLinecap="round" fill="none"/>
+                          </svg>
+                          <span style={{ color: 'rgba(255,255,255,0.38)', fontSize: 9, fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase' }}>Sin foto</span>
+                        </div>
+                      )}
+                      {/* Gradiente inferior para legibilidad del texto */}
+                      <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(to top, rgba(0,0,0,0.62) 0%, rgba(0,0,0,0.10) 55%, transparent 100%)' }} />
+                      {/* Close */}
+                      <button
+                        onClick={() => setActiveMarker(null)}
+                        style={{
+                          position: 'absolute', top: 6, right: 6,
+                          width: 22, height: 22, borderRadius: 11,
+                          background: 'rgba(0,0,0,0.32)',
+                          border: '1px solid rgba(255,255,255,0.22)',
+                          color: '#fff', fontSize: 14, fontWeight: 700,
+                          cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          lineHeight: 1, padding: 0,
+                        }}
+                      >×</button>
+                      {/* Nombre + badge sobre la foto */}
+                      <div style={{ position: 'absolute', bottom: 8, left: 10, right: 10 }}>
+                        <p style={{ color: '#fff', fontWeight: 700, fontSize: 12, lineHeight: 1.3, margin: 0, textShadow: '0 1px 4px rgba(0,0,0,0.6)' }}>{fullName}</p>
+                        {m.puesto && (
+                          <span style={{
+                            display: 'inline-block', marginTop: 4,
+                            background: accent, color: '#fff',
+                            fontSize: 9, fontWeight: 700, letterSpacing: '0.1em',
+                            padding: '2px 8px', borderRadius: 99, textTransform: 'uppercase',
+                          }}>{m.puesto}</span>
+                        )}
+                      </div>
+                    </div>
+                    {/* Body */}
+                    <div style={{ padding: '9px 12px 11px', display: 'flex', flexDirection: 'column', gap: 0 }}>
+                      {[
+                        { label: 'Sección',  value: m.seccion },
+                        { label: 'Fracción', value: m.ubt },
+                      ].filter(r => r.value != null).map(({ label, value }, i, arr) => (
+                        <div key={label} style={{
+                          display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                          fontSize: 11, padding: '5px 0',
+                          borderBottom: i < arr.length - 1 ? `1px solid ${divClr}` : 'none',
+                        }}>
+                          <span style={{ color: labelClr }}>{label}</span>
+                          <span style={{ color: valueClr, fontWeight: 600 }}>{value}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                  {/* Flecha */}
+                  <div style={{
+                    width: 0, height: 0, margin: '0 auto',
+                    borderLeft: '7px solid transparent',
+                    borderRight: '7px solid transparent',
+                    borderTop: `8px solid ${cardBg}`,
+                    filter: 'drop-shadow(0 2px 2px rgba(0,0,0,0.12))',
+                  }} />
+                </div>
+              </OverlayView>
+            );
+          })()}
+
+          {/* ── Casillas PJEM ────────────────────────────────────────── */}
+          {casillasVisibles.map((c) => (
+            <Marker
+              key={`casilla-${c.seccion}`}
+              position={{ lat: Number(c.lat), lng: Number(c.lng) }}
+              icon={urnaIcon}
+              zIndex={40}
+              onClick={() => setActiveCasilla(activeCasilla?.seccion === c.seccion ? null : c)}
+            />
+          ))}
+
+          {/* ── Card Google Maps-style para casilla activa ───────────── */}
+          {activeCasilla && (() => {
+            const c = activeCasilla;
+            const pinH = CASILLA_SIZES[casillaTier][1];
+            const parsed = parseCasillaUbicacion(c.ubicacion);
+            const mapsUrl = `https://www.google.com/maps/search/?api=1&query=${c.lat},${c.lng}`;
+            const dirUrl  = `https://www.google.com/maps/dir/?api=1&destination=${c.lat},${c.lng}`;
+            const svUrl   = `https://maps.googleapis.com/maps/api/streetview?size=576x292&location=${c.lat},${c.lng}&fov=80&pitch=5&key=${GOOGLE_API_KEY}`;
+            const cardStyle = {
+              width: 288,
+              background: '#fff',
+              borderRadius: 12,
+              overflow: 'hidden',
+              fontFamily: 'system-ui,-apple-system,sans-serif',
+            };
+            const btnBase = {
+              flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4,
+              padding: '10px 8px', textDecoration: 'none', color: '#1a73e8',
+              fontSize: 11, fontWeight: 600, letterSpacing: '0.01em', cursor: 'pointer',
+              background: 'transparent', border: 'none',
+            };
+            return (
+              <OverlayView
+                key={`gmcard-${c.seccion}`}
+                position={{ lat: Number(c.lat), lng: Number(c.lng) }}
+                mapPaneName="floatPane"
+              >
+                <div style={{
+                  position: 'absolute',
+                  transform: `translate(-50%, calc(-100% - ${pinH + 10}px))`,
+                  zIndex: 200,
+                  filter: 'drop-shadow(0 4px 18px rgba(0,0,0,0.28))',
+                }}>
+                  <div style={cardStyle}>
+
+                    {/* ── Foto Street View ── */}
+                    <div style={{ position: 'relative', height: 148, background: 'linear-gradient(135deg,#fef3c7,#fde68a)' }}>
+                      <img
+                        src={svUrl}
+                        alt=""
+                        style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+                        onError={e => { e.currentTarget.style.display = 'none'; }}
+                      />
+                      <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(to top,rgba(0,0,0,0.38) 0%,transparent 52%)' }} />
+                      {/* Casillas badge */}
+                      <div style={{
+                        position: 'absolute', bottom: 10, left: 10,
+                        background: '#F59E0B', color: '#78350f',
+                        fontSize: 10, fontWeight: 700, letterSpacing: '0.03em',
+                        padding: '3px 8px', borderRadius: 20,
+                        boxShadow: '0 1px 4px rgba(0,0,0,0.25)',
+                      }}>
+                        {c.casillas} {c.casillas === 1 ? 'casilla' : 'casillas'}
+                      </div>
+                      {/* Sector badge */}
+                      {c.poligono && (
+                        <div style={{
+                          position: 'absolute', bottom: 10, right: 40,
+                          background: 'rgba(0,0,0,0.50)', color: '#fff',
+                          fontSize: 10, fontWeight: 600,
+                          padding: '3px 7px', borderRadius: 20,
+                        }}>
+                          Sector {c.poligono}
+                        </div>
+                      )}
+                      {/* Close button */}
+                      <button
+                        onClick={() => setActiveCasilla(null)}
+                        style={{
+                          position: 'absolute', top: 8, right: 8,
+                          width: 26, height: 26, borderRadius: '50%',
+                          background: 'rgba(0,0,0,0.45)', border: 'none',
+                          color: '#fff', cursor: 'pointer',
+                          display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          fontSize: 12, lineHeight: 1,
+                        }}
+                        aria-label="Cerrar"
+                      >✕</button>
+                    </div>
+
+                    {/* ── Cuerpo de información ── */}
+                    <div style={{ padding: '12px 14px 6px' }}>
+                      <p style={{
+                        margin: '0 0 2px', fontSize: 14, fontWeight: 700,
+                        color: '#1a1a1a', lineHeight: 1.35,
+                        display: '-webkit-box', WebkitLineClamp: 2,
+                        WebkitBoxOrient: 'vertical', overflow: 'hidden',
+                      }}>
+                        {parsed.nombre || 'Casilla Electoral'}
+                      </p>
+                      <p style={{ margin: '0 0 10px', fontSize: 11, color: '#70757a', lineHeight: 1.3 }}>
+                        Casilla Electoral · Sección {c.seccion}
+                      </p>
+
+                      {/* Dirección */}
+                      {parsed.calle && (
+                        <div style={{ display: 'flex', gap: 8, marginBottom: 6, alignItems: 'flex-start' }}>
+                          <svg width="14" height="14" viewBox="0 0 16 16" fill="none" style={{ flexShrink: 0, marginTop: 2 }}>
+                            <path d="M8 1.5C5.5 1.5 3.5 3.5 3.5 6c0 3.8 4.5 8.5 4.5 8.5S12.5 9.8 12.5 6c0-2.5-2-4.5-4.5-4.5z" fill="#70757a"/>
+                            <circle cx="8" cy="6" r="1.8" fill="white"/>
+                          </svg>
+                          <div style={{ minWidth: 0 }}>
+                            <p style={{ margin: 0, fontSize: 12, color: '#3c4043', lineHeight: 1.4 }}>{parsed.calle}</p>
+                            {parsed.colonia && (
+                              <p style={{ margin: 0, fontSize: 11, color: '#70757a', lineHeight: 1.35 }}>
+                                {parsed.colonia}{parsed.cp ? `, CP ${parsed.cp}` : ''}
+                              </p>
+                            )}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Referencia entre calles */}
+                      {parsed.referencia && (
+                        <div style={{ display: 'flex', gap: 8, marginBottom: 6, alignItems: 'flex-start' }}>
+                          <svg width="14" height="14" viewBox="0 0 16 16" fill="none" style={{ flexShrink: 0, marginTop: 2 }}>
+                            <circle cx="8" cy="8" r="5.5" stroke="#70757a" strokeWidth="1.5"/>
+                            <path d="M8 5v3" stroke="#70757a" strokeWidth="1.5" strokeLinecap="round"/>
+                            <circle cx="8" cy="10.5" r="0.75" fill="#70757a"/>
+                          </svg>
+                          <p style={{ margin: 0, fontSize: 11, color: '#70757a', lineHeight: 1.4, fontStyle: 'italic' }}>
+                            {parsed.referencia}
+                          </p>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* ── Divisor ── */}
+                    <div style={{ height: 1, background: '#e8eaed', margin: '2px 14px 0' }} />
+
+                    {/* ── Botones de acción ── */}
+                    <div style={{ display: 'flex' }}>
+                      <a href={dirUrl} target="_blank" rel="noopener noreferrer"
+                        style={{ ...btnBase, borderRadius: '0 0 0 12px' }}
+                        onMouseEnter={e => { e.currentTarget.style.background = '#f0f6ff'; }}
+                        onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}
+                      >
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+                          <path d="M12 3L4.5 20 12 16.5 19.5 20 12 3z" fill="#1a73e8"/>
+                        </svg>
+                        Cómo llegar
+                      </a>
+                      <div style={{ width: 1, background: '#e8eaed', margin: '8px 0' }} />
+                      <a href={mapsUrl} target="_blank" rel="noopener noreferrer"
+                        style={{ ...btnBase, borderRadius: '0 0 12px 0' }}
+                        onMouseEnter={e => { e.currentTarget.style.background = '#f0f6ff'; }}
+                        onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}
+                      >
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+                          <path d="M12 2C8.1 2 5 5.1 5 9c0 5.3 7 13 7 13s7-7.7 7-13c0-3.9-3.1-7-7-7z" fill="#1a73e8"/>
+                          <circle cx="12" cy="9" r="2.5" fill="white"/>
+                        </svg>
+                        Ver en Maps
+                      </a>
+                    </div>
+                  </div>
+
+                  {/* Flecha apuntando al pin */}
+                  <div style={{
+                    width: 0, height: 0, margin: '0 auto',
+                    borderLeft: '9px solid transparent',
+                    borderRight: '9px solid transparent',
+                    borderTop: '9px solid #fff',
+                  }} />
+                </div>
+              </OverlayView>
+            );
+          })()}
+
+          {/* ── Etiquetas de sección sobre casilla (zoom ≥ 15) ──────── */}
+          {showCasillasPjem && currentZoom >= 15 && casillasVisibles.map((c) => {
+            const pinH = CASILLA_SIZES[casillaTier][1];
+            return (
+              <OverlayView
+                key={`lbl-cas-${c.seccion}`}
+                position={{ lat: Number(c.lat), lng: Number(c.lng) }}
+                mapPaneName="floatPane"
+              >
+                <div style={{
+                  position: 'absolute',
+                  transform: `translate(-50%, calc(-100% - ${pinH + 4}px))`,
+                  pointerEvents: 'none',
+                  userSelect: 'none',
+                }}>
+                  <span style={{
+                    display: 'inline-block',
+                    fontSize: 9,
+                    fontWeight: 700,
+                    fontFamily: 'system-ui,-apple-system,sans-serif',
+                    lineHeight: 1,
+                    whiteSpace: 'nowrap',
+                    padding: '2px 5px',
+                    borderRadius: 4,
+                    color: '#78350f',
+                    background: 'rgba(254,243,199,0.97)',
+                    border: '1px solid rgba(217,119,6,0.30)',
+                    boxShadow: '0 1px 3px rgba(0,0,0,0.12)',
+                  }}>
+                    §{c.seccion}
+                  </span>
+                </div>
+              </OverlayView>
+            );
+          })}
 
           {/* ── Marcador de enfoque SM seleccionada ─────────────────── */}
           {focusCoords && window.google && (
@@ -1894,6 +2374,16 @@ const MapTerritorial = ({
                 <div className="w-3 h-3 rounded-full bg-blue-500 border-2 border-white shadow-sm" />
                 <span className={`text-xs ${isDark ? 'text-gray-300' : 'text-gray-500'}`}>
                   {markers.length} ubicaciones
+                </span>
+              </div>
+            )}
+            {showCasillasPjem && casillasVisibles.length > 0 && (
+              <div className="flex items-center gap-1.5">
+                <span className={`${isDark ? 'text-amber-400' : 'text-amber-600'}`}>
+                  <BallotSvg size={13} />
+                </span>
+                <span className={`text-xs ${isDark ? 'text-gray-300' : 'text-gray-500'}`}>
+                  {casillasVisibles.length} casillas PJEM
                 </span>
               </div>
             )}
