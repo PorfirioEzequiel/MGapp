@@ -97,16 +97,16 @@ const StatCard = ({ label, value, sub, accent, wide }) => (
       ? 'bg-gradient-to-br from-blue-600 to-blue-700 text-white shadow-md shadow-blue-200/50'
       : 'bg-white border border-slate-100 shadow-sm'
   }`}>
-    <p className={`text-[9px] font-bold uppercase tracking-[0.12em] leading-none ${accent ? 'text-blue-200' : 'text-slate-400'}`}>{label}</p>
+    <p className={`text-[10px] font-bold uppercase tracking-[0.1em] leading-none ${accent ? 'text-blue-200' : 'text-slate-500'}`}>{label}</p>
     <p className={`text-2xl font-bold tabular-nums leading-none ${accent ? 'text-white' : 'text-slate-900'}`}>{value ?? '—'}</p>
-    {sub && <p className={`text-[10px] leading-none ${accent ? 'text-blue-300' : 'text-slate-400'}`}>{sub}</p>}
+    {sub && <p className={`text-[11px] leading-none ${accent ? 'text-blue-300' : 'text-slate-500'}`}>{sub}</p>}
   </div>
 );
 
 const DataRow = ({ label, value, highlight }) => value != null ? (
   <div className="flex justify-between items-center py-1 border-b border-slate-50 last:border-0">
-    <span className="text-[10px] text-slate-400 font-medium">{label}</span>
-    <span className={`text-[11px] font-bold tabular-nums ${highlight ? 'text-blue-600' : 'text-slate-700'}`}>{value}</span>
+    <span className="text-[11px] text-slate-500 font-medium">{label}</span>
+    <span className={`text-xs font-bold tabular-nums ${highlight ? 'text-blue-600' : 'text-slate-800'}`}>{value}</span>
   </div>
 ) : null;
 
@@ -114,7 +114,7 @@ const GenderBar = ({ total, hombres, mujeres, noBinario, label }) => {
   if (!total || (!hombres && !mujeres)) return null;
   return (
     <div className="mt-1.5 pt-2 border-t border-slate-100">
-      {label && <p className="text-[9px] font-bold uppercase tracking-widest text-slate-400 mb-1.5">{label}</p>}
+      {label && <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500 mb-1.5">{label}</p>}
       <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden flex gap-px">
         {hombres && <div className="h-full bg-blue-400 transition-all" style={{ width: pct(hombres, total) }} />}
         {mujeres && <div className="h-full bg-rose-400 transition-all" style={{ width: pct(mujeres, total) }} />}
@@ -142,12 +142,12 @@ const ResponsableRow = ({ role, name, roleColor, avatarColor }) => (
   <div className="flex items-center gap-2 py-1">
     <InitialAvatar name={name} colorClass={avatarColor} />
     <div className="min-w-0 flex-1">
-      <p className="text-[9px] font-bold uppercase tracking-widest text-slate-400 leading-none mb-0.5">{role}</p>
-      <p className="text-[11px] font-semibold text-slate-700 truncate leading-snug">
+      <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500 leading-none mb-0.5">{role}</p>
+      <p className="text-xs font-semibold text-slate-700 truncate leading-snug">
         {name || <span className="text-slate-300 font-normal">Sin asignar</span>}
       </p>
     </div>
-    <span className={`text-[8px] font-bold px-1.5 py-0.5 rounded-full flex-shrink-0 ${roleColor}`}>{role}</span>
+    <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full flex-shrink-0 ${roleColor}`}>{role}</span>
   </div>
 );
 
@@ -157,8 +157,8 @@ const CoverageBar = ({ label, value, total, colorClass = 'bg-emerald-500' }) => 
   return (
     <div>
       <div className="flex justify-between items-center mb-1">
-        <span className="text-[9px] font-bold uppercase tracking-widest text-slate-400">{label}</span>
-        <span className="text-[10px] font-bold text-slate-600 tabular-nums">{value}<span className="text-slate-300 font-normal">/{total}</span></span>
+        <span className="text-[10px] font-bold uppercase tracking-widest text-slate-500">{label}</span>
+        <span className="text-[11px] font-bold text-slate-700 tabular-nums">{value}<span className="text-slate-400 font-normal">/{total}</span></span>
       </div>
       <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden">
         <div className={`h-full ${colorClass} rounded-full transition-all duration-500`} style={{ width: `${p}%` }} />
@@ -183,16 +183,16 @@ const AfilCard = ({ afiliados, credenciales, data }) => {
     <div>
       <div className="grid grid-cols-2 gap-1 mb-2">
         <div className="bg-teal-50 rounded-lg p-2 text-center">
-          <p className="text-[9px] font-bold uppercase tracking-widest text-teal-400 leading-none mb-1">Afiliados</p>
+          <p className="text-[10px] font-bold uppercase tracking-widest text-teal-500 leading-none mb-1">Afiliados</p>
           <p className="text-xl font-bold tabular-nums text-teal-700">{fmt(afiliados)}</p>
         </div>
         <div className="bg-teal-50 rounded-lg p-2 text-center">
-          <p className="text-[9px] font-bold uppercase tracking-widest text-teal-400 leading-none mb-1">Comprobadas</p>
+          <p className="text-[10px] font-bold uppercase tracking-widest text-teal-500 leading-none mb-1">Comprobadas</p>
           <p className="text-xl font-bold tabular-nums text-teal-700">{fmt(credenciales)}</p>
         </div>
       </div>
       <div className="flex justify-between items-center mb-1">
-        <span className="text-[9px] font-bold uppercase tracking-widest text-slate-400">Entrega</span>
+        <span className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Entrega</span>
         <span className="text-[10px] font-bold text-teal-700">{pct(credenciales, afiliados)}</span>
       </div>
       <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
@@ -227,13 +227,13 @@ const AfilTable = ({ rows }) => {
   if (!rows.length) return null;
   return (
     <div className="rounded-lg border border-slate-100 overflow-hidden mt-2">
-      <div className="bg-slate-50 px-2.5 py-1.5 grid grid-cols-4 text-[9px] font-bold uppercase tracking-widest text-slate-400 border-b border-slate-100">
+      <div className="bg-slate-50 px-2.5 py-1.5 grid grid-cols-4 text-[10px] font-bold uppercase tracking-widest text-slate-500 border-b border-slate-100">
         <span>Nivel</span><span className="text-right">Afil.</span><span className="text-right">Cred.</span><span className="text-right">%</span>
       </div>
       <div className="divide-y divide-slate-50 max-h-44 overflow-y-auto">
         {rows.map((r, i) => (
-          <div key={i} className="grid grid-cols-4 px-2.5 py-1.5 text-[11px]">
-            <span className="font-semibold text-slate-600 truncate">{r.label}</span>
+          <div key={i} className="grid grid-cols-4 px-2.5 py-1.5 text-xs">
+            <span className="font-semibold text-slate-700 truncate">{r.label}</span>
             <span className="text-right tabular-nums text-slate-500">{fmt(r.afiliados)}</span>
             <span className="text-right tabular-nums font-bold text-teal-600">{fmt(r.credenciales)}</span>
             <span className="text-right tabular-nums text-teal-500">{pct(r.credenciales, r.afiliados)}</span>
@@ -269,7 +269,7 @@ const EmptyGuide = ({ children }) => (
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
-const TableroBoard = () => {
+const TableroBoard = ({ readOnly = false }) => {
   const navigate = useNavigate();
 
   const [mapScope, setMapScope] = useState('tecamac'); // 'tecamac' | 'edomex'
@@ -1517,6 +1517,21 @@ const TableroBoard = () => {
                 </div>
               </div>
             )}
+
+            {/* Indicador de scroll — hay datos de trabajo debajo */}
+            {!loadingMap && (
+              <div className="flex items-center gap-2 select-none" aria-hidden="true">
+                <div className="flex-1 h-px bg-gradient-to-r from-transparent via-slate-200 to-transparent" />
+                <div className="flex flex-col items-center gap-0.5">
+                  <p className="text-[10px] font-semibold uppercase tracking-[0.15em] text-slate-400">Datos de trabajo</p>
+                  <svg className="w-3.5 h-3.5 text-slate-300 animate-bounce" viewBox="0 0 20 20" fill="currentColor">
+                    <path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" />
+                  </svg>
+                </div>
+                <div className="flex-1 h-px bg-gradient-to-r from-transparent via-slate-200 to-transparent" />
+              </div>
+            )}
+
             {!loadingMap && (
               <div className="pt-3 border-t border-slate-100">
                 {/* Header dinámico */}
@@ -1591,6 +1606,7 @@ const TableroBoard = () => {
                 printContext={printContext}
                 electoralModeExternal={electoralMode}
                 onElectoralModeChange={setElectoralMode}
+                readOnly={readOnly}
               />
             </div>
           )}

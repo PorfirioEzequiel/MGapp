@@ -1,7 +1,6 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import supabase from '../supabase/client';
-import MapTerritorial from '../map/MapTerritorial';
+import TableroBoard from '../admin/TableroBoard';
 
 // Mensajes que rotan durante la carga
 const MENSAJES = [
@@ -44,18 +43,15 @@ const LoadingScreen = ({ onDone }) => {
         </div>
       </div>
 
-      {/* Spinner */}
+      {/* Spinner doble anillo */}
       <div className="relative mb-8">
-        {/* Anillo exterior lento */}
-        <div className="w-20 h-20 rounded-full border-4 border-slate-700 border-t-blue-500 animate-spin" />
-        {/* Anillo interior rápido */}
+        <div className="w-20 h-20 rounded-full border-4 border-slate-700 border-t-[#9B1E32] animate-spin" />
         <div
-          className="absolute inset-2 w-12 h-12 rounded-full border-4 border-slate-800 border-b-blue-300"
+          className="absolute inset-2 w-12 h-12 rounded-full border-4 border-slate-800 border-b-[#C04060]"
           style={{ animation: 'spin 0.7s linear infinite reverse' }}
         />
-        {/* Punto central */}
         <div className="absolute inset-0 flex items-center justify-center">
-          <div className="w-2 h-2 rounded-full bg-blue-400" />
+          <div className="w-2 h-2 rounded-full bg-[#9B1E32]" />
         </div>
       </div>
 
@@ -70,7 +66,7 @@ const LoadingScreen = ({ onDone }) => {
       {/* Barra de progreso */}
       <div className="mt-6 w-56 h-0.5 bg-slate-700 rounded-full overflow-hidden">
         <div
-          className="h-full bg-blue-500 rounded-full"
+          className="h-full bg-[#9B1E32] rounded-full"
           style={{
             width: `${((msgIdx + 1) / MENSAJES.length) * 100}%`,
             transition: 'width 0.6s ease',
@@ -83,12 +79,10 @@ const LoadingScreen = ({ onDone }) => {
 
 // ── Visor Consultor ───────────────────────────────────────────────────────────
 const VisorConsultor = () => {
-  const navigate   = useNavigate();
-  const [loading,    setLoading]    = useState(true);   // pantalla de carga
-  const [secciones,  setSecciones]  = useState([]);
-  const [dataReady,  setDataReady]  = useState(false);  // datos de Supabase listos
+  const navigate = useNavigate();
+  const [loading, setLoading] = useState(true);
 
-  // Guard: solo consultores pueden entrar
+  // Guard: solo consultores
   useEffect(() => {
     const raw = sessionStorage.getItem('user');
     if (!raw) { navigate('/'); return; }
@@ -96,43 +90,15 @@ const VisorConsultor = () => {
     if (user.puesto?.toLowerCase() !== 'consultor') { navigate('/'); }
   }, [navigate]);
 
-  // Carga de secciones (sin PII — solo geometría y datos electorales)
-  useEffect(() => {
-    const load = async () => {
-      const { data } = await supabase
-        .from('secciones')
-        .select('*');
-      if (data) setSecciones(data);
-      setDataReady(true);
-    };
-    load();
-  }, []);
-
-  // La pantalla de carga dura mínimo el tiempo de los mensajes (~4 × 0.9s).
-  // Una vez que termina Y los datos están listos, mostramos el mapa.
-  const [spinnerDone, setSpinnerDone] = useState(false);
-
-  useEffect(() => {
-    if (spinnerDone && dataReady) setLoading(false);
-  }, [spinnerDone, dataReady]);
+  const handleDone = useCallback(() => setLoading(false), []);
 
   return (
     <div className="w-screen h-screen overflow-hidden relative">
-      {/* Mapa territorial (se monta en background para que cargue mientras el spinner corre) */}
-      {!loading && (
-        <MapTerritorial
-          secciones={secciones}
-          ciudadanos={[]}
-          fraccionesGeo={[]}
-          selectedSeccion={null}
-          onSelectSeccion={() => {}}
-          afiliacionBySec={{}}
-          readOnly
-        />
-      )}
+      {/* TableroBoard completo con readOnly — panel izquierdo visible, sin botones export */}
+      <TableroBoard readOnly />
 
-      {/* Pantalla de carga encima */}
-      {loading && <LoadingScreen onDone={() => setSpinnerDone(true)} />}
+      {/* Pantalla de carga encima mientras anima */}
+      {loading && <LoadingScreen onDone={handleDone} />}
     </div>
   );
 };

@@ -709,6 +709,10 @@ const MapTerritorial = ({
   electoralModeExternal = null,
   onElectoralModeChange = null,
   readOnly = false,
+  // Capa de colaboradores controlada desde el padre (opcional)
+  layerCiudadanos = null,
+  // Desplazamiento horizontal del panel de controles (para evitar solapamiento con paneles externos)
+  controlsLeftOffset = 0,
 }) => {
   const mapRef        = useRef(null);
   const containerRef  = useRef(null);
@@ -764,6 +768,18 @@ const MapTerritorial = ({
   const [casillasPjem, setCasillasPjem] = useState([]);
   const [showCasillasPjem, setShowCasillasPjem] = useState(false);
   const [activeCasilla, setActiveCasilla] = useState(null);
+  const [showCiudadanosLocal, setShowCiudadanos] = useState(true);
+  const [ctrlsOpen, setCtrlsOpen] = useState(true);
+  // Las fracciones se muestran automáticamente cuando hay una sección seleccionada
+  const showFracciones = selectedSeccion != null;
+  // Colaboradores: controlado desde el padre si se pasa, si no usa estado interno
+  const showCiudadanos = layerCiudadanos !== null ? layerCiudadanos : showCiudadanosLocal;
+
+  // Refs para acceder a valores actuales en onLoad sin dependencias
+  const seccionesRef      = useRef(secciones);
+  const selectedSecRef    = useRef(selectedSeccion);
+  useEffect(() => { seccionesRef.current = secciones; }, [secciones]);
+  useEffect(() => { selectedSecRef.current = selectedSeccion; }, [selectedSeccion]);
   useEffect(() => {
     fetch('/tecamac_casillas_pjem.json')
       .then(r => r.json())
@@ -963,7 +979,23 @@ const MapTerritorial = ({
     if (has) mapRef.current.fitBounds(bounds, 32);
   }, [secciones]);
 
-  useEffect(() => { setActiveMarker(null); setHovered(null); }, [selectedSeccion]);
+  // Centrar en la sección seleccionada (o en todo el sector si es null)
+  useEffect(() => {
+    setActiveMarker(null);
+    setHovered(null);
+    if (!mapRef.current || !window.google || !secciones.length) return;
+    const bounds = new window.google.maps.LatLngBounds();
+    let has = false;
+    if (selectedSeccion != null) {
+      const sec = secciones.find(s => s.seccion === selectedSeccion);
+      if (sec) parseWKT(sec.geometry).flat().forEach(p => { bounds.extend(p); has = true; });
+    }
+    if (!has) secciones.forEach(s => parseWKT(s.geometry).flat().forEach(p => { bounds.extend(p); has = true; }));
+    if (has) mapRef.current.fitBounds(
+      bounds,
+      selectedSeccion != null ? { top: 80, bottom: 160, left: 60, right: 60 } : 32
+    );
+  }, [selectedSeccion]);
 
   // Pan + zoom al enfocar una SM
   useEffect(() => {
@@ -981,6 +1013,20 @@ const MapTerritorial = ({
   const onLoad = useCallback((map) => {
     mapRef.current = map;
     setCurrentZoom(map.getZoom());
+    // Fit bounds inmediato al montar (los datos ya pueden estar cargados)
+    const allSecs = seccionesRef.current;
+    if (!allSecs.length || !window.google) return;
+    const bounds = new window.google.maps.LatLngBounds();
+    let has = false;
+    const selSec = selectedSecRef.current;
+    const targets = selSec != null ? allSecs.filter(s => s.seccion === selSec) : allSecs;
+    (targets.length ? targets : allSecs).forEach(sec => {
+      parseWKT(sec.geometry).flat().forEach(p => { bounds.extend(p); has = true; });
+    });
+    if (has) map.fitBounds(
+      bounds,
+      selSec != null ? { top: 80, bottom: 160, left: 60, right: 60 } : 32
+    );
   }, []);
 
   const onZoomChanged = useCallback(() => {
@@ -1312,106 +1358,128 @@ const MapTerritorial = ({
         onMouseMove={handleContainerMouseMove}
         onMouseLeave={() => setHovered(null)}
       >
-        {/* Selector de capa flotante */}
-        <div className="no-print absolute top-3 left-3 z-10 flex flex-wrap gap-1 max-w-xs bg-white/90 backdrop-blur-sm rounded-lg shadow-md p-1 border border-gray-200">
-          {Object.entries(MAP_STYLE_DEFS).map(([key, def]) => (
+        {/* Panel de control flotante */}
+        <div
+          className="no-print absolute top-3 z-10 bg-white/90 backdrop-blur-sm rounded-lg shadow-md p-1 border border-gray-200"
+          style={{ maxWidth: 220, left: controlsLeftOffset ? `calc(${typeof controlsLeftOffset === 'number' ? controlsLeftOffset + 'px' : controlsLeftOffset} + 12px)` : 12, transition: 'left 0.3s ease-out' }}
+        >
+
+          {/* ── Fila de estilos de mapa + botón ocultar ── siempre visible */}
+          <div className="flex flex-wrap gap-1 items-center">
+            {Object.entries(MAP_STYLE_DEFS).map(([key, def]) => (
+              <button
+                key={key}
+                onClick={() => setCurrentStyle(key)}
+                className={`px-2.5 py-1 rounded-md text-xs font-medium transition-all ${
+                  currentStyle === key
+                    ? 'bg-blue-600 text-white shadow-sm'
+                    : 'text-gray-600 hover:bg-gray-100'
+                }`}
+              >
+                {def.label}
+              </button>
+            ))}
+            {/* Ocultar / Mostrar menú */}
             <button
-              key={key}
-              onClick={() => setCurrentStyle(key)}
-              className={`px-2.5 py-1 rounded-md text-xs font-medium transition-all ${
-                currentStyle === key
-                  ? 'bg-blue-600 text-white shadow-sm'
-                  : 'text-gray-600 hover:bg-gray-100'
-              }`}
+              onClick={() => setCtrlsOpen(v => !v)}
+              className="px-2 py-1 rounded-md text-xs font-medium transition-all text-gray-400 hover:bg-gray-100 hover:text-gray-600 border border-gray-200"
+              title={ctrlsOpen ? 'Ocultar menú' : 'Mostrar menú'}
             >
-              {def.label}
+              {ctrlsOpen ? '✕ Ocultar' : '≡ Menú'}
             </button>
-          ))}
-          {Object.keys(electoralData).length > 0 && (
+          </div>
+
+          {/* ── Sección colapsable (procesos electorales, casillas, capas internas) */}
+          {ctrlsOpen && (
             <>
-              <div className="w-full h-px bg-gray-200 my-0.5" />
-              <button
-                onClick={() => handleSetElectoralMode(electoralMode === 'ayu_2021' ? null : 'ayu_2021')}
-                className={`w-full px-2.5 py-1 rounded-md text-xs font-medium transition-all text-left leading-tight ${
-                  electoralMode === 'ayu_2021'
-                    ? 'bg-rose-900 text-white shadow-sm'
-                    : 'text-gray-600 hover:bg-gray-100'
-                }`}
-                title="Datos internos — Ayuntamiento 2021"
-              >
-                <BallotSvg /> Ayuntamiento 2021 - interno
-              </button>
-              <button
-                onClick={() => handleSetElectoralMode(electoralMode === 'ayu_2021_ieem' ? null : 'ayu_2021_ieem')}
-                className={`w-full px-2.5 py-1 rounded-md text-xs font-medium transition-all text-left leading-tight ${
-                  electoralMode === 'ayu_2021_ieem'
-                    ? 'bg-rose-900 text-white shadow-sm'
-                    : 'text-gray-600 hover:bg-gray-100'
-                }`}
-                title="Cómputo oficial IEEM — Ayuntamiento 2021"
-              >
-                <BallotSvg /> Ayuntamiento 2021 - IEEM
-              </button>
-              <button
-                onClick={() => handleSetElectoralMode(electoralMode === 'ayu_2024' ? null : 'ayu_2024')}
-                className={`w-full px-2.5 py-1 rounded-md text-xs font-medium transition-all text-left leading-tight ${
-                  electoralMode === 'ayu_2024'
-                    ? 'bg-blue-800 text-white shadow-sm'
-                    : 'text-gray-600 hover:bg-gray-100'
-                }`}
-                title="Ayuntamiento 2024 — Rosi Wong vs Aaron Urbina (datos internos)"
-              >
-                <BallotSvg /> Ayuntamiento 2024 - Rosi Wong
-              </button>
-              <button
-                onClick={() => handleSetElectoralMode(electoralMode === 'ayu_2024_ieem' ? null : 'ayu_2024_ieem')}
-                className={`w-full px-2.5 py-1 rounded-md text-xs font-medium transition-all text-left leading-tight ${
-                  electoralMode === 'ayu_2024_ieem'
-                    ? 'bg-emerald-700 text-white shadow-sm'
-                    : 'text-gray-600 hover:bg-gray-100'
-                }`}
-                title="Ayuntamiento 2024 — Cómputo oficial IEEM"
-              >
-                <BallotSvg /> Ayuntamiento 2024 - IEEM
-              </button>
-              <button
-                onClick={() => handleSetElectoralMode(electoralMode === 'senado_2024' ? null : 'senado_2024')}
-                className={`w-full px-2.5 py-1 rounded-md text-xs font-medium transition-all text-left leading-tight ${
-                  electoralMode === 'senado_2024'
-                    ? 'bg-rose-900 text-white shadow-sm'
-                    : 'text-gray-600 hover:bg-gray-100'
-                }`}
-                title="Senaduría 2024 — Mariela Gutiérrez vs Fuerza x México"
-              >
-                <BallotSvg /> Senaduría 2024 - Mariela Gutiérrez
-              </button>
-              <button
-                onClick={() => handleSetElectoralMode(electoralMode === 'dip_2024' ? null : 'dip_2024')}
-                className={`w-full px-2.5 py-1 rounded-md text-xs font-medium transition-all text-left leading-tight ${
-                  electoralMode === 'dip_2024'
-                    ? 'bg-slate-700 text-white shadow-sm'
-                    : 'text-gray-600 hover:bg-gray-100'
-                }`}
-                title="Diputación Local 2024 — datos internos"
-              >
-                <BallotSvg /> Diputación Local 2024 - Interno
-              </button>
-            </>
-          )}
-          {casillasPjem.length > 0 && (
-            <>
-              <div className="w-full h-px bg-gray-200 my-0.5" />
-              <button
-                onClick={() => setShowCasillasPjem(v => !v)}
-                className={`w-full px-2.5 py-1 rounded-md text-xs font-medium transition-all text-left leading-tight ${
-                  showCasillasPjem
-                    ? 'bg-amber-700 text-white shadow-sm'
-                    : 'text-gray-600 hover:bg-gray-100'
-                }`}
-                title="Ubicaciones físicas de casillas — PJEM"
-              >
-                <BallotSvg /> Casillas PJEM
-              </button>
+              {Object.keys(electoralData).length > 0 && (
+                <>
+                  <div className="w-full h-px bg-gray-200 my-0.5" />
+                  <button
+                    onClick={() => handleSetElectoralMode(electoralMode === 'ayu_2021' ? null : 'ayu_2021')}
+                    className={`w-full px-2.5 py-1 rounded-md text-xs font-medium transition-all text-left leading-tight ${
+                      electoralMode === 'ayu_2021' ? 'bg-rose-900 text-white shadow-sm' : 'text-gray-600 hover:bg-gray-100'
+                    }`}
+                    title="Datos internos — Ayuntamiento 2021"
+                  >
+                    <BallotSvg /> Ayuntamiento 2021 - interno
+                  </button>
+                  <button
+                    onClick={() => handleSetElectoralMode(electoralMode === 'ayu_2021_ieem' ? null : 'ayu_2021_ieem')}
+                    className={`w-full px-2.5 py-1 rounded-md text-xs font-medium transition-all text-left leading-tight ${
+                      electoralMode === 'ayu_2021_ieem' ? 'bg-rose-900 text-white shadow-sm' : 'text-gray-600 hover:bg-gray-100'
+                    }`}
+                    title="Cómputo oficial IEEM — Ayuntamiento 2021"
+                  >
+                    <BallotSvg /> Ayuntamiento 2021 - IEEM
+                  </button>
+                  <button
+                    onClick={() => handleSetElectoralMode(electoralMode === 'ayu_2024' ? null : 'ayu_2024')}
+                    className={`w-full px-2.5 py-1 rounded-md text-xs font-medium transition-all text-left leading-tight ${
+                      electoralMode === 'ayu_2024' ? 'bg-blue-800 text-white shadow-sm' : 'text-gray-600 hover:bg-gray-100'
+                    }`}
+                    title="Ayuntamiento 2024 — Rosi Wong vs Aaron Urbina (datos internos)"
+                  >
+                    <BallotSvg /> Ayuntamiento 2024 - Rosi Wong
+                  </button>
+                  <button
+                    onClick={() => handleSetElectoralMode(electoralMode === 'ayu_2024_ieem' ? null : 'ayu_2024_ieem')}
+                    className={`w-full px-2.5 py-1 rounded-md text-xs font-medium transition-all text-left leading-tight ${
+                      electoralMode === 'ayu_2024_ieem' ? 'bg-emerald-700 text-white shadow-sm' : 'text-gray-600 hover:bg-gray-100'
+                    }`}
+                    title="Ayuntamiento 2024 — Cómputo oficial IEEM"
+                  >
+                    <BallotSvg /> Ayuntamiento 2024 - IEEM
+                  </button>
+                  <button
+                    onClick={() => handleSetElectoralMode(electoralMode === 'senado_2024' ? null : 'senado_2024')}
+                    className={`w-full px-2.5 py-1 rounded-md text-xs font-medium transition-all text-left leading-tight ${
+                      electoralMode === 'senado_2024' ? 'bg-rose-900 text-white shadow-sm' : 'text-gray-600 hover:bg-gray-100'
+                    }`}
+                    title="Senaduría 2024 — Mariela Gutiérrez vs Fuerza x México"
+                  >
+                    <BallotSvg /> Senaduría 2024 - Mariela Gutiérrez
+                  </button>
+                  <button
+                    onClick={() => handleSetElectoralMode(electoralMode === 'dip_2024' ? null : 'dip_2024')}
+                    className={`w-full px-2.5 py-1 rounded-md text-xs font-medium transition-all text-left leading-tight ${
+                      electoralMode === 'dip_2024' ? 'bg-slate-700 text-white shadow-sm' : 'text-gray-600 hover:bg-gray-100'
+                    }`}
+                    title="Diputación Local 2024 — datos internos"
+                  >
+                    <BallotSvg /> Diputación Local 2024 - Interno
+                  </button>
+                </>
+              )}
+
+              {casillasPjem.length > 0 && (
+                <>
+                  <div className="w-full h-px bg-gray-200 my-0.5" />
+                  <button
+                    onClick={() => setShowCasillasPjem(v => !v)}
+                    className={`w-full px-2.5 py-1 rounded-md text-xs font-medium transition-all text-left leading-tight ${
+                      showCasillasPjem ? 'bg-amber-700 text-white shadow-sm' : 'text-gray-600 hover:bg-gray-100'
+                    }`}
+                    title="Ubicaciones físicas de casillas — PJEM"
+                  >
+                    <BallotSvg /> Casillas PJEM
+                  </button>
+                </>
+              )}
+
+              {/* Capa de colaboradores */}
+              <>
+                <div className="w-full h-px bg-gray-200 my-0.5" />
+                <button
+                  onClick={() => setShowCiudadanos(v => !v)}
+                  className={`w-full px-2.5 py-1 rounded-md text-xs font-medium transition-all text-left leading-tight ${
+                    showCiudadanos ? 'bg-teal-600 text-white shadow-sm' : 'text-gray-600 hover:bg-gray-100'
+                  }`}
+                  title="Mostrar u ocultar marcadores de colaboradores"
+                >
+                  ● Colaboradores
+                </button>
+              </>
             </>
           )}
         </div>
@@ -1764,7 +1832,9 @@ const MapTerritorial = ({
           })()}
 
           {/* ── Polígonos de fracciones (desde tabla fracciones) ───── */}
-          {fraccionesGeo.map((f) => {
+          {showFracciones && fraccionesGeo
+            .filter(f => String(f.seccion) === String(selectedSeccion))
+            .map((f) => {
             const paths = parseWKT(f.geometry);
             if (!paths.length) return null;
             const { fill, stroke } = fracColor(f);
@@ -1795,7 +1865,9 @@ const MapTerritorial = ({
           })}
 
           {/* ── Etiquetas de fracción ───────────────────────────────── */}
-          {fraccionesGeo.map((f) => {
+          {showFracciones && fraccionesGeo
+            .filter(f => String(f.seccion) === String(selectedSeccion))
+            .map((f) => {
             const paths = parseWKT(f.geometry);
             if (!paths.length) return null;
             const center  = getCenter(paths);
@@ -1856,7 +1928,7 @@ const MapTerritorial = ({
           })}
 
           {/* ── Marcadores ciudadanos ────────────────────────────────── */}
-          {markers.map((c) => (
+          {showCiudadanos && markers.map((c) => (
             <Marker
               key={`mk-${c.id}`}
               position={{ lat: Number(c.latitud), lng: Number(c.longitud) }}
@@ -1867,7 +1939,7 @@ const MapTerritorial = ({
           ))}
 
           {/* ── Card de contacto SM ──────────────────────────────────── */}
-          {activeMarker && (() => {
+          {showCiudadanos && activeMarker && (() => {
             const m = activeMarker;
             const hasPhoto = Boolean(m.url_foto_perfil);
             const fullName = [m.nombre, m.a_paterno, m.a_materno].filter(Boolean).join(' ');
