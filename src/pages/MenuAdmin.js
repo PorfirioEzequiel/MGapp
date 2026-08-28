@@ -8,6 +8,7 @@ import {
   LiaTruckSolid,
   LiaHandHoldingHeartSolid,
   LiaChartBarSolid,
+  LiaDrawPolygonSolid,
 } from "react-icons/lia";
 import { useNavigate } from 'react-router-dom';
 
@@ -51,6 +52,7 @@ const MenuAdmin = () => {
           <MenuItem icon={LiaUserFriendsSolid} label="MAPA TERRITORIAL" onClick={() => navigate('/tablero')} />
           <MenuItem icon={LiaMapMarkedAltSolid} label="TERRITORIO" onClick={() => navigate('/territorio')} />
           <MenuItem icon={LiaGlobeSolid} label="MAPA EDOMEX" onClick={() => navigate('/admin/mapa-edomex')} color="emerald" />
+          <MenuItem icon={LiaDrawPolygonSolid} label="FRACCIONES" onClick={() => navigate('/admin/fracciones')} color="violet" />
         </div>
 
         {/* Sección análisis */}

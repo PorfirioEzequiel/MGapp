@@ -34,6 +34,7 @@ import MercadoControl from './admin/MercadoControl';
 import VisorConsultor from './pages/VisorConsultor';
 import SolicitudesApoyos from './admin/SolicitudesApoyos';
 import ReporteMercado from './admin/ReporteMercado';
+import EditorFracciones from './admin/EditorFracciones';
 
 // Componente para proteger rutas privadas
 const PrivateRoute = ({ children }) => {
@@ -74,6 +75,7 @@ function App() {
         <Route path="/admin/mercado" element={<PrivateRoute><MercadoControl /></PrivateRoute>} />
         <Route path="/admin/solicitudes-apoyos" element={<PrivateRoute><SolicitudesApoyos /></PrivateRoute>} />
         <Route path="/admin/reporte-mercado" element={<PrivateRoute><ReporteMercado /></PrivateRoute>} />
+        <Route path="/admin/fracciones" element={<PrivateRoute><EditorFracciones /></PrivateRoute>} />
         <Route path="/apoyos/:usuario" element={<PrivateRoute><Apoyos /></PrivateRoute>} />
         <Route path="/menu/:usuario" element={<PrivateRoute><MeniAdmin /></PrivateRoute>} />
         <Route path="/perfil/:usuario" element={<PrivateRoute><Perfil /></PrivateRoute>} />
