@@ -148,10 +148,17 @@ export default function ReporteMercado() {
               <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5" />
             </svg>
           </button>
-          <div>
+          <div className="flex-1">
             <p className="text-[10px] font-bold uppercase tracking-widest text-blue-300">Mercado Solidario</p>
             <h1 className="text-xl font-black tracking-tight">Reporte de Entregas</h1>
           </div>
+          <button
+            type="button"
+            onClick={() => navigate("/admin/importar-mercado")}
+            className="text-xs font-bold bg-white/10 hover:bg-white/20 text-white px-3 py-2 rounded-xl transition-all duration-150 whitespace-nowrap"
+          >
+            ↑ Importar CSV
+          </button>
         </div>
       </header>
 
