@@ -28,6 +28,17 @@ const ST_ROW = {
 
 const inp = "border border-slate-200 rounded-lg px-2 py-1 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-blue-300 focus:border-blue-400 transition-all bg-white";
 
+// "Listo para ruta": todos los campos clave tienen valor guardado en DB
+function esListoParaRuta(row) {
+  return (
+    !!row.fecha_entrega &&
+    !!(row.camioneta_repartidor || "").trim() &&
+    !!(row.ubicacion || "").trim() &&
+    (row.sm_activas || 0) > 0 &&
+    (row.piezas || 0) > 0
+  );
+}
+
 // ── Fila editable ─────────────────────────────────────────────────────────────
 // El coordinador se guarda en DB pero no se muestra (se llena automáticamente con el SP)
 function FilaEntrega({ row, onSave, saving }) {
@@ -50,6 +61,15 @@ function FilaEntrega({ row, onSave, saving }) {
 
   const set = (k, v) => { setEd(p => ({ ...p, [k]: v })); setDirty(true); };
 
+  // Completo se evalúa con los valores guardados en DB (row), no el estado editado
+  const listo = esListoParaRuta(row);
+
+  const trBg = dirty
+    ? "bg-blue-50/60"
+    : listo
+      ? "bg-emerald-50/70 border-l-[3px] border-l-emerald-400"
+      : "hover:bg-slate-50/60";
+
   const handleGuardar = () => {
     onSave(row.id, {
       sm_activas:           smNum,
@@ -66,9 +86,19 @@ function FilaEntrega({ row, onSave, saving }) {
   };
 
   return (
-    <tr className={`border-b border-slate-100 transition-colors ${dirty ? "bg-blue-50/40" : "hover:bg-slate-50/60"}`}>
-      {/* Sección */}
-      <td className="px-3 py-2 font-black text-slate-800 text-sm tabular-nums whitespace-nowrap">{row.seccion}</td>
+    <tr className={`border-b border-slate-100 transition-all duration-150 ${trBg}`}>
+      {/* Sección + indicador de estado */}
+      <td className="px-3 py-2 whitespace-nowrap">
+        <div className="flex items-center gap-2">
+          <span
+            title={listo ? "Listo para ruta" : dirty ? "Cambios sin guardar" : "Pendiente de asignar"}
+            className={`w-2 h-2 rounded-full shrink-0 ${
+              dirty ? "bg-blue-400 animate-pulse" : listo ? "bg-emerald-400" : "bg-slate-300"
+            }`}
+          />
+          <span className="font-black text-slate-800 text-sm tabular-nums">{row.seccion}</span>
+        </div>
+      </td>
       {/* Fracc. */}
       <td className="px-3 py-2 text-center text-sm text-slate-400 tabular-nums">{row.fracciones ?? "—"}</td>
       {/* SM Activas */}
@@ -408,12 +438,18 @@ export default function MercadoControl() {
     return groups;
   }, [filasFiltradas]);
 
-  const totales = useMemo(() => ({
-    secciones:  [...new Set(filasFiltradas.map(f => `${f.sector}_${f.seccion}`))].length,
-    total:      filasFiltradas.reduce((s,f) => s + ((f.piezas||0)*(f.sm_activas||0)), 0),
-    entregadas: filasFiltradas.reduce((s,f) => s + (f.entregadas||0), 0),
-    pendientes: filasFiltradas.filter(f => (f.estatus??'PENDIENTE') === 'PENDIENTE').length,
-  }), [filasFiltradas]);
+  const totales = useMemo(() => {
+    const secciones = [...new Set(filasFiltradas.map(f => `${f.sector}_${f.seccion}`))].length;
+    const listos = filasFiltradas.filter(esListoParaRuta).length;
+    return {
+      secciones,
+      total:      filasFiltradas.reduce((s,f) => s + ((f.piezas||0)*(f.sm_activas||0)), 0),
+      entregadas: filasFiltradas.reduce((s,f) => s + (f.entregadas||0), 0),
+      pendientes: filasFiltradas.filter(f => (f.estatus??'PENDIENTE') === 'PENDIENTE').length,
+      listos,
+      pctListo:   filasFiltradas.length > 0 ? Math.round((listos / filasFiltradas.length) * 100) : 0,
+    };
+  }, [filasFiltradas]);
 
   // ── Render ──────────────────────────────────────────────────────────────────
   return (
@@ -471,10 +507,21 @@ export default function MercadoControl() {
                 </button>
               ))}
               <div className="ml-auto flex items-center gap-4 text-xs font-semibold shrink-0 pl-4 border-l border-slate-200">
-                <span className="text-slate-500">{totales.secciones} secciones</span>
+                <span className="text-slate-500">{totales.secciones} secc.</span>
                 <span className="text-blue-700 font-black">{totales.total} costales</span>
-                {totales.entregadas > 0 && <span className="text-emerald-600">{totales.entregadas} entregados</span>}
-                {totales.pendientes > 0 && <span className="text-amber-600">{totales.pendientes} pendientes</span>}
+                {totales.entregadas > 0 && <span className="text-emerald-700">{totales.entregadas} entregados</span>}
+                {/* Barra de progreso de planeación */}
+                <div className="flex items-center gap-1.5" title={`${totales.listos} de ${filasFiltradas.length} filas listas para ruta`}>
+                  <div className="w-24 h-2 bg-slate-200 rounded-full overflow-hidden">
+                    <div
+                      className="h-full bg-emerald-400 rounded-full transition-all duration-500"
+                      style={{ width: `${totales.pctListo}%` }}
+                    />
+                  </div>
+                  <span className={`font-black tabular-nums ${totales.pctListo === 100 ? "text-emerald-600" : "text-slate-500"}`}>
+                    {totales.listos}/{filasFiltradas.length}
+                  </span>
+                </div>
               </div>
             </div>
           </div>
