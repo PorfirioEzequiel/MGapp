@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import supabase from '../supabase/client';
+import supabase, { supabaseStorage as supabaseAdmin } from '../supabase/client';
 import MapTerritorial from '../map/MapTerritorial';
 import MapaEstadoMexico from '../map/MapaEstadoMexico';
 import AFILIACION from '../data/afiliacion.json';
@@ -390,7 +390,7 @@ const TableroBoard = ({ readOnly = false }) => {
 
   // ── Mercado: carga lista de entregas al montar (siempre, para saber si mostrar la capa) ──
   useEffect(() => {
-    supabase.from('mercado').select('año,mes,entrega').order('entrega', { ascending: false })
+    supabaseAdmin.from('mercado').select('año,mes,entrega').order('entrega', { ascending: false })
       .then(({ data }) => {
         if (!data) return;
         const map = new Map();
@@ -408,31 +408,31 @@ const TableroBoard = ({ readOnly = false }) => {
   useEffect(() => {
     if (!mercadoFiltro) return;
     setLoadingMercado(true);
-    supabase.from('mercado')
-      .select('seccion, sector, entregadas, estatus, fracciones')
+    supabaseAdmin.from('mercado')
+      .select('seccion, sector, total, estatus, fracciones')
       .eq('año', mercadoFiltro.año).eq('mes', mercadoFiltro.mes).eq('entrega', mercadoFiltro.entrega)
       .then(({ data }) => {
         if (!data) { setMercadoBySec({}); setLoadingMercado(false); return; }
-        // Agrupa por sección: suma entregadas, toma estatus predominante
+        // Agrupa por sección: suma total entregado, toma estatus predominante
         const bySec = {};
         for (const r of data) {
           const sec = r.seccion;
-          if (!bySec[sec]) bySec[sec] = { entregadas: 0, fracciones: r.fracciones ?? 0, sector: r.sector, estatusCounts: {} };
-          bySec[sec].entregadas += Number(r.entregadas ?? 0);
+          if (!bySec[sec]) bySec[sec] = { total: 0, fracciones: r.fracciones ?? 0, sector: r.sector, estatusCounts: {} };
+          bySec[sec].total += Number(r.total ?? 0);
           const est = r.estatus ?? 'PENDIENTE';
           bySec[sec].estatusCounts[est] = (bySec[sec].estatusCounts[est] || 0) + 1;
         }
-        const maxEntregadas = Math.max(...Object.values(bySec).map(v => v.entregadas), 1);
+        const maxTotal = Math.max(...Object.values(bySec).map(v => v.total), 1);
         const result = {};
         for (const [sec, v] of Object.entries(bySec)) {
           const estatus = Object.entries(v.estatusCounts).sort((a, b) => b[1] - a[1])[0]?.[0] ?? 'PENDIENTE';
           result[Number(sec)] = {
-            entregadas: v.entregadas,
+            total: v.total,
             fracciones: v.fracciones,
             sector: v.sector,
             estatus,
-            pct: (v.entregadas / maxEntregadas) * 100,
-            maxRef: maxEntregadas,
+            pct: (v.total / maxTotal) * 100,
+            maxRef: maxTotal,
           };
         }
         setMercadoBySec(result);
@@ -1041,10 +1041,10 @@ const TableroBoard = ({ readOnly = false }) => {
       ? Object.entries(mercadoBySec).filter(([sec]) => scopeSeccionNums.includes(Number(sec)))
       : Object.entries(mercadoBySec);
 
-    const totalEntregadas = seccionesEnScope.reduce((s, [, v]) => s + v.entregadas, 0);
-    const maxRef = seccionesEnScope.length > 0 ? Math.max(...seccionesEnScope.map(([, v]) => v.entregadas), 1) : 1;
+    const totalEntregadas = seccionesEnScope.reduce((s, [, v]) => s + v.total, 0);
+    const maxRef = seccionesEnScope.length > 0 ? Math.max(...seccionesEnScope.map(([, v]) => v.total), 1) : 1;
     const pctGlobal = maxRef > 0 ? (totalEntregadas / (maxRef * seccionesEnScope.length)) * 100 : null;
-    const seccionesConDatos = seccionesEnScope.filter(([, v]) => v.entregadas > 0).length;
+    const seccionesConDatos = seccionesEnScope.filter(([, v]) => v.total > 0).length;
 
     // Breakdown por nivel
     const isMunicipio = selectedSeccion == null && selectedSector == null && selectedDistrito == null;
@@ -1062,22 +1062,22 @@ const TableroBoard = ({ readOnly = false }) => {
       if (isSector) {
         return seccionesEnScope
           .map(([sec, v]) => ({ label: `Sec. ${sec}`, key: sec, ...v }))
-          .filter(r => r.entregadas > 0)
-          .sort((a, b) => b.entregadas - a.entregadas)
+          .filter(r => r.total > 0)
+          .sort((a, b) => b.total - a.total)
           .slice(0, 20);
       }
       // Agrupa por sector
       const bySec = {};
       for (const [sec, v] of seccionesEnScope) {
         const sp = v.sector ?? '?';
-        if (!bySec[sp]) bySec[sp] = { entregadas: 0, count: 0 };
-        bySec[sp].entregadas += v.entregadas;
+        if (!bySec[sp]) bySec[sp] = { total: 0, count: 0 };
+        bySec[sp].total += v.total;
         bySec[sp].count++;
       }
       const bySector = Object.entries(bySec)
-        .map(([sp, d]) => ({ label: `Sector ${sp}`, key: sp, entregadas: d.entregadas, count: d.count, maxRef }))
-        .filter(r => r.entregadas > 0)
-        .sort((a, b) => b.entregadas - a.entregadas);
+        .map(([sp, d]) => ({ label: `Sector ${sp}`, key: sp, total: d.total, count: d.count, maxRef }))
+        .filter(r => r.total > 0)
+        .sort((a, b) => b.total - a.total);
       return bySector.length ? bySector : null;
     })();
 
@@ -1219,14 +1219,14 @@ const TableroBoard = ({ readOnly = false }) => {
             </div>
             <div className="space-y-1.5">
               {breakdown.map(row => {
-                const pctRow = (row.entregadas / maxRef) * 100;
+                const pctRow = (row.total / maxRef) * 100;
                 const rowColor = semaforoColor(pctRow);
                 return (
                   <div key={row.key}>
                     <div className="flex items-center justify-between mb-0.5">
                       <span className="text-[10px] font-semibold text-slate-700">{row.label}</span>
                       <div className="flex items-center gap-1.5">
-                        <span className="text-[9px] text-slate-400 tabular-nums">{fmt(row.entregadas)}</span>
+                        <span className="text-[9px] text-slate-400 tabular-nums">{fmt(row.total)}</span>
                         <span className="text-[9px] font-bold tabular-nums min-w-[2.5rem] text-right" style={{ color: rowColor }}>
                           {pctRow.toFixed(0)}%
                         </span>
