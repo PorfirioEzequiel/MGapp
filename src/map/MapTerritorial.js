@@ -1749,36 +1749,6 @@ const MapTerritorial = ({
             });
           })()}
 
-          {/* ── Sector outlines (semáforo) — solo la frontera exterior de cada sector ── */}
-          {electoralMode === 'semaforo_cred' && (() => {
-            // Agrupa todos los rings de secciones por sector
-            const sectorRings = {};
-            secciones.forEach(sec => {
-              const paths = parseWKT(sec.geometry);
-              if (!paths.length) return;
-              const sp = String(sec.pologono);
-              if (!sectorRings[sp]) sectorRings[sp] = [];
-              paths.forEach(ring => sectorRings[sp].push(ring));
-            });
-            // Detecta aristas de frontera y renderiza solo el contorno exterior
-            return Object.entries(sectorRings).flatMap(([sp, rings]) =>
-              buildSectorOutlines(rings).map((chain, ci) => (
-                <Polygon
-                  key={`sout-${sp}-${ci}`}
-                  paths={chain}
-                  options={{
-                    fillOpacity:   0,
-                    strokeColor:   '#0f172a',
-                    strokeWeight:  1.5,
-                    strokeOpacity: 0.65,
-                    zIndex:        8,
-                    clickable:     false,
-                  }}
-                />
-              ))
-            );
-          })()}
-
           {/* ── Etiquetas de sección (zoom-aware) ──────────────────── */}
           {currentZoom >= 12 && secciones.map((sec, idx) => {
             const paths = parseWKT(sec.geometry);
