@@ -34,6 +34,10 @@ const safeInt = (v, def = null) => {
   return Number.isFinite(n) ? n : def;
 };
 
+// Clave compuesta que identifica unívocamente cada fila sin depender de la columna id
+const rowKey = (r) =>
+  `${r["año"]}_${r.mes}_${r.entrega}_${r.sector}_${r.seccion}_${r.numero_viaje}`;
+
 // "Listo para ruta": todos los campos clave tienen valor guardado en DB
 function esListoParaRuta(row) {
   return (
@@ -96,7 +100,7 @@ function FilaEntrega({ row, onSave, saving }) {
   // Auto-guardar al perder foco en cualquier campo de texto/número
   const guardar = () => {
     if (!dirty) return;
-    onSave(row.id, buildPayload(), () => setDirty(false));
+    onSave(row, buildPayload(), () => setDirty(false));
   };
 
   return (
@@ -179,7 +183,7 @@ function FilaEntrega({ row, onSave, saving }) {
           onChange={e => {
             const newEstatus = e.target.value;
             set("estatus", newEstatus);
-            onSave(row.id, buildPayload({ estatus: newEstatus }), () => setDirty(false));
+            onSave(row, buildPayload({ estatus: newEstatus }), () => setDirty(false));
           }}
           className={`border rounded-lg px-1.5 py-1 text-[10px] font-bold focus:outline-none cursor-pointer
             ${ST_ROW[ed.estatus] || "bg-slate-100 text-slate-600 border-slate-200"}`}>
@@ -386,12 +390,19 @@ export default function MercadoControl() {
     }
   };
 
-  // ── Guardar fila ────────────────────────────────────────────────────────────
-  const handleGuardar = async (id, data, resetDirty) => {
-    setSavingId(id);
-    const { error } = await supabaseAdmin.from("mercado").update(data).eq("id", id);
+  // ── Guardar fila — usa clave compuesta para evitar dependencia de columna id ──
+  const handleGuardar = async (row, data, resetDirty) => {
+    const key = rowKey(row);
+    setSavingId(key);
+    const { error } = await supabaseAdmin.from("mercado").update(data)
+      .eq("año",         row["año"])
+      .eq("mes",         row.mes)
+      .eq("entrega",     row.entrega)
+      .eq("sector",      row.sector)
+      .eq("seccion",     row.seccion)
+      .eq("numero_viaje", row.numero_viaje);
     if (error) { alert("Error al guardar: " + error.message); }
-    else { setFilas(prev => prev.map(f => f.id === id ? { ...f, ...data } : f)); resetDirty(); }
+    else { setFilas(prev => prev.map(f => rowKey(f) === key ? { ...f, ...data } : f)); resetDirty(); }
     setSavingId(null);
   };
 
@@ -589,8 +600,8 @@ export default function MercadoControl() {
                     seccionGroups.map(grp => (
                       <React.Fragment key={grp.key}>
                         {grp.rows.map(row => (
-                          <FilaEntrega key={row.id} row={row}
-                            onSave={handleGuardar} saving={savingId === row.id} />
+                          <FilaEntrega key={rowKey(row)} row={row}
+                            onSave={handleGuardar} saving={savingId === rowKey(row)} />
                         ))}
                         <FilaAgregarPunto
                           onAgregar={() => handleAgregarPunto(grp.rows[0])}
