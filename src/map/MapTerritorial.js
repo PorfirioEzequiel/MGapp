@@ -93,6 +93,80 @@ const PUESTO_COLOR = {
 const getPuestoColor = (puesto) =>
   PUESTO_COLOR[(puesto || '').toUpperCase()] ?? '#6B7280';
 
+// Calcula el contorno exterior de un sector a partir de los rings de sus secciones.
+// Detecta aristas que aparecen UNA sola vez → son aristas de frontera del sector.
+// Devuelve un array de chains (cada chain = array de {lat,lng}).
+const buildSectorOutlines = (rings) => {
+  // toFixed(5) ≈ 1m precision — tolerates WKT float drift between adjacent sections
+  const pk = (p) => `${p.lat.toFixed(5)},${p.lng.toFixed(5)}`;
+  const toPoint = (k) => { const [lat, lng] = k.split(',').map(Number); return { lat, lng }; };
+
+  // Count each canonical edge across all rings
+  const edgeCnt = new Map();
+  rings.forEach(ring => {
+    for (let i = 0; i < ring.length; i++) {
+      const ak = pk(ring[i]);
+      const bk = pk(ring[(i + 1) % ring.length]);
+      if (ak === bk) continue;
+      const canon = ak < bk ? `${ak}|${bk}` : `${bk}|${ak}`;
+      edgeCnt.set(canon, (edgeCnt.get(canon) || 0) + 1);
+    }
+  });
+
+  // Undirected adjacency from boundary-only edges (count === 1)
+  const adj = new Map();
+  rings.forEach(ring => {
+    for (let i = 0; i < ring.length; i++) {
+      const ak = pk(ring[i]);
+      const bk = pk(ring[(i + 1) % ring.length]);
+      if (ak === bk) continue;
+      const canon = ak < bk ? `${ak}|${bk}` : `${bk}|${ak}`;
+      if (edgeCnt.get(canon) !== 1) return;
+      if (!adj.has(ak)) adj.set(ak, []);
+      if (!adj.has(bk)) adj.set(bk, []);
+      if (!adj.get(ak).includes(bk)) adj.get(ak).push(bk);
+      if (!adj.get(bk).includes(ak)) adj.get(bk).push(ak);
+    }
+  });
+
+  const usedEdge = new Set();
+  const chains = [];
+
+  for (const startKey of adj.keys()) {
+    for (const firstKey of adj.get(startKey)) {
+      if (usedEdge.has(`${startKey}|${firstKey}`)) continue;
+
+      const chain = [toPoint(startKey)];
+      let prev = startKey, cur = firstKey;
+
+      for (let safety = 10000; safety > 0; safety--) {
+        if (usedEdge.has(`${prev}|${cur}`)) break;
+        usedEdge.add(`${prev}|${cur}`);
+        usedEdge.add(`${cur}|${prev}`);
+        chain.push(toPoint(cur));
+        if (cur === startKey) break;
+        const nxt = (adj.get(cur) || []).find(n => !usedEdge.has(`${cur}|${n}`));
+        if (!nxt) break;
+        prev = cur;
+        cur = nxt;
+      }
+
+      if (chain.length > 3) chains.push(chain);
+    }
+  }
+  return chains;
+};
+
+// Semáforo: comprobadas / entregadas_sp → rojo a verde
+const getSemaforoColor = (pct) => {
+  if (pct === null || pct === undefined || isNaN(pct)) return { fill: '#9CA3AF', stroke: '#6B7280' };
+  if (pct >= 90) return { fill: '#16A34A', stroke: '#14532D' };
+  if (pct >= 75) return { fill: '#65A30D', stroke: '#3F6212' };
+  if (pct >= 50) return { fill: '#CA8A04', stroke: '#92400E' };
+  if (pct >= 25) return { fill: '#EA580C', stroke: '#7C2D12' };
+  return { fill: '#DC2626', stroke: '#7F1D1D' };
+};
+
 // [W, H] per zoom tier (tier 0 = very far out, tier 3 = very close in)
 const CASILLA_SIZES = [[20, 26], [27, 35], [34, 44], [44, 57]];
 
@@ -1452,6 +1526,23 @@ const MapTerritorial = ({
                 </>
               )}
 
+              {/* ── Capa de actividades ─────────────────────────── */}
+              {Object.keys(afiliacionBySec).length > 0 && (
+                <>
+                  <div className="w-full h-px bg-gray-200 my-0.5" />
+                  <button
+                    onClick={() => handleSetElectoralMode(electoralMode === 'semaforo_cred' ? null : 'semaforo_cred')}
+                    className={`w-full px-2.5 py-1 rounded-md text-xs font-medium transition-all text-left leading-tight flex items-center gap-1 ${
+                      electoralMode === 'semaforo_cred' ? 'text-white shadow-sm' : 'text-gray-600 hover:bg-gray-100'
+                    }`}
+                    style={electoralMode === 'semaforo_cred' ? { background: 'linear-gradient(90deg,#DC2626 0%,#CA8A04 50%,#16A34A 100%)' } : {}}
+                    title="Entrega de credenciales — avance de comprobación por sección"
+                  >
+                    <span style={{ fontSize: 10 }}>▣</span> Entrega de credenciales
+                  </button>
+                </>
+              )}
+
               {casillasPjem.length > 0 && (
                 <>
                   <div className="w-full h-px bg-gray-200 my-0.5" />
@@ -1576,6 +1667,8 @@ const MapTerritorial = ({
             const hasFracGeom = fraccionesGeo.some(
               f => f.geometry && parseWKT(f.geometry).length > 0
             );
+            const isSemaforo = electoralMode === 'semaforo_cred';
+
             return secciones.map((sec, idx) => {
               const paths      = parseWKT(sec.geometry);
               if (!paths.length) return null;
@@ -1596,30 +1689,39 @@ const MapTerritorial = ({
                                  : electoralMode === 'senado_2024' ? PARTY_COLORS_SENADO
                                  : electoralMode === 'dip_2024' ? PARTY_COLORS_DIP
                                  : PARTY_COLORS;
-              const color      = elResult
-                ? (colorPalette[elResult.winner] || { fill: '#6B7280', stroke: '#374151' })
-                : (sectorColorMap[sec.pologono] || SECTOR_COLORS[0]);
+              const color      = isSemaforo
+                ? (() => {
+                    const af = afiliacionBySec[sec.seccion];
+                    const pct = af && af.entregadas_sp > 0
+                      ? (af.comprobadas / af.entregadas_sp) * 100
+                      : af ? 0 : null;
+                    return getSemaforoColor(pct);
+                  })()
+                : elResult
+                  ? (colorPalette[elResult.winner] || { fill: '#6B7280', stroke: '#374151' })
+                  : (sectorColorMap[sec.pologono] || SECTOR_COLORS[0]);
               const isSelected = selectedSeccion != null && selectedSeccion === sec.seccion;
               const isBg       = isSelected && hasFracGeom;
               const isHovered  = hovered?.tipo === 'seccion' && hovered?.data?.seccion === sec.seccion;
               const _aliasTarget = SECTION_ALIASES[sec.seccion];
-              const isAliased  = electoralMode === 'ayu_2021'
-                ? (electoralData[sec.seccion] === undefined && _aliasTarget !== undefined)
-                : electoralMode === 'ayu_2021_ieem'
-                  ? (electoralDataIEEM[sec.seccion] === undefined && _aliasTarget !== undefined)
-                  : electoralMode === 'ayu_2024'
-                    ? (electoralData2024[sec.seccion] === undefined && _aliasTarget !== undefined
-                       && electoralData2024[_aliasTarget] !== undefined)
-                    : electoralMode === 'ayu_2024_ieem'
-                      ? (electoralData2024IEEM[sec.seccion] === undefined && _aliasTarget !== undefined
-                         && electoralData2024IEEM[_aliasTarget] !== undefined)
-                      : electoralMode === 'senado_2024'
-                        ? (electoralDataSenado[sec.seccion] === undefined && _aliasTarget !== undefined
-                           && electoralDataSenado[_aliasTarget] !== undefined)
-                        : electoralMode === 'dip_2024'
-                          ? (electoralDataDip2024[sec.seccion] === undefined && _aliasTarget !== undefined
-                             && electoralDataDip2024[_aliasTarget] !== undefined)
-                          : false;
+              const isAliased  = isSemaforo ? false
+                : electoralMode === 'ayu_2021'
+                  ? (electoralData[sec.seccion] === undefined && _aliasTarget !== undefined)
+                  : electoralMode === 'ayu_2021_ieem'
+                    ? (electoralDataIEEM[sec.seccion] === undefined && _aliasTarget !== undefined)
+                    : electoralMode === 'ayu_2024'
+                      ? (electoralData2024[sec.seccion] === undefined && _aliasTarget !== undefined
+                         && electoralData2024[_aliasTarget] !== undefined)
+                      : electoralMode === 'ayu_2024_ieem'
+                        ? (electoralData2024IEEM[sec.seccion] === undefined && _aliasTarget !== undefined
+                           && electoralData2024IEEM[_aliasTarget] !== undefined)
+                        : electoralMode === 'senado_2024'
+                          ? (electoralDataSenado[sec.seccion] === undefined && _aliasTarget !== undefined
+                             && electoralDataSenado[_aliasTarget] !== undefined)
+                          : electoralMode === 'dip_2024'
+                            ? (electoralDataDip2024[sec.seccion] === undefined && _aliasTarget !== undefined
+                               && electoralDataDip2024[_aliasTarget] !== undefined)
+                            : false;
 
               return (
                 <React.Fragment key={sec.id ?? idx}>
@@ -1647,6 +1749,36 @@ const MapTerritorial = ({
             });
           })()}
 
+          {/* ── Sector outlines (semáforo) — solo la frontera exterior de cada sector ── */}
+          {electoralMode === 'semaforo_cred' && (() => {
+            // Agrupa todos los rings de secciones por sector
+            const sectorRings = {};
+            secciones.forEach(sec => {
+              const paths = parseWKT(sec.geometry);
+              if (!paths.length) return;
+              const sp = String(sec.pologono);
+              if (!sectorRings[sp]) sectorRings[sp] = [];
+              paths.forEach(ring => sectorRings[sp].push(ring));
+            });
+            // Detecta aristas de frontera y renderiza solo el contorno exterior
+            return Object.entries(sectorRings).flatMap(([sp, rings]) =>
+              buildSectorOutlines(rings).map((chain, ci) => (
+                <Polygon
+                  key={`sout-${sp}-${ci}`}
+                  paths={chain}
+                  options={{
+                    fillOpacity:   0,
+                    strokeColor:   '#0f172a',
+                    strokeWeight:  1.5,
+                    strokeOpacity: 0.65,
+                    zIndex:        8,
+                    clickable:     false,
+                  }}
+                />
+              ))
+            );
+          })()}
+
           {/* ── Etiquetas de sección (zoom-aware) ──────────────────── */}
           {currentZoom >= 12 && secciones.map((sec, idx) => {
             const paths = parseWKT(sec.geometry);
@@ -1654,19 +1786,20 @@ const MapTerritorial = ({
             const center = getCenter(paths);
             const isSelected = selectedSeccion != null && selectedSeccion === sec.seccion;
             const _at = SECTION_ALIASES[sec.seccion];
-            const isAliased  = electoralMode === 'ayu_2021'
-              ? (electoralData[sec.seccion] === undefined && _at !== undefined)
-              : electoralMode === 'ayu_2021_ieem'
-                ? (electoralDataIEEM[sec.seccion] === undefined && _at !== undefined)
-                : electoralMode === 'ayu_2024'
-                  ? (electoralData2024[sec.seccion] === undefined && _at !== undefined && electoralData2024[_at] !== undefined)
-                  : electoralMode === 'ayu_2024_ieem'
-                    ? (electoralData2024IEEM[sec.seccion] === undefined && _at !== undefined && electoralData2024IEEM[_at] !== undefined)
-                    : electoralMode === 'senado_2024'
-                      ? (electoralDataSenado[sec.seccion] === undefined && _at !== undefined && electoralDataSenado[_at] !== undefined)
-                      : electoralMode === 'dip_2024'
-                        ? (electoralDataDip2024[sec.seccion] === undefined && _at !== undefined && electoralDataDip2024[_at] !== undefined)
-                        : false;
+            const isAliased  = electoralMode === 'semaforo_cred' ? false
+              : electoralMode === 'ayu_2021'
+                ? (electoralData[sec.seccion] === undefined && _at !== undefined)
+                : electoralMode === 'ayu_2021_ieem'
+                  ? (electoralDataIEEM[sec.seccion] === undefined && _at !== undefined)
+                  : electoralMode === 'ayu_2024'
+                    ? (electoralData2024[sec.seccion] === undefined && _at !== undefined && electoralData2024[_at] !== undefined)
+                    : electoralMode === 'ayu_2024_ieem'
+                      ? (electoralData2024IEEM[sec.seccion] === undefined && _at !== undefined && electoralData2024IEEM[_at] !== undefined)
+                      : electoralMode === 'senado_2024'
+                        ? (electoralDataSenado[sec.seccion] === undefined && _at !== undefined && electoralDataSenado[_at] !== undefined)
+                        : electoralMode === 'dip_2024'
+                          ? (electoralDataDip2024[sec.seccion] === undefined && _at !== undefined && electoralDataDip2024[_at] !== undefined)
+                          : false;
             // Suppressed: group label handles aliased sections
             if (isAliased && electoralMode) return null;
             // Sector 8 has too many sections — labels overlap; rely on hover + dashboard list

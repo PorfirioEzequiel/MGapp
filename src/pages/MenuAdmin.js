@@ -9,6 +9,7 @@ import {
   LiaHandHoldingHeartSolid,
   LiaChartBarSolid,
   LiaDrawPolygonSolid,
+  LiaCommentDotsSolid,
 } from "react-icons/lia";
 import { useNavigate } from 'react-router-dom';
 
@@ -18,6 +19,7 @@ const MenuItem = ({ icon: Icon, label, onClick, color = 'blue', disabled = false
     blue: 'border-blue-400 text-blue-600 hover:bg-blue-600',
     emerald: 'border-emerald-500 text-emerald-600 hover:bg-emerald-600',
     violet: 'border-violet-400 text-violet-600 hover:bg-violet-600',
+    sky: 'border-sky-400 text-sky-600 hover:bg-sky-600',
   };
   return (
     <div className="xl:w-1/3 sm:w-full w-1/2 mb-4 px-2">
@@ -61,6 +63,7 @@ const MenuAdmin = () => {
           <MenuItem icon={LiaCookieBiteSolid} label="ESTADÍSTICA" onClick={() => navigate('/admin/reporte')} />
           <MenuItem icon={LiaSitemapSolid} label="ESTRUCTURA" onClick={() => navigate('/admin/base')} />
           <MenuItem icon={LiaCalendarCheckSolid} label="ACTIVIDADES" onClick={() => navigate('/admin/actividades')} color="violet" />
+          <MenuItem icon={LiaCommentDotsSolid} label="MENSAJERÍA" onClick={() => navigate('/admin/mensajeria')} color="sky" />
           <MenuItem icon={LiaFileMedicalSolid} label="CERTIFICADOS" onClick={() => navigate('/admin/certificados')} color="emerald" />
           <MenuItem icon={LiaQrcodeSolid} label="CHECK-IN" onClick={() => navigate('/registro-certificado-medico/checkin')} color="emerald" />
         </div>

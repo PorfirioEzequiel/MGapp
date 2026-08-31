@@ -616,7 +616,8 @@ const TableroBoard = ({ readOnly = false }) => {
              rosi_vs_aaron_total, mg_vs_fuerza_total, votos_nulos_total,
              groupLevel, senadoBreakdown };
   }, [electoralData, electoralDataIEEM, electoralData2024, electoralData2024IEEM, electoralDataSenado,
-      electoralDataDip2024, electoralMode, mapSecciones, selectedSeccion, selectedSector, selectedDistrito]);
+      electoralDataDip2024, electoralMode, mapSecciones,
+      selectedSeccion, selectedSector, selectedDistrito]);
 
   // ── Fetch sector ──────────────────────────────────────────────────────────
   useEffect(() => {
@@ -747,6 +748,211 @@ const TableroBoard = ({ readOnly = false }) => {
     };
   }, [currentLevel, selectedSeccion, selectedSector, selectedDistrito, mapSecciones, ciudadanosGeo, afiliacionStats, sp, seccional, promotores, fracciones]);
 
+  // ── Semáforo de credenciales panel ───────────────────────────────────────
+  const renderSemaforoPanel = () => {
+    const af = afiliacionStats;
+    if (!af) return null;
+
+    const { entregadas_sp = 0, comprobadas = 0 } = af.mode === 'seccion'
+      ? (af.seccion ?? {})
+      : (af.total ?? {});
+
+    const pctGlobal = entregadas_sp > 0 ? (comprobadas / entregadas_sp) * 100 : 0;
+
+    const semaforoColor = (p) => {
+      if (p === null || p === undefined || isNaN(p)) return '#9CA3AF';
+      if (p >= 90) return '#16A34A';
+      if (p >= 75) return '#65A30D';
+      if (p >= 50) return '#CA8A04';
+      if (p >= 25) return '#EA580C';
+      return '#DC2626';
+    };
+    const semaforoLabel = (p, noData) => {
+      if (noData) return 'Sin entregas';
+      if (p >= 90) return 'Excelente';
+      if (p >= 75) return 'Bien';
+      if (p >= 50) return 'Regular';
+      if (p >= 25) return 'Bajo';
+      return 'Crítico';
+    };
+
+    // Nivel actual para contexto
+    const isMunicipio = af.mode === 'municipio';
+    const isDistrito  = af.mode === 'distrito';
+    const isSector    = af.mode === 'sector';
+    const isSeccion   = af.mode === 'seccion';
+
+    const scopeLabel = isSeccion   ? `Sección ${selectedSeccion}`
+      : isSector    ? `Sector ${selectedSector}`
+      : isDistrito  ? `Distrito ${selectedDistrito}`
+      : 'Municipio completo';
+
+    // Nivel de drill-down del breakdown
+    // Municipio → por sector | Distrito → por sector (filtrado) | Sector → por sección
+    const breakdown = (() => {
+      if (isSeccion) return null;
+      if (isSector) {
+        return AFILIACION
+          .filter(r => String(r.sp) === String(selectedSector))
+          .map(r => ({
+            label: `Sec. ${r.seccion}`,
+            key: r.seccion,
+            entregadas_sp: r.entregadas_sp ?? 0,
+            comprobadas:   r.comprobadas   ?? 0,
+          }))
+          .filter(r => r.entregadas_sp > 0)
+          .map(r => ({ ...r, pct: (r.comprobadas / r.entregadas_sp) * 100 }))
+          .sort((a, b) => a.pct - b.pct) // peor primero = más accionable
+          .slice(0, 20) || null;
+      }
+      // Municipio o Distrito → por sector
+      const rows = Object.entries(af.bySector)
+        .map(([sp, d]) => ({
+          label: `Sector ${sp}`,
+          key: sp,
+          entregadas_sp: d.entregadas_sp ?? 0,
+          comprobadas:   d.comprobadas   ?? 0,
+        }))
+        .filter(r => r.entregadas_sp > 0)
+        .map(r => ({ ...r, pct: (r.comprobadas / r.entregadas_sp) * 100 }))
+        .sort((a, b) => a.pct - b.pct); // peor primero
+      return rows.length ? rows : null;
+    })();
+
+    const barColor    = semaforoColor(pctGlobal);
+    const noData      = entregadas_sp === 0;
+    const statusLabel = semaforoLabel(pctGlobal, noData);
+
+    // Indicador de nivel para el breadcrumb visual
+    const nivelLabel = isSeccion ? null
+      : isSector   ? 'Selecciona una sección para ver su detalle'
+      : isDistrito ? 'Selecciona un sector para ver por sección'
+      : 'Selecciona un sector para ver su avance por sección';
+
+    return (
+      <div className="space-y-2.5">
+
+        {/* Cabecera */}
+        <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5">
+          <div className="flex items-start justify-between gap-2">
+            <div>
+              <p className="text-[9px] font-bold uppercase tracking-[0.14em] text-slate-400 leading-none mb-1">Entrega de credenciales</p>
+              <p className="text-xs font-bold text-slate-800 leading-snug">Entregadas al SP vs Comprobadas</p>
+            </div>
+            <span className="text-[9px] font-bold px-2 py-1 rounded-full whitespace-nowrap flex-shrink-0 text-white"
+              style={{ backgroundColor: noData ? '#9CA3AF' : barColor }}>
+              {statusLabel}
+            </span>
+          </div>
+          <p className="text-[10px] text-slate-500 mt-1.5 flex items-center gap-1">
+            <span className="w-1.5 h-1.5 rounded-full inline-block" style={{ backgroundColor: noData ? '#9CA3AF' : barColor }} />
+            {scopeLabel}
+          </p>
+        </div>
+
+        {/* Métricas clave */}
+        <div className="grid grid-cols-3 gap-1.5">
+          <div className="bg-amber-50 rounded-xl p-2 text-center">
+            <p className="text-[9px] font-bold uppercase tracking-widest text-amber-500 leading-none mb-1">Entregadas SP</p>
+            <p className="text-lg font-bold tabular-nums text-amber-700">{fmt(entregadas_sp)}</p>
+          </div>
+          <div className="bg-emerald-50 rounded-xl p-2 text-center">
+            <p className="text-[9px] font-bold uppercase tracking-widest text-emerald-600 leading-none mb-1">Comprobadas</p>
+            <p className="text-lg font-bold tabular-nums text-emerald-700">{fmt(comprobadas)}</p>
+          </div>
+          <div className="rounded-xl p-2 text-center" style={{ backgroundColor: (noData ? '#9CA3AF' : barColor) + '18' }}>
+            <p className="text-[9px] font-bold uppercase tracking-widest leading-none mb-1" style={{ color: noData ? '#9CA3AF' : barColor }}>Avance</p>
+            <p className="text-lg font-bold tabular-nums" style={{ color: noData ? '#9CA3AF' : barColor }}>
+              {noData ? '—' : `${pctGlobal.toFixed(1)}%`}
+            </p>
+          </div>
+        </div>
+
+        {/* Barra de progreso */}
+        {!noData && (
+          <div>
+            <div className="h-2.5 rounded-full overflow-hidden" style={{ background: 'linear-gradient(90deg,#DC2626 0%,#CA8A04 40%,#65A30D 75%,#16A34A 100%)', opacity: 0.15 }}>
+            </div>
+            <div className="h-2.5 rounded-full overflow-hidden -mt-2.5">
+              <div className="h-full rounded-full transition-all duration-700"
+                style={{ width: `${Math.min(pctGlobal, 100)}%`, backgroundColor: barColor }} />
+            </div>
+            <div className="flex justify-between mt-1">
+              <span className="text-[9px] text-slate-300">0%</span>
+              <span className="text-[9px] font-bold" style={{ color: barColor }}>{pctGlobal.toFixed(1)}% comprobado</span>
+              <span className="text-[9px] text-slate-300">100%</span>
+            </div>
+          </div>
+        )}
+
+        {/* Leyenda */}
+        <div className="rounded-xl border border-slate-100 p-2.5">
+          <p className="text-[9px] font-bold uppercase tracking-widest text-slate-400 mb-1.5">Escala de avance</p>
+          <div className="space-y-1">
+            {[
+              { label: 'Excelente', range: '≥ 90%',  color: '#16A34A' },
+              { label: 'Bien',      range: '75–89%', color: '#65A30D' },
+              { label: 'Regular',   range: '50–74%', color: '#CA8A04' },
+              { label: 'Bajo',      range: '25–49%', color: '#EA580C' },
+              { label: 'Crítico',   range: '< 25%',  color: '#DC2626' },
+              { label: 'Sin datos', range: '—',       color: '#9CA3AF' },
+            ].map(({ label, range, color }) => (
+              <div key={label} className="flex items-center justify-between">
+                <div className="flex items-center gap-1.5">
+                  <div className="w-2 h-2 rounded-sm flex-shrink-0" style={{ backgroundColor: color }} />
+                  <span className="text-[10px] font-medium text-slate-700">{label}</span>
+                </div>
+                <span className="text-[9px] text-slate-400 tabular-nums">{range}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Breakdown por nivel */}
+        {breakdown && (
+          <div>
+            <div className="flex items-center justify-between mb-1.5">
+              <p className="text-[9px] font-bold uppercase tracking-widest text-slate-400">
+                {isSector ? 'Avance por sección' : 'Avance por sector'}
+              </p>
+              <span className="text-[9px] text-slate-400">peor → mejor</span>
+            </div>
+            <div className="space-y-1.5">
+              {breakdown.map(row => {
+                const rowColor = semaforoColor(row.pct);
+                return (
+                  <div key={row.key}>
+                    <div className="flex items-center justify-between mb-0.5">
+                      <span className="text-[10px] font-semibold text-slate-700">{row.label}</span>
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-[9px] text-slate-400 tabular-nums">{fmt(row.comprobadas)}/{fmt(row.entregadas_sp)}</span>
+                        <span className="text-[9px] font-bold tabular-nums min-w-[2.5rem] text-right" style={{ color: rowColor }}>
+                          {row.pct.toFixed(0)}%
+                        </span>
+                      </div>
+                    </div>
+                    <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
+                      <div className="h-full rounded-full transition-all duration-500"
+                        style={{ width: `${Math.min(row.pct, 100)}%`, backgroundColor: rowColor }} />
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* Hint de drill-down */}
+        {nivelLabel && !isSeccion && (
+          <p className="text-[9px] text-slate-400 text-center leading-snug pt-1">
+            {nivelLabel}
+          </p>
+        )}
+
+      </div>
+    );
+  };
+
   // ── Electoral panel ───────────────────────────────────────────────────────
   const renderElectoralPanel = () => {
     const scopeLabel = selectedSeccion != null ? `Sección ${selectedSeccion}` :
@@ -793,7 +999,7 @@ const TableroBoard = ({ readOnly = false }) => {
             <div>
               <p className="text-[9px] font-bold uppercase tracking-[0.14em] text-slate-400 leading-none mb-1">Proceso electoral</p>
               <p className="text-xs font-bold text-slate-800 leading-snug">
-                {isDip2024 ? 'Diputación Local 2024 - Interno · Tecámac'
+                {isDip2024  ? 'Diputación Local 2024 - Interno · Tecámac'
                  : isSenado ? 'Senaduría 2024 · Tecámac'
                  : is2024Any ? 'Ayuntamiento Tecámac · 2024'
                  : 'Ayuntamiento Tecámac · 2021'}
@@ -1537,6 +1743,7 @@ const TableroBoard = ({ readOnly = false }) => {
                 {/* Header dinámico */}
                 <div className="flex items-center justify-between mb-2 gap-2">
                   <SectionTitle accent={
+                    electoralMode === 'semaforo_cred' ? 'bg-emerald-600' :
                     electoralMode === 'dip_2024'      ? 'bg-slate-700' :
                     electoralMode === 'ayu_2024'      ? 'bg-blue-700' :
                     electoralMode === 'ayu_2024_ieem' ? 'bg-emerald-700' :
@@ -1546,19 +1753,21 @@ const TableroBoard = ({ readOnly = false }) => {
                     currentLevel === 3 ? 'bg-violet-500' : currentLevel === 2 ? 'bg-emerald-500' :
                     currentLevel === 1 ? 'bg-blue-500' : 'bg-slate-400'
                   }>
-                    {electoralMode === 'dip_2024'
-                      ? 'Diputación Local 2024 · Interno'
-                      : electoralMode === 'senado_2024'
-                          ? 'Electoral 2024 · Senaduría'
-                          : electoralMode === 'ayu_2024_ieem'
-                            ? 'Electoral 2024 · IEEM oficial'
-                            : electoralMode === 'ayu_2024'
-                              ? 'Electoral 2024 · Rosi Wong'
-                              : electoralMode === 'ayu_2021_ieem'
-                                ? 'Electoral 2021 · IEEM oficial'
-                                : electoralMode
-                                  ? 'Análisis electoral · Ayuntamiento 2021'
-                                  : (currentLevel === 3 ? `Sección ${selectedSeccion}` : currentLevel === 2 ? `Sector ${selectedSector}` : currentLevel === 1 ? `Distrito ${selectedDistrito}` : 'Vista general')
+                    {electoralMode === 'semaforo_cred'
+                      ? 'Entrega de credenciales'
+                      : electoralMode === 'dip_2024'
+                        ? 'Diputación Local 2024 · Interno'
+                        : electoralMode === 'senado_2024'
+                            ? 'Electoral 2024 · Senaduría'
+                            : electoralMode === 'ayu_2024_ieem'
+                              ? 'Electoral 2024 · IEEM oficial'
+                              : electoralMode === 'ayu_2024'
+                                ? 'Electoral 2024 · Rosi Wong'
+                                : electoralMode === 'ayu_2021_ieem'
+                                  ? 'Electoral 2021 · IEEM oficial'
+                                  : electoralMode
+                                    ? 'Análisis electoral · Ayuntamiento 2021'
+                                    : (currentLevel === 3 ? `Sección ${selectedSeccion}` : currentLevel === 2 ? `Sector ${selectedSector}` : currentLevel === 1 ? `Distrito ${selectedDistrito}` : 'Vista general')
                     }
                   </SectionTitle>
                   {electoralMode && (
@@ -1577,7 +1786,7 @@ const TableroBoard = ({ readOnly = false }) => {
                   transform: panelFade ? 'translateY(0)' : 'translateY(6px)',
                   transition: 'opacity 0.25s ease, transform 0.25s ease',
                 }}>
-                  {electoralMode ? renderElectoralPanel() : renderInfoPanel()}
+                  {electoralMode === 'semaforo_cred' ? renderSemaforoPanel() : electoralMode ? renderElectoralPanel() : renderInfoPanel()}
                 </div>
               </div>
             )}
