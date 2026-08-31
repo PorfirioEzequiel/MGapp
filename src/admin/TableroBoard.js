@@ -409,16 +409,17 @@ const TableroBoard = ({ readOnly = false }) => {
     if (!mercadoFiltro) return;
     setLoadingMercado(true);
     supabaseAdmin.from('mercado')
-      .select('seccion, sector, total, estatus, fracciones')
+      .select('seccion, sector, piezas, sm_activas, estatus, fracciones')
       .eq('año', mercadoFiltro.año).eq('mes', mercadoFiltro.mes).eq('entrega', mercadoFiltro.entrega)
       .then(({ data }) => {
         if (!data) { setMercadoBySec({}); setLoadingMercado(false); return; }
-        // Agrupa por sección: suma total entregado, toma estatus predominante
+        // Agrupa por sección: suma piezas×sm_activas (= "Pedido" en el reporte MS)
         const bySec = {};
         for (const r of data) {
           const sec = r.seccion;
+          if (!sec) continue;
           if (!bySec[sec]) bySec[sec] = { total: 0, fracciones: r.fracciones ?? 0, sector: r.sector, estatusCounts: {} };
-          bySec[sec].total += Number(r.total ?? 0);
+          bySec[sec].total += (Number(r.piezas ?? 0) * Number(r.sm_activas ?? 0));
           const est = r.estatus ?? 'PENDIENTE';
           bySec[sec].estatusCounts[est] = (bySec[sec].estatusCounts[est] || 0) + 1;
         }
