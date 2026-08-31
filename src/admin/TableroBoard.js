@@ -388,10 +388,8 @@ const TableroBoard = ({ readOnly = false }) => {
     }
   }, [electoralMode]);
 
-  // ── Mercado: carga lista de entregas al activar la capa ──────────────────
+  // ── Mercado: carga lista de entregas al montar (siempre, para saber si mostrar la capa) ──
   useEffect(() => {
-    if (electoralMode !== 'semaforo_mercado') return;
-    if (mercadoEntregas.length > 0) return;
     supabase.from('mercado').select('año,mes,entrega').order('entrega', { ascending: false })
       .then(({ data }) => {
         if (!data) return;
@@ -402,9 +400,9 @@ const TableroBoard = ({ readOnly = false }) => {
         }
         const lista = [...map.values()].sort((a, b) => b.entrega - a.entrega || b.año - a.año);
         setMercadoEntregas(lista);
-        if (lista.length > 0 && !mercadoFiltro) setMercadoFiltro(lista[0]);
+        if (lista.length > 0) setMercadoFiltro(lista[0]);
       });
-  }, [electoralMode, mercadoEntregas.length, mercadoFiltro]);
+  }, []);
 
   // ── Mercado: carga filas por entrega seleccionada ─────────────────────────
   useEffect(() => {
@@ -2123,6 +2121,7 @@ const TableroBoard = ({ readOnly = false }) => {
                 onClearFocus={() => { setSelectedSM(null); setFocusCoords(null); }}
                 afiliacionBySec={afiliacionBySec}
                 mercadoBySec={mercadoBySec}
+                hasMercado={mercadoEntregas.length > 0}
                 printContext={printContext}
                 electoralModeExternal={electoralMode}
                 onElectoralModeChange={setElectoralMode}

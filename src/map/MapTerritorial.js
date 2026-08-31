@@ -806,6 +806,7 @@ const MapTerritorial = ({
   onClearFocus,
   afiliacionBySec = {},
   mercadoBySec = {},
+  hasMercado = false,
   printContext = null,
   editableLocation = null,
   onEditableLocationChange = null,
@@ -1573,7 +1574,7 @@ const MapTerritorial = ({
               )}
 
               {/* ── Capa Mercado Solidario ──────────────────────── */}
-              {Object.keys(mercadoBySec).length > 0 && (
+              {hasMercado && (
                 <>
                   <div className="w-full h-px bg-gray-200 my-0.5" />
                   <button
