@@ -28,6 +28,12 @@ const ST_ROW = {
 
 const inp = "border border-slate-200 rounded-lg px-2 py-1 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-blue-300 focus:border-blue-400 transition-all bg-white";
 
+// parseInt seguro: nunca devuelve NaN ni strings — usa def si el valor es inválido/vacío
+const safeInt = (v, def = null) => {
+  const n = parseInt(String(v ?? ""), 10);
+  return Number.isFinite(n) ? n : def;
+};
+
 // "Listo para ruta": todos los campos clave tienen valor guardado en DB
 function esListoParaRuta(row) {
   return (
@@ -55,8 +61,8 @@ function FilaEntrega({ row, onSave, saving }) {
   });
   const [dirty, setDirty] = useState(false);
 
-  const smNum     = parseInt(ed.sm_activas, 10) || 0;
-  const piezasNum = parseInt(ed.piezas, 10) || 0;
+  const smNum     = safeInt(ed.sm_activas, 0);
+  const piezasNum = safeInt(ed.piezas, 0);
   const total     = smNum * piezasNum;
 
   const set = (k, v) => { setEd(p => ({ ...p, [k]: v })); setDirty(true); };
@@ -72,21 +78,25 @@ function FilaEntrega({ row, onSave, saving }) {
         ? "bg-emerald-50/70 border-l-[3px] border-l-emerald-400"
         : "hover:bg-slate-50/60";
 
-  // Auto-guardar al cambiar estatus o fecha (inmediato); el resto al perder foco (onBlur)
+  // Construye el payload siempre con safeInt — nunca envía NaN ni strings numéricos a Supabase
+  const buildPayload = (overrides = {}) => ({
+    sm_activas:           smNum,
+    piezas:               piezasNum,
+    total,
+    fecha_entrega:        ed.fecha_entrega || null,
+    camioneta_repartidor: ed.camioneta_repartidor.trim() || null,
+    numero_viaje:         safeInt(ed.numero_viaje, 1),
+    ubicacion:            ed.ubicacion.trim() || null,
+    nombre:               ed.nombre.trim() || null,
+    estatus:              ed.estatus,
+    entregadas:           safeInt(ed.entregadas),   // null si vacío o inválido
+    ...overrides,
+  });
+
+  // Auto-guardar al perder foco en cualquier campo de texto/número
   const guardar = () => {
     if (!dirty) return;
-    onSave(row.id, {
-      sm_activas:           smNum,
-      piezas:               piezasNum,
-      total,
-      fecha_entrega:        ed.fecha_entrega || null,
-      camioneta_repartidor: ed.camioneta_repartidor || null,
-      numero_viaje:         parseInt(ed.numero_viaje, 10) || 1,
-      ubicacion:            ed.ubicacion || null,
-      nombre:               ed.nombre || null,
-      estatus:              ed.estatus,
-      entregadas:           ed.entregadas !== "" ? parseInt(ed.entregadas, 10) : null,
-    }, () => setDirty(false));
+    onSave(row.id, buildPayload(), () => setDirty(false));
   };
 
   return (
@@ -163,24 +173,13 @@ function FilaEntrega({ row, onSave, saving }) {
           onBlur={guardar}
           className={`${inp} w-44`} />
       </td>
-      {/* Estatus — guarda al cambiar */}
+      {/* Estatus — guarda inmediatamente al cambiar */}
       <td className="px-1.5 py-1.5">
         <select value={ed.estatus}
           onChange={e => {
-            set("estatus", e.target.value);
-            // Forzar guardado al cambiar estatus (no esperar blur)
-            setTimeout(() => {
-              onSave(row.id, {
-                sm_activas: smNum, piezas: piezasNum, total,
-                fecha_entrega: ed.fecha_entrega || null,
-                camioneta_repartidor: ed.camioneta_repartidor || null,
-                numero_viaje: parseInt(ed.numero_viaje, 10) || 1,
-                ubicacion: ed.ubicacion || null,
-                nombre: ed.nombre || null,
-                estatus: e.target.value,
-                entregadas: ed.entregadas !== "" ? parseInt(ed.entregadas, 10) : null,
-              }, () => setDirty(false));
-            }, 0);
+            const newEstatus = e.target.value;
+            set("estatus", newEstatus);
+            onSave(row.id, buildPayload({ estatus: newEstatus }), () => setDirty(false));
           }}
           className={`border rounded-lg px-1.5 py-1 text-[10px] font-bold focus:outline-none cursor-pointer
             ${ST_ROW[ed.estatus] || "bg-slate-100 text-slate-600 border-slate-200"}`}>
