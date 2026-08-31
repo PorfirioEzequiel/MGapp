@@ -39,10 +39,9 @@ function esListoParaRuta(row) {
   );
 }
 
-// ── Fila editable ─────────────────────────────────────────────────────────────
+// ── Fila editable — auto-guardado al salir de cada campo (como Excel) ────────
 // El coordinador se guarda en DB pero no se muestra (se llena automáticamente con el SP)
-// catalogo: [{sector, seccion, fracciones}] para reasignar sección
-function FilaEntrega({ row, onSave, saving, catalogo, onReasignar }) {
+function FilaEntrega({ row, onSave, saving }) {
   const [ed, setEd] = useState({
     sm_activas:           String(row.sm_activas ?? ""),
     piezas:               String(row.piezas ?? "20"),
@@ -55,7 +54,6 @@ function FilaEntrega({ row, onSave, saving, catalogo, onReasignar }) {
     entregadas:           String(row.entregadas ?? ""),
   });
   const [dirty, setDirty] = useState(false);
-  const [reasignando, setReasignando] = useState(false);
 
   const smNum     = parseInt(ed.sm_activas, 10) || 0;
   const piezasNum = parseInt(ed.piezas, 10) || 0;
@@ -63,16 +61,20 @@ function FilaEntrega({ row, onSave, saving, catalogo, onReasignar }) {
 
   const set = (k, v) => { setEd(p => ({ ...p, [k]: v })); setDirty(true); };
 
-  // Completo se evalúa con los valores guardados en DB (row), no el estado editado
+  // Listo se evalúa contra valores guardados en DB (row)
   const listo = esListoParaRuta(row);
 
-  const trBg = dirty
-    ? "bg-blue-50/60"
-    : listo
-      ? "bg-emerald-50/70 border-l-[3px] border-l-emerald-400"
-      : "hover:bg-slate-50/60";
+  const trBg = saving
+    ? "bg-blue-50/80"
+    : dirty
+      ? "bg-blue-50/40"
+      : listo
+        ? "bg-emerald-50/70 border-l-[3px] border-l-emerald-400"
+        : "hover:bg-slate-50/60";
 
-  const handleGuardar = () => {
+  // Auto-guardar al cambiar estatus o fecha (inmediato); el resto al perder foco (onBlur)
+  const guardar = () => {
+    if (!dirty) return;
     onSave(row.id, {
       sm_activas:           smNum,
       piezas:               piezasNum,
@@ -89,45 +91,17 @@ function FilaEntrega({ row, onSave, saving, catalogo, onReasignar }) {
 
   return (
     <tr className={`border-b border-slate-100 transition-all duration-150 ${trBg}`}>
-      {/* Sección + indicador + reasignación */}
-      <td className="px-2 py-1.5 whitespace-nowrap">
-        {reasignando ? (
-          <select
-            autoFocus
-            defaultValue={`${row.sector}_${row.seccion}`}
-            onBlur={() => setReasignando(false)}
-            onChange={e => {
-              const [sec, secc] = e.target.value.split("_");
-              const entry = catalogo.find(c => String(c.sector) === sec && String(c.seccion) === secc);
-              if (entry) onReasignar(row.id, entry);
-              setReasignando(false);
-            }}
-            className="border-2 border-blue-400 rounded-lg px-1.5 py-1 text-xs font-bold focus:outline-none bg-white shadow-md max-w-[140px]"
-          >
-            {catalogo.map(c => (
-              <option key={`${c.sector}_${c.seccion}`} value={`${c.sector}_${c.seccion}`}>
-                S{c.sector} — {c.seccion} ({c.fracciones}f)
-              </option>
-            ))}
-          </select>
-        ) : (
-          <div className="flex items-center gap-1.5 group">
-            <span
-              title={listo ? "Listo para ruta" : dirty ? "Cambios sin guardar" : "Pendiente de asignar"}
-              className={`w-2 h-2 rounded-full shrink-0 ${
-                dirty ? "bg-blue-400 animate-pulse" : listo ? "bg-emerald-400" : "bg-slate-300"
-              }`}
-            />
-            <span className="font-black text-slate-800 text-sm tabular-nums">{row.seccion}</span>
-            <button
-              onClick={() => setReasignando(true)}
-              title="Cambiar sección/sector"
-              className="opacity-0 group-hover:opacity-100 text-slate-400 hover:text-blue-600 transition-all text-[10px] leading-none cursor-pointer px-0.5"
-            >
-              ✎
-            </button>
-          </div>
-        )}
+      {/* Sección + indicador de estado */}
+      <td className="px-3 py-2 whitespace-nowrap">
+        <div className="flex items-center gap-2">
+          <span
+            title={saving ? "Guardando…" : listo ? "Listo para ruta" : dirty ? "Sin guardar" : "Pendiente de asignar"}
+            className={`w-2 h-2 rounded-full shrink-0 transition-colors ${
+              saving ? "bg-blue-400 animate-ping" : dirty ? "bg-blue-400 animate-pulse" : listo ? "bg-emerald-400" : "bg-slate-300"
+            }`}
+          />
+          <span className="font-black text-slate-800 text-sm tabular-nums">{row.seccion}</span>
+        </div>
       </td>
       {/* Fracc. */}
       <td className="px-3 py-2 text-center text-sm text-slate-400 tabular-nums">{row.fracciones ?? "—"}</td>
@@ -135,12 +109,14 @@ function FilaEntrega({ row, onSave, saving, catalogo, onReasignar }) {
       <td className="px-1.5 py-1.5">
         <input type="number" min="0" value={ed.sm_activas}
           onChange={e => set("sm_activas", e.target.value)}
+          onBlur={guardar}
           className={`${inp} w-14 text-center font-mono`} />
       </td>
       {/* Piezas */}
       <td className="px-1.5 py-1.5">
         <input type="number" min="0" value={ed.piezas}
           onChange={e => set("piezas", e.target.value)}
+          onBlur={guardar}
           className={`${inp} w-14 text-center font-mono`} />
       </td>
       {/* Total calculado */}
@@ -149,41 +125,63 @@ function FilaEntrega({ row, onSave, saving, catalogo, onReasignar }) {
       <td className="px-1.5 py-1.5">
         <input type="number" min="0" value={ed.entregadas} placeholder="—"
           onChange={e => set("entregadas", e.target.value)}
+          onBlur={guardar}
           className={`${inp} w-14 text-center font-mono`} />
       </td>
-      {/* Fecha */}
+      {/* Fecha — guarda al cambiar */}
       <td className="px-1.5 py-1.5">
         <input type="date" value={ed.fecha_entrega || ""}
-          onChange={e => set("fecha_entrega", e.target.value)}
+          onChange={e => { set("fecha_entrega", e.target.value); setDirty(true); }}
+          onBlur={guardar}
           className={inp} />
       </td>
       {/* Chofer */}
       <td className="px-1.5 py-1.5">
         <input type="text" value={ed.camioneta_repartidor} placeholder="Chofer"
           onChange={e => set("camioneta_repartidor", e.target.value)}
+          onBlur={guardar}
           className={`${inp} w-24`} />
       </td>
       {/* Viaje */}
       <td className="px-1.5 py-1.5">
         <input type="number" min="1" max="9" value={ed.numero_viaje}
           onChange={e => set("numero_viaje", e.target.value)}
+          onBlur={guardar}
           className={`${inp} w-12 text-center font-mono`} />
       </td>
       {/* Nombre responsable */}
       <td className="px-1.5 py-1.5">
         <input type="text" value={ed.nombre} placeholder="Nombre SM"
           onChange={e => set("nombre", e.target.value)}
+          onBlur={guardar}
           className={`${inp} w-32`} />
       </td>
       {/* Ubicación */}
       <td className="px-1.5 py-1.5">
         <input type="text" value={ed.ubicacion} placeholder="URL o nombre del punto"
           onChange={e => set("ubicacion", e.target.value)}
+          onBlur={guardar}
           className={`${inp} w-44`} />
       </td>
-      {/* Estatus */}
+      {/* Estatus — guarda al cambiar */}
       <td className="px-1.5 py-1.5">
-        <select value={ed.estatus} onChange={e => set("estatus", e.target.value)}
+        <select value={ed.estatus}
+          onChange={e => {
+            set("estatus", e.target.value);
+            // Forzar guardado al cambiar estatus (no esperar blur)
+            setTimeout(() => {
+              onSave(row.id, {
+                sm_activas: smNum, piezas: piezasNum, total,
+                fecha_entrega: ed.fecha_entrega || null,
+                camioneta_repartidor: ed.camioneta_repartidor || null,
+                numero_viaje: parseInt(ed.numero_viaje, 10) || 1,
+                ubicacion: ed.ubicacion || null,
+                nombre: ed.nombre || null,
+                estatus: e.target.value,
+                entregadas: ed.entregadas !== "" ? parseInt(ed.entregadas, 10) : null,
+              }, () => setDirty(false));
+            }, 0);
+          }}
           className={`border rounded-lg px-1.5 py-1 text-[10px] font-bold focus:outline-none cursor-pointer
             ${ST_ROW[ed.estatus] || "bg-slate-100 text-slate-600 border-slate-200"}`}>
           {["PENDIENTE","ENTREGADO","PARCIAL","NO_ENTREGADO"].map(s => (
@@ -191,15 +189,14 @@ function FilaEntrega({ row, onSave, saving, catalogo, onReasignar }) {
           ))}
         </select>
       </td>
-      {/* Guardar */}
-      <td className="px-2 py-1.5">
-        <button onClick={handleGuardar} disabled={saving || !dirty}
-          title={dirty ? "Guardar cambios" : "Sin cambios pendientes"}
-          className={`w-8 h-8 flex items-center justify-center rounded-lg font-bold text-sm transition-all cursor-pointer
-            ${dirty ? "bg-blue-600 text-white hover:bg-blue-700 shadow-sm" : "bg-slate-100 text-slate-300 cursor-default"}
-            disabled:opacity-60`}>
-          {saving ? "…" : "✓"}
-        </button>
+      {/* Indicador de guardado */}
+      <td className="px-2 py-1.5 text-center">
+        {saving
+          ? <span className="text-[10px] text-blue-400 font-semibold animate-pulse">…</span>
+          : dirty
+            ? <span className="text-[10px] text-slate-400 font-semibold" title="Tab o clic fuera para guardar">●</span>
+            : <span className="text-[10px] text-emerald-400">✓</span>
+        }
       </td>
     </tr>
   );
@@ -230,7 +227,6 @@ export default function MercadoControl() {
   const [sectorTab,  setSectorTab]  = useState(null);
   const [savingId,   setSavingId]   = useState(null);
   const [agregandoId,setAgregandoId]= useState(null);
-  const [catalogo,   setCatalogo]   = useState([]); // {sector,seccion,fracciones}
 
   const [modalNueva, setModalNueva] = useState(false);
   const [nuevaForm,  setNuevaForm]  = useState({
@@ -240,22 +236,6 @@ export default function MercadoControl() {
   });
   const [generando,  setGenerando]  = useState(false);
   const [genStatus,  setGenStatus]  = useState("");
-
-  // ── Cargar catálogo de secciones (ubt_catalogo) ────────────────────────────
-  useEffect(() => {
-    supabaseAdmin.from("ubt_catalogo").select("sector, seccion, fraccion")
-      .order("sector").order("seccion")
-      .then(({ data }) => {
-        if (!data) return;
-        const map = new Map();
-        for (const r of data) {
-          const k = `${r.sector}_${r.seccion}`;
-          if (!map.has(k)) map.set(k, { sector: r.sector, seccion: r.seccion, fracciones: 0 });
-          map.get(k).fracciones++;
-        }
-        setCatalogo([...map.values()]);
-      });
-  }, []);
 
   // ── Cargar lista de entregas ────────────────────────────────────────────────
   const cargarEntregas = useCallback(async () => {
@@ -414,15 +394,6 @@ export default function MercadoControl() {
     if (error) { alert("Error al guardar: " + error.message); }
     else { setFilas(prev => prev.map(f => f.id === id ? { ...f, ...data } : f)); resetDirty(); }
     setSavingId(null);
-  };
-
-  // ── Reasignar sección/sector de una fila ───────────────────────────────────
-  const handleReasignar = async (id, { sector, seccion, fracciones }) => {
-    const { error } = await supabaseAdmin.from("mercado")
-      .update({ sector, seccion, fracciones })
-      .eq("id", id);
-    if (error) { alert("Error al reasignar sección: " + error.message); return; }
-    setFilas(prev => prev.map(f => f.id === id ? { ...f, sector, seccion, fracciones } : f));
   };
 
   // ── Agregar punto extra a una sección ──────────────────────────────────────
@@ -620,8 +591,7 @@ export default function MercadoControl() {
                       <React.Fragment key={grp.key}>
                         {grp.rows.map(row => (
                           <FilaEntrega key={row.id} row={row}
-                            onSave={handleGuardar} saving={savingId === row.id}
-                            catalogo={catalogo} onReasignar={handleReasignar} />
+                            onSave={handleGuardar} saving={savingId === row.id} />
                         ))}
                         <FilaAgregarPunto
                           onAgregar={() => handleAgregarPunto(grp.rows[0])}

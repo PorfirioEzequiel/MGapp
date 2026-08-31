@@ -129,6 +129,8 @@ const FichaCiudadanoEdit = () => {
           movilizador: ciudadano.movilizador,
           c_p: ciudadano.c_p,
           col_loc: ciudadano.col_loc,
+          seccion: ciudadano.seccion ? parseInt(ciudadano.seccion, 10) : null,
+          poligono: ciudadano.poligono ? parseInt(ciudadano.poligono, 10) : null,
         })
         .eq("id", ciudadano.id);
       if (error) throw error;
@@ -226,6 +228,30 @@ const FichaCiudadanoEdit = () => {
 
       {/* ── Campos de texto ── */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {/* Sector y Sección */}
+        <div className="mb-4">
+          <label className="block text-sm font-medium text-gray-700 mb-1">Sector (Polígono):</label>
+          <input
+            type="number"
+            name="poligono"
+            value={ciudadano.poligono || ""}
+            onChange={handleChange}
+            placeholder="Ej. 6"
+            className="border border-gray-300 rounded-md p-2 w-full"
+          />
+        </div>
+        <div className="mb-4">
+          <label className="block text-sm font-medium text-gray-700 mb-1">Sección:</label>
+          <input
+            type="number"
+            name="seccion"
+            value={ciudadano.seccion || ""}
+            onChange={handleChange}
+            placeholder="Ej. 6264"
+            className="border border-gray-300 rounded-md p-2 w-full"
+          />
+        </div>
+
         <div className="mb-4">
           <label className="block text-sm font-medium text-gray-700 mb-1">UBT:</label>
           {ubts.length > 0 ? (
