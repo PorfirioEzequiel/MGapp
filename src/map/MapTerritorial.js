@@ -391,7 +391,7 @@ const GenderBar = ({ total, hombres, mujeres, noBinario, sub, isDark }) => {
   );
 };
 
-const HoverTooltip = ({ data, pos, containerRef, isDark, tipo = 'seccion', seccional, sp, sms = [], afil = null, electoral = null }) => {
+const HoverTooltip = ({ data, pos, containerRef, isDark, tipo = 'seccion', seccional, sp, sms = [], afil = null, mercado = null, electoral = null }) => {
   if (!data || !containerRef.current) return null;
 
   const containerW = containerRef.current.offsetWidth;
@@ -551,6 +551,34 @@ const HoverTooltip = ({ data, pos, containerRef, isDark, tipo = 'seccion', secci
           </div>
         )}
       </div>
+
+      {/* Mercado Solidario */}
+      {mercado && (
+        <div className={`mt-2 pt-1.5 border-t ${divider}`}>
+          <div className="flex items-center justify-between mb-1">
+            <span className={`text-xs font-semibold ${sub}`}>Mercado Solidario</span>
+            <span className={`text-[10px] tabular-nums font-bold`}
+              style={{ color: getSemaforoColor(mercado.pct).fill }}>
+              {mercado.entregadas != null ? mercado.entregadas : '—'}
+              <span className={`font-normal ml-1 ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
+                / {mercado.maxRef} ref · {mercado.pct != null ? `${mercado.pct.toFixed(0)}%` : '—'}
+              </span>
+            </span>
+          </div>
+          {mercado.estatus && (
+            <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${
+              mercado.estatus === 'ENTREGADO'    ? 'bg-emerald-100 text-emerald-700' :
+              mercado.estatus === 'PARCIAL'      ? 'bg-orange-100 text-orange-700' :
+              mercado.estatus === 'NO_ENTREGADO' ? 'bg-red-100 text-red-700' :
+                                                   'bg-amber-100 text-amber-700'
+            }`}>{mercado.estatus}</span>
+          )}
+          <div className={`h-1 rounded-full overflow-hidden mt-1.5 ${isDark ? 'bg-gray-700' : 'bg-gray-100'}`}>
+            <div className="h-full rounded-full"
+              style={{ width: `${Math.min(mercado.pct ?? 0, 100)}%`, backgroundColor: getSemaforoColor(mercado.pct).fill }} />
+          </div>
+        </div>
+      )}
 
       {/* Afiliación (discreto) */}
       {afil && (
@@ -777,6 +805,7 @@ const MapTerritorial = ({
   focusCoords = null,
   onClearFocus,
   afiliacionBySec = {},
+  mercadoBySec = {},
   printContext = null,
   editableLocation = null,
   onEditableLocationChange = null,
@@ -1543,6 +1572,23 @@ const MapTerritorial = ({
                 </>
               )}
 
+              {/* ── Capa Mercado Solidario ──────────────────────── */}
+              {Object.keys(mercadoBySec).length > 0 && (
+                <>
+                  <div className="w-full h-px bg-gray-200 my-0.5" />
+                  <button
+                    onClick={() => handleSetElectoralMode(electoralMode === 'semaforo_mercado' ? null : 'semaforo_mercado')}
+                    className={`w-full px-2.5 py-1 rounded-md text-xs font-medium transition-all text-left leading-tight flex items-center gap-1 ${
+                      electoralMode === 'semaforo_mercado' ? 'text-white shadow-sm' : 'text-gray-600 hover:bg-gray-100'
+                    }`}
+                    style={electoralMode === 'semaforo_mercado' ? { background: 'linear-gradient(90deg,#DC2626 0%,#CA8A04 50%,#16A34A 100%)' } : {}}
+                    title="Mercado Solidario — cobertura de entrega por sección"
+                  >
+                    <span style={{ fontSize: 10 }}>▣</span> Mercado Solidario
+                  </button>
+                </>
+              )}
+
               {casillasPjem.length > 0 && (
                 <>
                   <div className="w-full h-px bg-gray-200 my-0.5" />
@@ -1667,7 +1713,8 @@ const MapTerritorial = ({
             const hasFracGeom = fraccionesGeo.some(
               f => f.geometry && parseWKT(f.geometry).length > 0
             );
-            const isSemaforo = electoralMode === 'semaforo_cred';
+            const isSemaforo        = electoralMode === 'semaforo_cred';
+            const isSemaforoMercado = electoralMode === 'semaforo_mercado';
 
             return secciones.map((sec, idx) => {
               const paths      = parseWKT(sec.geometry);
@@ -1697,6 +1744,11 @@ const MapTerritorial = ({
                       : af ? 0 : null;
                     return getSemaforoColor(pct);
                   })()
+                : isSemaforoMercado
+                  ? (() => {
+                      const ms = mercadoBySec[sec.seccion];
+                      return getSemaforoColor(ms ? ms.pct : null);
+                    })()
                 : elResult
                   ? (colorPalette[elResult.winner] || { fill: '#6B7280', stroke: '#374151' })
                   : (sectorColorMap[sec.pologono] || SECTOR_COLORS[0]);
@@ -1704,7 +1756,7 @@ const MapTerritorial = ({
               const isBg       = isSelected && hasFracGeom;
               const isHovered  = hovered?.tipo === 'seccion' && hovered?.data?.seccion === sec.seccion;
               const _aliasTarget = SECTION_ALIASES[sec.seccion];
-              const isAliased  = isSemaforo ? false
+              const isAliased  = (isSemaforo || isSemaforoMercado) ? false
                 : electoralMode === 'ayu_2021'
                   ? (electoralData[sec.seccion] === undefined && _aliasTarget !== undefined)
                   : electoralMode === 'ayu_2021_ieem'
@@ -2410,7 +2462,8 @@ const MapTerritorial = ({
             sp={spName}
             sms={hovered.sms ?? []}
             afil={hovered.tipo === 'seccion' ? afiliacionBySec[hovered.data?.seccion] : null}
-            electoral={electoralMode && hovered.tipo === 'seccion'
+            mercado={hovered.tipo === 'seccion' && electoralMode === 'semaforo_mercado' ? mercadoBySec[hovered.data?.seccion] : null}
+            electoral={electoralMode && electoralMode !== 'semaforo_mercado' && hovered.tipo === 'seccion'
               ? (electoralMode === 'ayu_2021_ieem'  ? getElectoralResultIEEM(hovered.data?.seccion)
                : electoralMode === 'ayu_2024'       ? getElectoralResult2024(hovered.data?.seccion)
                : electoralMode === 'ayu_2024_ieem'  ? getElectoralResult2024IEEM(hovered.data?.seccion)
@@ -2437,27 +2490,37 @@ const MapTerritorial = ({
 
         {electoralMode ? (
           <div className="flex flex-wrap gap-3 items-center">
+            {(electoralMode === 'semaforo_cred' || electoralMode === 'semaforo_mercado') ? (
+              <>
+                <span className={`text-xs font-semibold mr-1 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+                  {electoralMode === 'semaforo_mercado' ? 'Mercado Solidario — cobertura por sección' : 'Credenciales — avance de comprobación'}
+                </span>
+                {[
+                  { label: 'Excelente', color: '#16A34A' },
+                  { label: 'Bien',      color: '#65A30D' },
+                  { label: 'Regular',   color: '#CA8A04' },
+                  { label: 'Bajo',      color: '#EA580C' },
+                  { label: 'Crítico',   color: '#DC2626' },
+                  { label: 'Sin datos', color: '#9CA3AF' },
+                ].map(({ label, color }) => (
+                  <div key={label} className="flex items-center gap-1.5">
+                    <div className="w-3 h-3 rounded-sm flex-shrink-0" style={{ backgroundColor: color }} />
+                    <span className={`text-xs ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>{label}</span>
+                  </div>
+                ))}
+              </>
+            ) : (
             <span className={`text-xs font-semibold mr-1 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
               {electoralMode === 'ayu_2021_ieem' ? 'Ayuntamiento 2021 — IEEM'
                : electoralMode === 'ayu_2024'    ? 'Ayuntamiento 2024 — Rosi Wong'
                : electoralMode === 'senado_2024' ? 'Senaduría 2024 — Mariela Gutiérrez'
                : electoralMode === 'dip_2024'    ? 'Diputación Local 2024 — Interno'
                : 'Ayuntamiento 2021 — interno'}
-            </span>
-            {electoralMode === 'ayu_2024'
-              ? Object.entries(PARTY_COLORS_2024).map(([key, c]) => {
-                  const count = Object.values(electoralData2024).filter(d => d.ganador === key).length;
-                  if (!count) return null;
-                  return (
-                    <div key={key} className="flex items-center gap-1.5">
-                      <div className="w-3 h-3 rounded-sm flex-shrink-0" style={{ backgroundColor: c.fill, border: `1.5px solid ${c.stroke}` }} />
-                      <span className={`text-xs ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>{c.label} <span className="opacity-60">({count})</span></span>
-                    </div>
-                  );
-                })
-              : electoralMode === 'senado_2024'
-                ? Object.entries(PARTY_COLORS_SENADO).map(([key, c]) => {
-                    const count = Object.values(electoralDataSenado).filter(d => d.ganador === key).length;
+            </span>)}
+            {!(electoralMode === 'semaforo_cred' || electoralMode === 'semaforo_mercado') && (
+              electoralMode === 'ayu_2024'
+                ? Object.entries(PARTY_COLORS_2024).map(([key, c]) => {
+                    const count = Object.values(electoralData2024).filter(d => d.ganador === key).length;
                     if (!count) return null;
                     return (
                       <div key={key} className="flex items-center gap-1.5">
@@ -2466,30 +2529,42 @@ const MapTerritorial = ({
                       </div>
                     );
                   })
-                : electoralMode === 'dip_2024'
-                ? Object.entries(PARTY_COLORS_DIP).map(([key, c]) => {
-                    const count = Object.values(electoralDataDip2024).filter(d => d.ganador === key).length;
-                    if (!count) return null;
-                    return (
-                      <div key={key} className="flex items-center gap-1.5">
-                        <div className="w-3 h-3 rounded-sm flex-shrink-0" style={{ backgroundColor: c.fill, border: `1.5px solid ${c.stroke}` }} />
-                        <span className={`text-xs ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>{c.label} <span className="opacity-60">({count})</span></span>
-                      </div>
-                    );
-                  })
-                : Object.entries(PARTY_COLORS).map(([party, c]) => {
-                    const dataSource = electoralMode === 'ayu_2021_ieem' ? electoralDataIEEM : electoralData;
-                    const count = Object.values(dataSource).filter(d => d.ganador_partido === party).length;
-                    if (!count) return null;
-                    return (
-                      <div key={party} className="flex items-center gap-1.5">
-                        <div className="w-3 h-3 rounded-sm flex-shrink-0" style={{ backgroundColor: c.fill, border: `1.5px solid ${c.stroke}` }} />
-                        <span className={`text-xs ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>{party} <span className="opacity-60">({count})</span></span>
-                      </div>
-                    );
-                  })
-            }
-            {(electoralMode === 'ayu_2021_ieem' || electoralMode === 'ayu_2024' || electoralMode === 'senado_2024') && (
+                : electoralMode === 'senado_2024'
+                  ? Object.entries(PARTY_COLORS_SENADO).map(([key, c]) => {
+                      const count = Object.values(electoralDataSenado).filter(d => d.ganador === key).length;
+                      if (!count) return null;
+                      return (
+                        <div key={key} className="flex items-center gap-1.5">
+                          <div className="w-3 h-3 rounded-sm flex-shrink-0" style={{ backgroundColor: c.fill, border: `1.5px solid ${c.stroke}` }} />
+                          <span className={`text-xs ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>{c.label} <span className="opacity-60">({count})</span></span>
+                        </div>
+                      );
+                    })
+                  : electoralMode === 'dip_2024'
+                    ? Object.entries(PARTY_COLORS_DIP).map(([key, c]) => {
+                        const count = Object.values(electoralDataDip2024).filter(d => d.ganador === key).length;
+                        if (!count) return null;
+                        return (
+                          <div key={key} className="flex items-center gap-1.5">
+                            <div className="w-3 h-3 rounded-sm flex-shrink-0" style={{ backgroundColor: c.fill, border: `1.5px solid ${c.stroke}` }} />
+                            <span className={`text-xs ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>{c.label} <span className="opacity-60">({count})</span></span>
+                          </div>
+                        );
+                      })
+                    : Object.entries(PARTY_COLORS).map(([party, c]) => {
+                        const dataSource = electoralMode === 'ayu_2021_ieem' ? electoralDataIEEM : electoralData;
+                        const count = Object.values(dataSource).filter(d => d.ganador_partido === party).length;
+                        if (!count) return null;
+                        return (
+                          <div key={party} className="flex items-center gap-1.5">
+                            <div className="w-3 h-3 rounded-sm flex-shrink-0" style={{ backgroundColor: c.fill, border: `1.5px solid ${c.stroke}` }} />
+                            <span className={`text-xs ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>{party} <span className="opacity-60">({count})</span></span>
+                          </div>
+                        );
+                      })
+            )}
+            {!(electoralMode === 'semaforo_cred' || electoralMode === 'semaforo_mercado') &&
+              (electoralMode === 'ayu_2021_ieem' || electoralMode === 'ayu_2024' || electoralMode === 'senado_2024') && (
               <div className="flex items-center gap-1.5 ml-2">
                 <div className="w-3 h-3 rounded-sm flex-shrink-0 bg-gray-400" style={{ border: '2px solid #FFFFFF', outline: '1px solid #9CA3AF' }} />
                 <span className={`text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>Sec. fraccionada</span>

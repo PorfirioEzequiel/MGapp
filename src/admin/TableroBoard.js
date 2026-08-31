@@ -297,6 +297,12 @@ const TableroBoard = ({ readOnly = false }) => {
   const [panelFade,     setPanelFade]     = useState(true);
   const prevElectoralMode = useRef(null);
 
+  // ── Mercado Solidario ─────────────────────────────────────────────────────
+  const [mercadoEntregas,  setMercadoEntregas]  = useState([]);   // lista de entregas disponibles
+  const [mercadoFiltro,    setMercadoFiltro]    = useState(null); // { año, mes, entrega }
+  const [mercadoBySec,     setMercadoBySec]     = useState({});   // seccion → { entregadas, pct, estatus, maxRef }
+  const [loadingMercado,   setLoadingMercado]   = useState(false);
+
   useEffect(() => {
     const fetchAll = async () => {
       setLoadingMap(true);
@@ -381,6 +387,60 @@ const TableroBoard = ({ readOnly = false }) => {
       return () => clearTimeout(t);
     }
   }, [electoralMode]);
+
+  // ── Mercado: carga lista de entregas al activar la capa ──────────────────
+  useEffect(() => {
+    if (electoralMode !== 'semaforo_mercado') return;
+    if (mercadoEntregas.length > 0) return;
+    supabase.from('mercado').select('año,mes,entrega').order('entrega', { ascending: false })
+      .then(({ data }) => {
+        if (!data) return;
+        const map = new Map();
+        for (const r of data) {
+          const key = `${r.año}_${r.mes}_${r.entrega}`;
+          if (!map.has(key)) map.set(key, { año: r.año, mes: r.mes, entrega: r.entrega });
+        }
+        const lista = [...map.values()].sort((a, b) => b.entrega - a.entrega || b.año - a.año);
+        setMercadoEntregas(lista);
+        if (lista.length > 0 && !mercadoFiltro) setMercadoFiltro(lista[0]);
+      });
+  }, [electoralMode, mercadoEntregas.length, mercadoFiltro]);
+
+  // ── Mercado: carga filas por entrega seleccionada ─────────────────────────
+  useEffect(() => {
+    if (!mercadoFiltro) return;
+    setLoadingMercado(true);
+    supabase.from('mercado')
+      .select('seccion, sector, entregadas, estatus, fracciones')
+      .eq('año', mercadoFiltro.año).eq('mes', mercadoFiltro.mes).eq('entrega', mercadoFiltro.entrega)
+      .then(({ data }) => {
+        if (!data) { setMercadoBySec({}); setLoadingMercado(false); return; }
+        // Agrupa por sección: suma entregadas, toma estatus predominante
+        const bySec = {};
+        for (const r of data) {
+          const sec = r.seccion;
+          if (!bySec[sec]) bySec[sec] = { entregadas: 0, fracciones: r.fracciones ?? 0, sector: r.sector, estatusCounts: {} };
+          bySec[sec].entregadas += Number(r.entregadas ?? 0);
+          const est = r.estatus ?? 'PENDIENTE';
+          bySec[sec].estatusCounts[est] = (bySec[sec].estatusCounts[est] || 0) + 1;
+        }
+        const maxEntregadas = Math.max(...Object.values(bySec).map(v => v.entregadas), 1);
+        const result = {};
+        for (const [sec, v] of Object.entries(bySec)) {
+          const estatus = Object.entries(v.estatusCounts).sort((a, b) => b[1] - a[1])[0]?.[0] ?? 'PENDIENTE';
+          result[Number(sec)] = {
+            entregadas: v.entregadas,
+            fracciones: v.fracciones,
+            sector: v.sector,
+            estatus,
+            pct: (v.entregadas / maxEntregadas) * 100,
+            maxRef: maxEntregadas,
+          };
+        }
+        setMercadoBySec(result);
+        setLoadingMercado(false);
+      });
+  }, [mercadoFiltro]);
 
   // ── Afiliación (local JSON) ───────────────────────────────────────────────
   const afiliacionBySec = useMemo(() => {
@@ -949,6 +1009,247 @@ const TableroBoard = ({ readOnly = false }) => {
           </p>
         )}
 
+      </div>
+    );
+  };
+
+  // ── Mercado Solidario panel ───────────────────────────────────────────────
+  const renderMercadoPanel = () => {
+    const MESES = ['ENE','FEB','MAR','ABR','MAY','JUN','JUL','AGO','SEP','OCT','NOV','DIC'];
+    const semaforoColor = (p) => {
+      if (p == null || isNaN(p)) return '#9CA3AF';
+      if (p >= 90) return '#16A34A';
+      if (p >= 75) return '#65A30D';
+      if (p >= 50) return '#CA8A04';
+      if (p >= 25) return '#EA580C';
+      return '#DC2626';
+    };
+    const semaforoLabel = (p) => {
+      if (p == null || isNaN(p)) return 'Sin datos';
+      if (p >= 90) return 'Excelente';
+      if (p >= 75) return 'Bien';
+      if (p >= 50) return 'Regular';
+      if (p >= 25) return 'Bajo';
+      return 'Crítico';
+    };
+
+    // Filtrar mercadoBySec según nivel actual
+    const scopeSeccionNums = selectedSeccion != null ? [selectedSeccion]
+      : selectedSector   != null ? allSecciones.filter(s => s.pologono === selectedSector).map(s => s.seccion)
+      : selectedDistrito != null ? allSecciones.filter(s => s.distrito_federal === selectedDistrito).map(s => s.seccion)
+      : null; // null = todo el municipio
+
+    const seccionesEnScope = scopeSeccionNums
+      ? Object.entries(mercadoBySec).filter(([sec]) => scopeSeccionNums.includes(Number(sec)))
+      : Object.entries(mercadoBySec);
+
+    const totalEntregadas = seccionesEnScope.reduce((s, [, v]) => s + v.entregadas, 0);
+    const maxRef = seccionesEnScope.length > 0 ? Math.max(...seccionesEnScope.map(([, v]) => v.entregadas), 1) : 1;
+    const pctGlobal = maxRef > 0 ? (totalEntregadas / (maxRef * seccionesEnScope.length)) * 100 : null;
+    const seccionesConDatos = seccionesEnScope.filter(([, v]) => v.entregadas > 0).length;
+
+    // Breakdown por nivel
+    const isMunicipio = selectedSeccion == null && selectedSector == null && selectedDistrito == null;
+    const isSector    = selectedSector   != null && selectedSeccion == null;
+    const isSeccion   = selectedSeccion  != null;
+
+    const scopeLabel = isSeccion  ? `Sección ${selectedSeccion}`
+      : isSector    ? `Sector ${selectedSector}`
+      : selectedDistrito != null ? `Distrito ${selectedDistrito}`
+      : 'Municipio completo';
+
+    // Breakdown: municipio/distrito → por sector; sector → por sección
+    const breakdown = (() => {
+      if (isSeccion) return null;
+      if (isSector) {
+        return seccionesEnScope
+          .map(([sec, v]) => ({ label: `Sec. ${sec}`, key: sec, ...v }))
+          .filter(r => r.entregadas > 0)
+          .sort((a, b) => b.entregadas - a.entregadas)
+          .slice(0, 20);
+      }
+      // Agrupa por sector
+      const bySec = {};
+      for (const [sec, v] of seccionesEnScope) {
+        const sp = v.sector ?? '?';
+        if (!bySec[sp]) bySec[sp] = { entregadas: 0, count: 0 };
+        bySec[sp].entregadas += v.entregadas;
+        bySec[sp].count++;
+      }
+      const bySector = Object.entries(bySec)
+        .map(([sp, d]) => ({ label: `Sector ${sp}`, key: sp, entregadas: d.entregadas, count: d.count, maxRef }))
+        .filter(r => r.entregadas > 0)
+        .sort((a, b) => b.entregadas - a.entregadas);
+      return bySector.length ? bySector : null;
+    })();
+
+    const barColor = semaforoColor(seccionesEnScope.length > 0
+      ? (seccionesConDatos / seccionesEnScope.length) * 100
+      : null);
+
+    // Conteo por estatus
+    const estatusCount = { ENTREGADO: 0, PARCIAL: 0, PENDIENTE: 0, NO_ENTREGADO: 0 };
+    for (const [, v] of seccionesEnScope) {
+      if (estatusCount[v.estatus] != null) estatusCount[v.estatus]++;
+    }
+
+    return (
+      <div className="space-y-2.5">
+
+        {/* Filtro de entrega */}
+        <div className="rounded-xl border border-slate-200 bg-slate-50 p-2.5">
+          <p className="text-[9px] font-bold uppercase tracking-[0.14em] text-slate-400 mb-1.5">Entrega</p>
+          <select
+            value={mercadoFiltro ? `${mercadoFiltro.año}|${mercadoFiltro.mes}|${mercadoFiltro.entrega}` : ''}
+            onChange={e => {
+              const [año, mes, entrega] = e.target.value.split('|');
+              setMercadoFiltro({ año: parseInt(año), mes, entrega: parseInt(entrega) });
+            }}
+            className="w-full text-xs border border-slate-200 rounded-lg px-2 py-1.5 bg-white text-slate-700 font-medium focus:outline-none focus:ring-2 focus:ring-emerald-300"
+          >
+            {mercadoEntregas.map(e => (
+              <option key={`${e.año}|${e.mes}|${e.entrega}`} value={`${e.año}|${e.mes}|${e.entrega}`}>
+                Entrega {e.entrega} · {MESES[(['ENERO','FEBRERO','MARZO','ABRIL','MAYO','JUNIO','JULIO','AGOSTO','SEPTIEMBRE','OCTUBRE','NOVIEMBRE','DICIEMBRE'].indexOf(e.mes))]} {e.año}
+              </option>
+            ))}
+          </select>
+          {loadingMercado && <p className="text-[9px] text-slate-400 mt-1">Cargando datos…</p>}
+        </div>
+
+        {/* Scope y status global */}
+        <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5">
+          <div className="flex items-start justify-between gap-2">
+            <div>
+              <p className="text-[9px] font-bold uppercase tracking-[0.14em] text-slate-400 leading-none mb-1">Mercado Solidario</p>
+              <p className="text-xs font-bold text-slate-800 leading-snug">Cobertura vs. sección referencia</p>
+            </div>
+            <span className="text-[9px] font-bold px-2 py-1 rounded-full whitespace-nowrap flex-shrink-0 text-white"
+              style={{ backgroundColor: barColor }}>
+              {semaforoLabel(seccionesConDatos > 0 ? (seccionesConDatos / seccionesEnScope.length) * 100 : null)}
+            </span>
+          </div>
+          <p className="text-[10px] text-slate-500 mt-1.5 flex items-center gap-1">
+            <span className="w-1.5 h-1.5 rounded-full inline-block" style={{ backgroundColor: barColor }} />
+            {scopeLabel}
+          </p>
+        </div>
+
+        {/* Métricas clave */}
+        <div className="grid grid-cols-3 gap-1.5">
+          <div className="bg-emerald-50 rounded-xl p-2 text-center">
+            <p className="text-[9px] font-bold uppercase tracking-widest text-emerald-600 leading-none mb-1">Entregadas</p>
+            <p className="text-lg font-bold tabular-nums text-emerald-700">{fmt(totalEntregadas)}</p>
+          </div>
+          <div className="bg-blue-50 rounded-xl p-2 text-center">
+            <p className="text-[9px] font-bold uppercase tracking-widest text-blue-600 leading-none mb-1">Secciones</p>
+            <p className="text-lg font-bold tabular-nums text-blue-700">{seccionesConDatos}<span className="text-xs text-blue-400 font-normal">/{seccionesEnScope.length}</span></p>
+          </div>
+          <div className="rounded-xl p-2 text-center" style={{ backgroundColor: barColor + '18' }}>
+            <p className="text-[9px] font-bold uppercase tracking-widest leading-none mb-1" style={{ color: barColor }}>Cobertura</p>
+            <p className="text-lg font-bold tabular-nums" style={{ color: barColor }}>
+              {seccionesEnScope.length > 0 ? `${Math.round((seccionesConDatos / seccionesEnScope.length) * 100)}%` : '—'}
+            </p>
+          </div>
+        </div>
+
+        {/* Barra de referencia con max */}
+        {seccionesConDatos > 0 && (
+          <div>
+            <div className="flex justify-between mb-0.5">
+              <span className="text-[9px] text-slate-400">Ref. máx: {fmt(maxRef)} uds</span>
+              <span className="text-[9px] font-semibold text-slate-500">sección líder = 100%</span>
+            </div>
+            <div className="h-2 rounded-full overflow-hidden" style={{ background: 'linear-gradient(90deg,#DC2626 0%,#CA8A04 40%,#65A30D 75%,#16A34A 100%)', opacity: 0.15 }} />
+            <div className="h-2 rounded-full overflow-hidden -mt-2">
+              <div className="h-full rounded-full transition-all duration-700"
+                style={{ width: `${Math.min((seccionesConDatos / Math.max(seccionesEnScope.length, 1)) * 100, 100)}%`, backgroundColor: barColor }} />
+            </div>
+          </div>
+        )}
+
+        {/* Estatus por sección */}
+        {seccionesEnScope.length > 0 && (
+          <div className="rounded-xl border border-slate-100 p-2.5">
+            <p className="text-[9px] font-bold uppercase tracking-widest text-slate-400 mb-1.5">Por estatus</p>
+            <div className="grid grid-cols-2 gap-1">
+              {[
+                { key: 'ENTREGADO',    label: 'Entregado',    color: '#16A34A', bg: '#f0fdf4' },
+                { key: 'PARCIAL',      label: 'Parcial',      color: '#EA580C', bg: '#fff7ed' },
+                { key: 'PENDIENTE',    label: 'Pendiente',    color: '#CA8A04', bg: '#fefce8' },
+                { key: 'NO_ENTREGADO', label: 'No entregado', color: '#DC2626', bg: '#fef2f2' },
+              ].map(({ key, label, color, bg }) => (
+                <div key={key} className="flex items-center justify-between rounded-lg px-2 py-1.5" style={{ backgroundColor: bg }}>
+                  <span className="text-[10px] font-medium" style={{ color }}>{label}</span>
+                  <span className="text-xs font-bold tabular-nums" style={{ color }}>{estatusCount[key]}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Leyenda de colores */}
+        <div className="rounded-xl border border-slate-100 p-2.5">
+          <p className="text-[9px] font-bold uppercase tracking-widest text-slate-400 mb-1.5">Escala (% vs. sección máx)</p>
+          <div className="space-y-1">
+            {[
+              { label: 'Excelente', range: '≥ 90%',  color: '#16A34A' },
+              { label: 'Bien',      range: '75–89%', color: '#65A30D' },
+              { label: 'Regular',   range: '50–74%', color: '#CA8A04' },
+              { label: 'Bajo',      range: '25–49%', color: '#EA580C' },
+              { label: 'Crítico',   range: '< 25%',  color: '#DC2626' },
+              { label: 'Sin datos', range: '—',       color: '#9CA3AF' },
+            ].map(({ label, range, color }) => (
+              <div key={label} className="flex items-center justify-between">
+                <div className="flex items-center gap-1.5">
+                  <div className="w-2 h-2 rounded-sm flex-shrink-0" style={{ backgroundColor: color }} />
+                  <span className="text-[10px] font-medium text-slate-700">{label}</span>
+                </div>
+                <span className="text-[9px] text-slate-400 tabular-nums">{range}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Breakdown */}
+        {breakdown && (
+          <div>
+            <div className="flex items-center justify-between mb-1.5">
+              <p className="text-[9px] font-bold uppercase tracking-widest text-slate-400">
+                {isSector ? 'Por sección' : 'Por sector'}
+              </p>
+              <span className="text-[9px] text-slate-400">mayor → menor</span>
+            </div>
+            <div className="space-y-1.5">
+              {breakdown.map(row => {
+                const pctRow = (row.entregadas / maxRef) * 100;
+                const rowColor = semaforoColor(pctRow);
+                return (
+                  <div key={row.key}>
+                    <div className="flex items-center justify-between mb-0.5">
+                      <span className="text-[10px] font-semibold text-slate-700">{row.label}</span>
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-[9px] text-slate-400 tabular-nums">{fmt(row.entregadas)}</span>
+                        <span className="text-[9px] font-bold tabular-nums min-w-[2.5rem] text-right" style={{ color: rowColor }}>
+                          {pctRow.toFixed(0)}%
+                        </span>
+                      </div>
+                    </div>
+                    <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
+                      <div className="h-full rounded-full transition-all duration-500"
+                        style={{ width: `${Math.min(pctRow, 100)}%`, backgroundColor: rowColor }} />
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {!isSeccion && (
+          <p className="text-[9px] text-slate-400 text-center leading-snug pt-1">
+            {isSector ? 'Selecciona una sección para ver su detalle' : 'Selecciona un sector para ver su avance por sección'}
+          </p>
+        )}
       </div>
     );
   };
@@ -1743,18 +2044,21 @@ const TableroBoard = ({ readOnly = false }) => {
                 {/* Header dinámico */}
                 <div className="flex items-center justify-between mb-2 gap-2">
                   <SectionTitle accent={
-                    electoralMode === 'semaforo_cred' ? 'bg-emerald-600' :
-                    electoralMode === 'dip_2024'      ? 'bg-slate-700' :
-                    electoralMode === 'ayu_2024'      ? 'bg-blue-700' :
-                    electoralMode === 'ayu_2024_ieem' ? 'bg-emerald-700' :
-                    electoralMode === 'senado_2024'   ? 'bg-rose-900' :
-                    electoralMode === 'ayu_2021_ieem' ? 'bg-emerald-700' :
+                    electoralMode === 'semaforo_cred'     ? 'bg-emerald-600' :
+                    electoralMode === 'semaforo_mercado'  ? 'bg-orange-500' :
+                    electoralMode === 'dip_2024'          ? 'bg-slate-700' :
+                    electoralMode === 'ayu_2024'          ? 'bg-blue-700' :
+                    electoralMode === 'ayu_2024_ieem'     ? 'bg-emerald-700' :
+                    electoralMode === 'senado_2024'       ? 'bg-rose-900' :
+                    electoralMode === 'ayu_2021_ieem'     ? 'bg-emerald-700' :
                     electoralMode ? 'bg-red-800' :
                     currentLevel === 3 ? 'bg-violet-500' : currentLevel === 2 ? 'bg-emerald-500' :
                     currentLevel === 1 ? 'bg-blue-500' : 'bg-slate-400'
                   }>
                     {electoralMode === 'semaforo_cred'
                       ? 'Entrega de credenciales'
+                      : electoralMode === 'semaforo_mercado'
+                        ? 'Mercado Solidario'
                       : electoralMode === 'dip_2024'
                         ? 'Diputación Local 2024 · Interno'
                         : electoralMode === 'senado_2024'
@@ -1786,7 +2090,13 @@ const TableroBoard = ({ readOnly = false }) => {
                   transform: panelFade ? 'translateY(0)' : 'translateY(6px)',
                   transition: 'opacity 0.25s ease, transform 0.25s ease',
                 }}>
-                  {electoralMode === 'semaforo_cred' ? renderSemaforoPanel() : electoralMode ? renderElectoralPanel() : renderInfoPanel()}
+                  {electoralMode === 'semaforo_cred'
+                    ? renderSemaforoPanel()
+                    : electoralMode === 'semaforo_mercado'
+                      ? renderMercadoPanel()
+                      : electoralMode
+                        ? renderElectoralPanel()
+                        : renderInfoPanel()}
                 </div>
               </div>
             )}
@@ -1812,6 +2122,7 @@ const TableroBoard = ({ readOnly = false }) => {
                 focusCoords={focusCoords}
                 onClearFocus={() => { setSelectedSM(null); setFocusCoords(null); }}
                 afiliacionBySec={afiliacionBySec}
+                mercadoBySec={mercadoBySec}
                 printContext={printContext}
                 electoralModeExternal={electoralMode}
                 onElectoralModeChange={setElectoralMode}
