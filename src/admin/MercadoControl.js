@@ -19,6 +19,8 @@ const MESES = [
   "JULIO","AGOSTO","SEPTIEMBRE","OCTUBRE","NOVIEMBRE","DICIEMBRE",
 ];
 
+const CHOFERES = ["GUILLERMO", "BRANDON", "SERGIO", "TELLO"];
+
 const ST_ROW = {
   PENDIENTE:    "bg-amber-50 text-amber-700 border-amber-200",
   ENTREGADO:    "bg-emerald-50 text-emerald-700 border-emerald-200",
@@ -104,9 +106,9 @@ function FilaEntrega({ row, onSave, saving }) {
   };
 
   return (
-    <tr className={`border-b border-slate-100 transition-all duration-150 ${trBg}`}>
+    <tr className={`border-b my-3 border-slate-100 transition-all duration-150 ${trBg}`}>
       {/* Sección + indicador de estado */}
-      <td className="px-3 py-2 whitespace-nowrap">
+      <td className="px-3 py-2 mx-2 whitespace-nowrap">
         <div className="flex items-center gap-2">
           <span
             title={saving ? "Guardando…" : listo ? "Listo para ruta" : dirty ? "Sin guardar" : "Pendiente de asignar"}
@@ -488,6 +490,24 @@ export default function MercadoControl() {
     };
   }, [filasFiltradas]);
 
+  // Resumen dinámico de choferes mientras se van asignando secciones
+  const resumenChoferes = useMemo(() => {
+    return CHOFERES.map(nombre => {
+      const misFilas = filasFiltradas.filter(f =>
+        (f.camioneta_repartidor || "").toUpperCase().includes(nombre)
+      );
+      const porViaje = {};
+      for (const f of misFilas) {
+        const v = f.numero_viaje || 1;
+        porViaje[v] = (porViaje[v] || 0) + (f.total || 0);
+      }
+      const viajes = Object.entries(porViaje)
+        .map(([v, cantidad]) => ({ viaje: Number(v), cantidad }))
+        .sort((a, b) => a.viaje - b.viaje);
+      return { nombre, viajes, total: viajes.reduce((s, v) => s + v.cantidad, 0), asignadas: misFilas.length };
+    });
+  }, [filasFiltradas]);
+
   // ── Render ──────────────────────────────────────────────────────────────────
   return (
     <div className="min-h-screen bg-slate-100 flex flex-col">
@@ -563,6 +583,38 @@ export default function MercadoControl() {
             </div>
           </div>
 
+          {/* Panel de choferes */}
+          <div className="bg-white border-b border-slate-100 px-4 py-2 shrink-0">
+            <div className="flex items-center gap-3 overflow-x-auto pb-0.5">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 shrink-0">Choferes:</span>
+              {resumenChoferes.map(c => (
+                <div key={c.nombre}
+                  className={`shrink-0 rounded-xl border px-3 py-1.5 flex items-center gap-2 ${
+                    c.asignadas > 0
+                      ? "bg-blue-50 border-blue-200"
+                      : "bg-slate-50 border-slate-200"
+                  }`}>
+                  <span className="text-xs font-black text-slate-700">{c.nombre}</span>
+                  {c.viajes.length === 0 ? (
+                    <span className="text-[10px] text-slate-400">Sin asignar</span>
+                  ) : (
+                    <>
+                      {c.viajes.map(v => (
+                        <span key={v.viaje}
+                          className="text-[10px] text-blue-700 font-bold bg-white border border-blue-200 rounded-lg px-1.5 py-0.5 tabular-nums">
+                          V{v.viaje}: {v.cantidad}
+                        </span>
+                      ))}
+                      <span className="text-[10px] text-slate-500 font-semibold tabular-nums">
+                        = {c.total}
+                      </span>
+                    </>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+
           {/* Tabla */}
           {cargando ? (
             <div className="flex items-center justify-center py-20">
@@ -597,18 +649,24 @@ export default function MercadoControl() {
                       </td>
                     </tr>
                   ) : (
-                    seccionGroups.map(grp => (
-                      <React.Fragment key={grp.key}>
-                        {grp.rows.map(row => (
-                          <FilaEntrega key={rowKey(row)} row={row}
-                            onSave={handleGuardar} saving={savingId === rowKey(row)} />
-                        ))}
-                        <FilaAgregarPunto
-                          onAgregar={() => handleAgregarPunto(grp.rows[0])}
-                          agregando={agregandoId === grp.key}
-                        />
-                      </React.Fragment>
-                    ))
+                    <>
+                      {/* Separador visual entre encabezado y primera fila */}
+                      <tr aria-hidden="true">
+                        <td colSpan={13} className="pt-2 pb-0 bg-slate-50 border-b-2 border-slate-200" />
+                      </tr>
+                      {seccionGroups.map(grp => (
+                        <React.Fragment key={grp.key}>
+                          {grp.rows.map(row => (
+                            <FilaEntrega key={rowKey(row)} row={row}
+                              onSave={handleGuardar} saving={savingId === rowKey(row)} />
+                          ))}
+                          <FilaAgregarPunto
+                            onAgregar={() => handleAgregarPunto(grp.rows[0])}
+                            agregando={agregandoId === grp.key}
+                          />
+                        </React.Fragment>
+                      ))}
+                    </>
                   )}
                 </tbody>
                 {filasFiltradas.length > 0 && (
