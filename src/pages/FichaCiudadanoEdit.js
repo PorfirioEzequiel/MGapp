@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import supabase, { supabaseStorage } from "../supabase/client";
 
@@ -82,10 +82,12 @@ const FichaCiudadanoEdit = () => {
   const [ciudadano, setCiudadano] = useState(null);
   const [loading, setLoading] = useState(true);
   const [ubts, setUbts] = useState([]);
+  const [catalogo, setCatalogo] = useState([]); // {poligono, seccion} para los selects en cascada
   const [error, setError] = useState(null);
   const [uploading, setUploading] = useState({});
   const puestosc = ["MOVILIZADOR", "INVITADO"];
 
+  // Cargar ciudadano
   useEffect(() => {
     supabase
       .from("ciudadania")
@@ -99,14 +101,46 @@ const FichaCiudadanoEdit = () => {
       });
   }, [id]);
 
+  // Cargar catálogo de sectores y secciones
   useEffect(() => {
-    if (!ciudadano?.seccion) return;
+    supabase
+      .from("ubt_catalogo")
+      .select("poligono, seccion")
+      .order("poligono", { ascending: true })
+      .order("seccion", { ascending: true })
+      .then(({ data }) => {
+        if (!data) return;
+        setCatalogo(
+          data.map(r => ({
+            poligono: r.poligono != null ? String(r.poligono) : null,
+            seccion:  r.seccion  != null ? String(r.seccion)  : null,
+          })).filter(r => r.poligono && r.seccion)
+        );
+      });
+  }, []);
+
+  // Fracciones según sección seleccionada
+  useEffect(() => {
+    if (!ciudadano?.seccion) { setUbts([]); return; }
     supabase
       .from("ubt_catalogo")
       .select("fraccion")
       .eq("seccion", ciudadano.seccion)
       .then(({ data }) => setUbts((data ?? []).map((r) => r.fraccion).filter(Boolean)));
   }, [ciudadano?.seccion]);
+
+  // Sectores disponibles — únicos y ordenados
+  const sectoresDisp = useMemo(
+    () => [...new Set(catalogo.map(r => r.poligono))].sort((a, b) => Number(a) - Number(b)),
+    [catalogo]
+  );
+
+  // Secciones filtradas por sector seleccionado
+  const seccionesDisp = useMemo(() => {
+    const cur = ciudadano?.poligono != null ? String(ciudadano.poligono) : "";
+    const base = cur ? catalogo.filter(r => r.poligono === cur) : catalogo;
+    return [...new Set(base.map(r => r.seccion))].sort((a, b) => Number(a) - Number(b));
+  }, [catalogo, ciudadano?.poligono]);
 
   async function handleSave() {
     if (!ciudadano) return;
@@ -129,8 +163,8 @@ const FichaCiudadanoEdit = () => {
           movilizador: ciudadano.movilizador,
           c_p: ciudadano.c_p,
           col_loc: ciudadano.col_loc,
-          seccion: ciudadano.seccion ? parseInt(ciudadano.seccion, 10) : null,
-          poligono: ciudadano.poligono ? parseInt(ciudadano.poligono, 10) : null,
+          seccion:  ciudadano.seccion  != null && ciudadano.seccion  !== "" ? parseInt(ciudadano.seccion,  10) : null,
+          poligono: ciudadano.poligono != null && ciudadano.poligono !== "" ? parseInt(ciudadano.poligono, 10) : null,
         })
         .eq("id", ciudadano.id);
       if (error) throw error;
@@ -228,28 +262,45 @@ const FichaCiudadanoEdit = () => {
 
       {/* ── Campos de texto ── */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {/* Sector y Sección */}
+        {/* Sector y Sección — selects en cascada desde ubt_catalogo */}
         <div className="mb-4">
           <label className="block text-sm font-medium text-gray-700 mb-1">Sector (Polígono):</label>
-          <input
-            type="number"
-            name="poligono"
-            value={ciudadano.poligono || ""}
-            onChange={handleChange}
-            placeholder="Ej. 6"
-            className="border border-gray-300 rounded-md p-2 w-full"
-          />
+          <select
+            value={ciudadano.poligono != null ? String(ciudadano.poligono) : ""}
+            onChange={e => {
+              const v = e.target.value;
+              setCiudadano(prev => ({ ...prev, poligono: v || null, seccion: null, ubt: "" }));
+            }}
+            className="border border-gray-300 rounded-md p-2 w-full bg-white"
+          >
+            <option value="">— Seleccionar sector —</option>
+            {sectoresDisp.map(s => (
+              <option key={s} value={s}>Sector {s}</option>
+            ))}
+          </select>
         </div>
         <div className="mb-4">
           <label className="block text-sm font-medium text-gray-700 mb-1">Sección:</label>
-          <input
-            type="number"
-            name="seccion"
-            value={ciudadano.seccion || ""}
-            onChange={handleChange}
-            placeholder="Ej. 6264"
-            className="border border-gray-300 rounded-md p-2 w-full"
-          />
+          <select
+            value={ciudadano.seccion != null ? String(ciudadano.seccion) : ""}
+            onChange={e => {
+              const v = e.target.value;
+              // Auto-rellena el sector si no está seleccionado
+              const row = catalogo.find(r => r.seccion === v);
+              setCiudadano(prev => ({
+                ...prev,
+                seccion: v ? parseInt(v, 10) : null,
+                ubt: "",
+                ...(row && !prev.poligono ? { poligono: row.poligono } : {}),
+              }));
+            }}
+            className="border border-gray-300 rounded-md p-2 w-full bg-white"
+          >
+            <option value="">— Seleccionar sección —</option>
+            {seccionesDisp.map(s => (
+              <option key={s} value={s}>{s}</option>
+            ))}
+          </select>
         </div>
 
         <div className="mb-4">
