@@ -105,16 +105,20 @@ const FichaCiudadanoEdit = () => {
   useEffect(() => {
     supabase
       .from("ubt_catalogo")
-      .select("poligono, seccion")
-      .order("poligono", { ascending: true })
+      .select("poligono, sector, seccion")
+      .order("sector", { ascending: true })
       .order("seccion", { ascending: true })
       .then(({ data }) => {
         if (!data) return;
         setCatalogo(
-          data.map(r => ({
-            poligono: r.poligono != null ? String(r.poligono) : null,
-            seccion:  r.seccion  != null ? String(r.seccion)  : null,
-          })).filter(r => r.poligono && r.seccion)
+          data
+            .map(r => {
+              // poligono puede estar vacío; sector es el fallback
+              const pol = r.poligono != null && r.poligono !== "" ? String(r.poligono) : String(r.sector ?? "");
+              const sec = r.seccion != null ? String(r.seccion) : null;
+              return { poligono: pol, seccion: sec };
+            })
+            .filter(r => r.poligono && r.seccion)
         );
       });
   }, []);
@@ -129,18 +133,23 @@ const FichaCiudadanoEdit = () => {
       .then(({ data }) => setUbts((data ?? []).map((r) => r.fraccion).filter(Boolean)));
   }, [ciudadano?.seccion]);
 
-  // Sectores disponibles — únicos y ordenados
-  const sectoresDisp = useMemo(
-    () => [...new Set(catalogo.map(r => r.poligono))].sort((a, b) => Number(a) - Number(b)),
-    [catalogo]
-  );
-
-  // Secciones filtradas por sector seleccionado
-  const seccionesDisp = useMemo(() => {
-    const cur = ciudadano?.poligono != null ? String(ciudadano.poligono) : "";
-    const base = cur ? catalogo.filter(r => r.poligono === cur) : catalogo;
-    return [...new Set(base.map(r => r.seccion))].sort((a, b) => Number(a) - Number(b));
+  // Sectores disponibles — únicos y ordenados; incluye el valor actual aunque no esté en catálogo
+  const sectoresDisp = useMemo(() => {
+    const curPol = ciudadano?.poligono != null && ciudadano.poligono !== "" ? String(ciudadano.poligono) : "";
+    const set = [...new Set(catalogo.map(r => r.poligono))].sort((a, b) => Number(a) - Number(b));
+    if (curPol && !set.includes(curPol)) return [curPol, ...set];
+    return set;
   }, [catalogo, ciudadano?.poligono]);
+
+  // Secciones filtradas por sector; incluye el valor actual aunque no esté en catálogo
+  const seccionesDisp = useMemo(() => {
+    const curPol = ciudadano?.poligono != null && ciudadano.poligono !== "" ? String(ciudadano.poligono) : "";
+    const curSec = ciudadano?.seccion  != null && ciudadano.seccion  !== "" ? String(ciudadano.seccion)  : "";
+    const base = curPol ? catalogo.filter(r => r.poligono === curPol) : catalogo;
+    const set = [...new Set(base.map(r => r.seccion))].sort((a, b) => Number(a) - Number(b));
+    if (curSec && !set.includes(curSec)) return [curSec, ...set];
+    return set;
+  }, [catalogo, ciudadano?.poligono, ciudadano?.seccion]);
 
   async function handleSave() {
     if (!ciudadano) return;
