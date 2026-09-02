@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import supabase, { supabaseStorage } from "../supabase/client";
 
@@ -81,9 +81,10 @@ const FichaCiudadanoEdit = () => {
   const navigate = useNavigate();
   const [ciudadano, setCiudadano] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [ubts, setUbts] = useState([]);
-  const [catalogo, setCatalogo] = useState([]); // {poligono, seccion} para los selects en cascada
-  const [error, setError] = useState(null);
+  const [sectores, setSectores]   = useState([]);   // lista de sectores únicos
+  const [secciones, setSecciones] = useState([]);   // secciones del sector seleccionado
+  const [ubts, setUbts]           = useState([]);   // fracciones de la sección seleccionada
+  const [error, setError]         = useState(null);
   const [uploading, setUploading] = useState({});
   const puestosc = ["MOVILIZADOR", "INVITADO"];
 
@@ -101,29 +102,34 @@ const FichaCiudadanoEdit = () => {
       });
   }, [id]);
 
-  // Cargar catálogo de sectores y secciones
+  // Cargar todos los sectores disponibles (columna "sector" en ubt_catalogo)
   useEffect(() => {
     supabase
       .from("ubt_catalogo")
-      .select("poligono, sector, seccion")
+      .select("sector")
       .order("sector", { ascending: true })
-      .order("seccion", { ascending: true })
       .then(({ data }) => {
-        if (!data) return;
-        setCatalogo(
-          data
-            .map(r => {
-              // poligono puede estar vacío; sector es el fallback
-              const pol = r.poligono != null && r.poligono !== "" ? String(r.poligono) : String(r.sector ?? "");
-              const sec = r.seccion != null ? String(r.seccion) : null;
-              return { poligono: pol, seccion: sec };
-            })
-            .filter(r => r.poligono && r.seccion)
-        );
+        const uniq = [...new Set((data ?? []).map(r => r.sector).filter(s => s != null))].sort((a, b) => a - b);
+        setSectores(uniq);
       });
   }, []);
 
-  // Fracciones según sección seleccionada
+  // Cargar secciones del sector actual (ciudadano.poligono = sector en ubt_catalogo)
+  useEffect(() => {
+    const pol = ciudadano?.poligono;
+    if (pol == null || pol === "") { setSecciones([]); return; }
+    supabase
+      .from("ubt_catalogo")
+      .select("seccion")
+      .eq("sector", pol)
+      .order("seccion", { ascending: true })
+      .then(({ data }) => {
+        const uniq = [...new Set((data ?? []).map(r => r.seccion).filter(s => s != null))].sort((a, b) => a - b);
+        setSecciones(uniq);
+      });
+  }, [ciudadano?.poligono]);
+
+  // Cargar fracciones de la sección actual
   useEffect(() => {
     if (!ciudadano?.seccion) { setUbts([]); return; }
     supabase
@@ -132,24 +138,6 @@ const FichaCiudadanoEdit = () => {
       .eq("seccion", ciudadano.seccion)
       .then(({ data }) => setUbts((data ?? []).map((r) => r.fraccion).filter(Boolean)));
   }, [ciudadano?.seccion]);
-
-  // Sectores disponibles — únicos y ordenados; incluye el valor actual aunque no esté en catálogo
-  const sectoresDisp = useMemo(() => {
-    const curPol = ciudadano?.poligono != null && ciudadano.poligono !== "" ? String(ciudadano.poligono) : "";
-    const set = [...new Set(catalogo.map(r => r.poligono))].sort((a, b) => Number(a) - Number(b));
-    if (curPol && !set.includes(curPol)) return [curPol, ...set];
-    return set;
-  }, [catalogo, ciudadano?.poligono]);
-
-  // Secciones filtradas por sector; incluye el valor actual aunque no esté en catálogo
-  const seccionesDisp = useMemo(() => {
-    const curPol = ciudadano?.poligono != null && ciudadano.poligono !== "" ? String(ciudadano.poligono) : "";
-    const curSec = ciudadano?.seccion  != null && ciudadano.seccion  !== "" ? String(ciudadano.seccion)  : "";
-    const base = curPol ? catalogo.filter(r => r.poligono === curPol) : catalogo;
-    const set = [...new Set(base.map(r => r.seccion))].sort((a, b) => Number(a) - Number(b));
-    if (curSec && !set.includes(curSec)) return [curSec, ...set];
-    return set;
-  }, [catalogo, ciudadano?.poligono, ciudadano?.seccion]);
 
   async function handleSave() {
     if (!ciudadano) return;
@@ -172,8 +160,8 @@ const FichaCiudadanoEdit = () => {
           movilizador: ciudadano.movilizador,
           c_p: ciudadano.c_p,
           col_loc: ciudadano.col_loc,
-          seccion:  ciudadano.seccion  != null && ciudadano.seccion  !== "" ? parseInt(ciudadano.seccion,  10) : null,
-          poligono: ciudadano.poligono != null && ciudadano.poligono !== "" ? parseInt(ciudadano.poligono, 10) : null,
+          seccion:  ciudadano.seccion  != null ? Number(ciudadano.seccion)  : null,
+          poligono: ciudadano.poligono != null ? Number(ciudadano.poligono) : null,
         })
         .eq("id", ciudadano.id);
       if (error) throw error;
@@ -271,42 +259,47 @@ const FichaCiudadanoEdit = () => {
 
       {/* ── Campos de texto ── */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {/* Sector y Sección — selects en cascada desde ubt_catalogo */}
+        {/* Sector (poligono en ciudadania = sector en ubt_catalogo) */}
         <div className="mb-4">
-          <label className="block text-sm font-medium text-gray-700 mb-1">Sector (Polígono):</label>
+          <label className="block text-sm font-medium text-gray-700 mb-1">Sector:</label>
           <select
-            value={ciudadano.poligono != null ? String(ciudadano.poligono) : ""}
+            value={ciudadano.poligono ?? ""}
             onChange={e => {
               const v = e.target.value;
-              setCiudadano(prev => ({ ...prev, poligono: v || null, seccion: null, ubt: "" }));
-            }}
-            className="border border-gray-300 rounded-md p-2 w-full bg-white"
-          >
-            <option value="">— Seleccionar sector —</option>
-            {sectoresDisp.map(s => (
-              <option key={s} value={s}>Sector {s}</option>
-            ))}
-          </select>
-        </div>
-        <div className="mb-4">
-          <label className="block text-sm font-medium text-gray-700 mb-1">Sección:</label>
-          <select
-            value={ciudadano.seccion != null ? String(ciudadano.seccion) : ""}
-            onChange={e => {
-              const v = e.target.value;
-              // Auto-rellena el sector si no está seleccionado
-              const row = catalogo.find(r => r.seccion === v);
               setCiudadano(prev => ({
                 ...prev,
-                seccion: v ? parseInt(v, 10) : null,
+                poligono: v !== "" ? Number(v) : null,
+                seccion: null,
                 ubt: "",
-                ...(row && !prev.poligono ? { poligono: row.poligono } : {}),
               }));
             }}
             className="border border-gray-300 rounded-md p-2 w-full bg-white"
           >
-            <option value="">— Seleccionar sección —</option>
-            {seccionesDisp.map(s => (
+            <option value="">— Seleccionar sector —</option>
+            {sectores.map(s => (
+              <option key={s} value={s}>Sector {s}</option>
+            ))}
+          </select>
+        </div>
+
+        {/* Sección — se carga según el sector elegido */}
+        <div className="mb-4">
+          <label className="block text-sm font-medium text-gray-700 mb-1">Sección:</label>
+          <select
+            value={ciudadano.seccion ?? ""}
+            onChange={e => {
+              const v = e.target.value;
+              setCiudadano(prev => ({
+                ...prev,
+                seccion: v !== "" ? Number(v) : null,
+                ubt: "",
+              }));
+            }}
+            disabled={!ciudadano.poligono}
+            className="border border-gray-300 rounded-md p-2 w-full bg-white disabled:bg-gray-100 disabled:text-gray-400"
+          >
+            <option value="">— {ciudadano.poligono ? "Seleccionar sección" : "Elige un sector primero"} —</option>
+            {secciones.map(s => (
               <option key={s} value={s}>{s}</option>
             ))}
           </select>
