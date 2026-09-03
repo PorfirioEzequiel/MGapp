@@ -276,6 +276,7 @@ export default function RegistroApoyos() {
   // Encuesta
   const [comoSeEntero, setComoSeEntero] = useState("");
   const [otroTexto,    setOtroTexto]    = useState("");
+  const [formaPago,    setFormaPago]    = useState("");
   const [sms,          setSms]          = useState([]);
   const [smQuery,      setSmQuery]      = useState("");
   const [smSel,        setSmSel]        = useState(null);
@@ -468,6 +469,11 @@ export default function RegistroApoyos() {
     setPaso("encuesta");
   };
 
+  // Detecta si alguno de los programas seleccionados es calentador solar
+  const esCalentador = programas.some(
+    (p) => seleccionados.has(p.id) && p.nombre.toLowerCase().includes("calentador")
+  );
+
   const confirmarEncuesta = () => {
     if (!comoSeEntero) {
       setError("Indica cómo se enteró del programa.");
@@ -479,6 +485,10 @@ export default function RegistroApoyos() {
     }
     if (comoSeEntero === "OTRO" && !otroTexto.trim()) {
       setError("Describe por qué otro medio se enteró.");
+      return;
+    }
+    if (esCalentador && !formaPago) {
+      setError("Indica la forma de pago del calentador solar.");
       return;
     }
     setError("");
@@ -581,6 +591,7 @@ export default function RegistroApoyos() {
       // Registrar solicitudes por programa seleccionado
       const programasSel = programas.filter((p) => seleccionados.has(p.id));
       for (const prog of programasSel) {
+        const esCalentadorProg = prog.nombre.toLowerCase().includes("calentador");
         const { error: ue } = await supabaseAdmin
           .from("apoyo_entregas")
           .upsert(
@@ -590,6 +601,7 @@ export default function RegistroApoyos() {
               periodo:         getPeriodo(prog.frecuencia),
               status:          "PENDIENTE",
               cantidad:        cantidades[prog.id] ?? 1,
+              ...(esCalentadorProg && formaPago ? { forma_pago: formaPago } : {}),
             },
             { onConflict: "beneficiario_id,programa_id,periodo", ignoreDuplicates: true }
           );
@@ -1085,6 +1097,45 @@ export default function RegistroApoyos() {
                 </Card>
               );
             })()}
+            {/* Forma de pago — solo para calentadores solares */}
+            {esCalentador && (
+              <Card className="p-5 space-y-3">
+                <div>
+                  <h2 className="text-base font-black text-slate-900 mb-1">Forma de pago</h2>
+                  <p className="text-xs text-slate-500">Selecciona cómo deseas pagar el calentador solar.</p>
+                </div>
+                <div className="space-y-2">
+                  {[
+                    { v: "CONTADO",  label: "De contado",  desc: "Pago único al momento de la entrega" },
+                    { v: "1_MES",    label: "A 1 mes",     desc: "Un solo pago diferido a un mes" },
+                    { v: "2_MESES",  label: "A 2 meses",   desc: "Dos pagos iguales en dos meses" },
+                  ].map((opt) => (
+                    <label
+                      key={opt.v}
+                      className={`flex items-center gap-3 p-3.5 rounded-xl border-2 cursor-pointer transition-all ${
+                        formaPago === opt.v
+                          ? "border-emerald-400 bg-emerald-50"
+                          : "border-slate-200 bg-white hover:border-emerald-200"
+                      }`}
+                    >
+                      <input
+                        type="radio"
+                        name="forma_pago"
+                        value={opt.v}
+                        checked={formaPago === opt.v}
+                        onChange={() => setFormaPago(opt.v)}
+                        className="h-4 w-4 text-emerald-600 border-slate-300 focus:ring-emerald-500"
+                      />
+                      <div>
+                        <p className="text-sm font-bold text-slate-800">{opt.label}</p>
+                        <p className="text-xs text-slate-400">{opt.desc}</p>
+                      </div>
+                    </label>
+                  ))}
+                </div>
+              </Card>
+            )}
+
             <Card className="p-5 space-y-4">
               <div>
                 <h2 className="text-base font-black text-slate-900 mb-1">¿Cómo se enteró del programa?</h2>
