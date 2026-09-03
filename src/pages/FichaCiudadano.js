@@ -364,65 +364,43 @@ const FichaCiudadano = () => {
         {/* ── Ubicación territorial ── */}
         <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-6">
           <SectionTitle>Ubicación Territorial</SectionTitle>
-          {viewerEsSM ? (
-            <div className="grid grid-cols-3 gap-3 items-end">
-              {[["Sector", ciudadano.poligono], ["Sección", ciudadano.seccion]].map(([label, val]) => (
-                <div key={label} className="bg-slate-50 rounded-xl p-3 text-center">
-                  <p className="text-[9px] font-bold uppercase tracking-widest text-slate-400 mb-1">{label}</p>
-                  <p className="text-lg font-bold text-slate-800">{val || "—"}</p>
-                </div>
-              ))}
-              <Field label="Fracción (UBT)">
-                <select
-                  className={selectCls}
-                  value={curUbt}
-                  onChange={e => set("ubt", e.target.value)}
-                  disabled={!curSeccion}
-                >
-                  <option value="">Seleccionar…</option>
-                  {ubts.map(v => <option key={v} value={v}>{v}</option>)}
-                </select>
-              </Field>
-            </div>
-          ) : (
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
-              <Field label="Distrito Federal">
-                <select className={selectCls} value={curDttoFed} onChange={e => handleDttoFed(e.target.value)}>
-                  <option value="">Seleccionar…</option>
-                  {dttosFed.map(v => <option key={v} value={v}>{v}</option>)}
-                </select>
-              </Field>
-              <Field label="Distrito Local">
-                <select className={selectCls} value={curDttoLoc} onChange={e => handleDttoLoc(e.target.value)}>
-                  <option value="">Seleccionar…</option>
-                  {dttosLoc.map(v => <option key={v} value={v}>{v}</option>)}
-                </select>
-              </Field>
-              <Field label="Sector (Polígono)">
-                <select className={selectCls} value={curPoligono} onChange={e => handleSector(e.target.value)}>
-                  <option value="">Seleccionar…</option>
-                  {sectores.map(v => <option key={v} value={v}>{v}</option>)}
-                </select>
-              </Field>
-              <Field label="Sección">
-                <select className={selectCls} value={curSeccion} onChange={e => handleSeccion(e.target.value)}>
-                  <option value="">Seleccionar…</option>
-                  {secciones.map(v => <option key={v} value={v}>{v}</option>)}
-                </select>
-              </Field>
-              <Field label="Fracción (UBT)">
-                <select
-                  className={selectCls}
-                  value={curUbt}
-                  onChange={e => set("ubt", e.target.value)}
-                  disabled={!curSeccion}
-                >
-                  <option value="">Seleccionar…</option>
-                  {ubts.map(v => <option key={v} value={v}>{v}</option>)}
-                </select>
-              </Field>
-            </div>
-          )}
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
+            <Field label="Distrito Federal">
+              <select className={selectCls} value={curDttoFed} onChange={e => handleDttoFed(e.target.value)}>
+                <option value="">Seleccionar…</option>
+                {dttosFed.map(v => <option key={v} value={v}>{v}</option>)}
+              </select>
+            </Field>
+            <Field label="Distrito Local">
+              <select className={selectCls} value={curDttoLoc} onChange={e => handleDttoLoc(e.target.value)}>
+                <option value="">Seleccionar…</option>
+                {dttosLoc.map(v => <option key={v} value={v}>{v}</option>)}
+              </select>
+            </Field>
+            <Field label="Sector (Polígono)">
+              <select className={selectCls} value={curPoligono} onChange={e => handleSector(e.target.value)}>
+                <option value="">Seleccionar…</option>
+                {sectores.map(v => <option key={v} value={v}>{v}</option>)}
+              </select>
+            </Field>
+            <Field label="Sección">
+              <select className={selectCls} value={curSeccion} onChange={e => handleSeccion(e.target.value)}>
+                <option value="">Seleccionar…</option>
+                {secciones.map(v => <option key={v} value={v}>{v}</option>)}
+              </select>
+            </Field>
+            <Field label="Fracción (UBT)">
+              <select
+                className={selectCls}
+                value={curUbt}
+                onChange={e => set("ubt", e.target.value)}
+                disabled={!curSeccion}
+              >
+                <option value="">Seleccionar…</option>
+                {ubts.map(v => <option key={v} value={v}>{v}</option>)}
+              </select>
+            </Field>
+          </div>
         </div>
 
         {/* ── Datos personales ── */}
