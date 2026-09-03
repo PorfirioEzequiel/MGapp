@@ -37,6 +37,7 @@ import ReporteMercado from './admin/ReporteMercado';
 import EditorFracciones from './admin/EditorFracciones';
 import ImportarMercadoCSV from './admin/ImportarMercadoCSV';
 import Mensajeria from './admin/Mensajeria';
+import MoviladoresGestion from './admin/MoviladoresGestion';
 
 // Componente para proteger rutas privadas
 const PrivateRoute = ({ children }) => {
@@ -80,6 +81,7 @@ function App() {
         <Route path="/admin/importar-mercado" element={<PrivateRoute><ImportarMercadoCSV /></PrivateRoute>} />
         <Route path="/admin/fracciones" element={<PrivateRoute><EditorFracciones /></PrivateRoute>} />
         <Route path="/admin/mensajeria" element={<PrivateRoute><Mensajeria /></PrivateRoute>} />
+        <Route path="/admin/movilizadores" element={<PrivateRoute><MoviladoresGestion /></PrivateRoute>} />
         <Route path="/apoyos/:usuario" element={<PrivateRoute><Apoyos /></PrivateRoute>} />
         <Route path="/menu/:usuario" element={<PrivateRoute><MeniAdmin /></PrivateRoute>} />
         <Route path="/perfil/:usuario" element={<PrivateRoute><Perfil /></PrivateRoute>} />
