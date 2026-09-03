@@ -62,6 +62,16 @@ const IcoChevron = () => (
     <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" />
   </svg>
 );
+const IcoCred = ({ s = 22 }) => (
+  <svg width={s} height={s} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.7}>
+    <path strokeLinecap="round" strokeLinejoin="round" d="M15 9h3.75M15 12h3.75M15 15h3.75M4.5 19.5h15a2.25 2.25 0 002.25-2.25V6.75A2.25 2.25 0 0019.5 4.5h-15a2.25 2.25 0 00-2.25 2.25v10.5A2.25 2.25 0 004.5 19.5zm6-10.125a1.875 1.875 0 11-3.75 0 1.875 1.875 0 013.75 0zm1.294 6.336a6.721 6.721 0 01-3.17.789 6.721 6.721 0 01-3.168-.789 3.376 3.376 0 016.338 0z" />
+  </svg>
+);
+const IcoStore = ({ s = 22 }) => (
+  <svg width={s} height={s} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.7}>
+    <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 10.5V6a3.75 3.75 0 10-7.5 0v4.5m11.356-1.993l1.263 12c.07.665-.45 1.243-1.119 1.243H4.25a1.125 1.125 0 01-1.12-1.243l1.264-12A1.125 1.125 0 015.513 7.5h12.974c.576 0 1.059.435 1.119 1.007zM8.625 10.5a.375.375 0 11-.75 0 .375.375 0 01.75 0zm7.5 0a.375.375 0 11-.75 0 .375.375 0 01.75 0z" />
+  </svg>
+);
 
 // ── KPI Card (Bento style) ────────────────────────────────────────────────────
 const KpiCard = ({ label, value, sub, color = 'slate', wide }) => {
@@ -154,9 +164,9 @@ const SeccionRow = ({ seccion, sm, fracciones, onClick }) => {
 
 // ── Bottom Tab Bar ────────────────────────────────────────────────────────────
 const TABS = [
-  { key: 'resumen',     label: 'Inicio',       Icon: IcoHome },
-  { key: 'mapa',        label: 'Mapa',          Icon: IcoMap },
-  { key: 'actividades', label: 'Actividades',   Icon: IcoClip },
+  { key: 'resumen',     label: 'Inicio',      Icon: IcoHome  },
+  { key: 'mapa',        label: 'Mapa',        Icon: IcoMap   },
+  { key: 'actividades', label: 'Actividades', Icon: IcoClip  },
 ];
 
 // ── Main component ────────────────────────────────────────────────────────────
@@ -200,6 +210,9 @@ const Coordinador = () => {
   const [regCountSec, setRegCountSec]           = useState(null);
   const [loadingSecInfo, setLoadingSecInfo]     = useState(false);
   const [focusCoords, setFocusCoords]           = useState(null);
+  const [electoralMode, setElectoralMode]       = useState(null);
+
+  const [mercadoRows, setMercadoRows] = useState([]);
 
   // ── Fetch ──────────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -209,8 +222,19 @@ const Coordinador = () => {
       fetchMapaSector(),
       fetchCatalogoFracciones(),
       fetchActividades(),
+      fetchMercado(),
     ]).finally(() => setLoading(false));
   }, []);
+
+  const fetchMercado = async () => {
+    const { data } = await supabase
+      .from('mercado')
+      .select('seccion, entrega, mes, año, sector, coordinador, piezas, entregadas, estatus, nombre')
+      .eq('sector', user.poligono)
+      .order('año', { ascending: false })
+      .order('mes', { ascending: false });
+    setMercadoRows(data ?? []);
+  };
 
   const fetchPromotores = async () => {
     const { data } = await supabase.from('ciudadania').select('*')
@@ -354,6 +378,41 @@ const Coordinador = () => {
     return promotores.filter(p => fullName(p).toLowerCase().includes(q) || String(p.seccion).includes(q) || String(p.ubt).toLowerCase().includes(q));
   }, [promotores, smFiltroLocal]);
 
+  // ── Capas del mapa ────────────────────────────────────────────────────────
+  const afiliacionBySec = useMemo(() => {
+    const m = {};
+    AFILIACION.filter(r => Number(r.sp) === Number(user.poligono))
+              .forEach(r => { m[r.seccion] = r; });
+    return m;
+  }, [user.poligono]);
+
+  const mercadoBySec = useMemo(() => {
+    if (!mercadoRows.length) return {};
+    const bySec = {};
+    for (const r of mercadoRows) {
+      const sec = r.seccion;
+      if (!sec) continue;
+      if (!bySec[sec]) bySec[sec] = { totalPiezas: 0, totalEntregadas: 0, estatusCounts: {} };
+      bySec[sec].totalPiezas     += Number(r.piezas     ?? 0);
+      bySec[sec].totalEntregadas += Number(r.entregadas ?? 0);
+      const est = r.estatus ?? 'PENDIENTE';
+      bySec[sec].estatusCounts[est] = (bySec[sec].estatusCounts[est] || 0) + 1;
+    }
+    const sortedTotals = Object.values(bySec).map(v => v.totalPiezas).filter(v => v > 0).sort((a, b) => a - b);
+    const refMax = Math.max(sortedTotals[Math.max(Math.floor(sortedTotals.length * 0.75) - 1, 0)] ?? 1, 1);
+    const result = {};
+    for (const [sec, v] of Object.entries(bySec)) {
+      const estatus = Object.entries(v.estatusCounts).sort((a, b) => b[1] - a[1])[0]?.[0] ?? 'PENDIENTE';
+      result[Number(sec)] = {
+        total:    v.totalEntregadas,
+        estatus,
+        pct:      v.totalPiezas ? Math.min((v.totalEntregadas / v.totalPiezas) * 100, 100) : 0,
+        maxRef:   refMax,
+      };
+    }
+    return result;
+  }, [mercadoRows]);
+
   const manejarFiltro = async () => {
     setLoadingBusqueda(true);
     let q = supabase.from('ciudadania').select('*')
@@ -492,6 +551,120 @@ const Coordinador = () => {
                   ))
                 }
               </div>
+
+              {/* ── Credenciales delivery analysis ─────────────────────── */}
+              {(() => {
+                const afRows = AFILIACION.filter(r => Number(r.sp) === Number(user.poligono));
+                if (!afRows.length) return null;
+
+                const totEntregadas  = afRows.reduce((s, r) => s + (r.entregadas_sp || 0), 0);
+                const totComprobadas = afRows.reduce((s, r) => s + (r.comprobadas   || 0), 0);
+                const totAfiliados   = afRows.reduce((s, r) => s + (r.afiliados     || 0), 0);
+                const pct    = totEntregadas > 0 ? (totComprobadas / totEntregadas) * 100 : 0;
+                const noData = totEntregadas === 0;
+
+                const semaforoColor = p => p >= 90 ? '#16A34A' : p >= 75 ? '#65A30D' : p >= 50 ? '#CA8A04' : p >= 25 ? '#EA580C' : '#DC2626';
+                const semaforoLabel = (p, nd) => nd ? 'Sin entregas' : p >= 90 ? 'Excelente' : p >= 75 ? 'Bien' : p >= 50 ? 'Regular' : p >= 25 ? 'Bajo' : 'Crítico';
+                const barColor    = noData ? '#9CA3AF' : semaforoColor(pct);
+                const statusLabel = semaforoLabel(pct, noData);
+                const fmt = n => n != null ? Number(n).toLocaleString('es-MX') : '—';
+
+                const breakdown = afRows
+                  .filter(r => (r.entregadas_sp || 0) > 0)
+                  .map(r => ({
+                    label: `Sec. ${r.seccion}`,
+                    key:   r.seccion,
+                    entregadas_sp: r.entregadas_sp,
+                    comprobadas:   r.comprobadas,
+                    pct: (r.comprobadas / r.entregadas_sp) * 100,
+                  }))
+                  .sort((a, b) => a.pct - b.pct);
+
+                return (
+                  <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
+                    {/* Header */}
+                    <div className="px-4 pt-4 pb-3 border-b border-slate-100">
+                      <div className="flex items-start justify-between gap-2 mb-1">
+                        <div>
+                          <p className="text-[9px] font-black uppercase tracking-[0.18em] text-slate-400 leading-none mb-1">Entrega de credenciales</p>
+                          <p className="text-xs font-bold text-slate-800">Entregadas SP vs Comprobadas</p>
+                        </div>
+                        <span className="text-[9px] font-bold px-2 py-1 rounded-full whitespace-nowrap flex-shrink-0 text-white"
+                          style={{ backgroundColor: barColor }}>{statusLabel}</span>
+                      </div>
+                      <p className="text-[10px] text-slate-500 flex items-center gap-1">
+                        <span className="w-1.5 h-1.5 rounded-full inline-block" style={{ backgroundColor: barColor }} />
+                        Sector {user.poligono} · {afRows.length} secciones
+                      </p>
+                    </div>
+
+                    <div className="p-4 space-y-3">
+                      {/* KPIs */}
+                      <div className="grid grid-cols-3 gap-1.5">
+                        <div className="bg-slate-50 rounded-xl p-2.5 text-center border border-slate-100">
+                          <p className="text-[9px] font-bold uppercase tracking-widest text-slate-400 leading-none mb-1">Afiliados</p>
+                          <p className="text-base font-black tabular-nums text-slate-700">{fmt(totAfiliados)}</p>
+                        </div>
+                        <div className="bg-amber-50 rounded-xl p-2.5 text-center">
+                          <p className="text-[9px] font-bold uppercase tracking-widest text-amber-500 leading-none mb-1">Entregadas SP</p>
+                          <p className="text-base font-black tabular-nums text-amber-700">{fmt(totEntregadas)}</p>
+                        </div>
+                        <div className="bg-emerald-50 rounded-xl p-2.5 text-center">
+                          <p className="text-[9px] font-bold uppercase tracking-widest text-emerald-600 leading-none mb-1">Comprobadas</p>
+                          <p className="text-base font-black tabular-nums text-emerald-700">{fmt(totComprobadas)}</p>
+                        </div>
+                      </div>
+
+                      {/* Progress bar */}
+                      {!noData && (
+                        <div>
+                          <div className="h-2.5 rounded-full overflow-hidden"
+                            style={{ background: 'linear-gradient(90deg,#DC2626 0%,#CA8A04 40%,#65A30D 75%,#16A34A 100%)', opacity: 0.15 }} />
+                          <div className="h-2.5 rounded-full overflow-hidden -mt-2.5">
+                            <div className="h-full rounded-full transition-all duration-700"
+                              style={{ width: `${Math.min(pct, 100)}%`, backgroundColor: barColor }} />
+                          </div>
+                          <div className="flex justify-between mt-1">
+                            <span className="text-[9px] text-slate-300">0%</span>
+                            <span className="text-[9px] font-bold" style={{ color: barColor }}>{pct.toFixed(1)}% comprobado</span>
+                            <span className="text-[9px] text-slate-300">100%</span>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Breakdown por sección · peor primero */}
+                      {breakdown.length > 0 && (
+                        <div>
+                          <div className="flex items-center justify-between mb-2">
+                            <p className="text-[9px] font-bold uppercase tracking-widest text-slate-400">Por sección</p>
+                            <span className="text-[9px] text-slate-400">peor → mejor</span>
+                          </div>
+                          <div className="space-y-1.5">
+                            {breakdown.map(row => {
+                              const rowColor = semaforoColor(row.pct);
+                              return (
+                                <div key={row.key}>
+                                  <div className="flex items-center justify-between mb-0.5">
+                                    <span className="text-[10px] font-semibold text-slate-700">{row.label}</span>
+                                    <div className="flex items-center gap-1.5">
+                                      <span className="text-[9px] text-slate-400 tabular-nums">{fmt(row.comprobadas)}/{fmt(row.entregadas_sp)}</span>
+                                      <span className="text-[9px] font-bold tabular-nums min-w-[2rem] text-right" style={{ color: rowColor }}>{row.pct.toFixed(0)}%</span>
+                                    </div>
+                                  </div>
+                                  <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                                    <div className="h-full rounded-full transition-all duration-500"
+                                      style={{ width: `${Math.min(row.pct, 100)}%`, backgroundColor: rowColor }} />
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                );
+              })()}
 
               {/* Apoyos action */}
               <button
@@ -751,7 +924,231 @@ const Coordinador = () => {
 
               <div className="flex-1 p-3 space-y-3">
 
-                {!seccionMapa && (() => {
+                {/* ── Capa activa: Entrega de credenciales ─────────────── */}
+                {electoralMode === 'semaforo_cred' && (() => {
+                  const semColor = p =>
+                    p >= 90 ? '#16A34A' : p >= 75 ? '#65A30D' : p >= 50 ? '#CA8A04' : p >= 25 ? '#EA580C' : '#DC2626';
+                  const semLabel = (p, nd) =>
+                    nd ? 'Sin entregas' : p >= 90 ? 'Excelente' : p >= 75 ? 'Bien' : p >= 50 ? 'Regular' : p >= 25 ? 'Bajo' : 'Crítico';
+                  const fmt = n => n != null ? Number(n).toLocaleString('es-MX') : '—';
+
+                  const SCALE = [
+                    { label: 'Excelente', range: '≥ 90%',  color: '#16A34A' },
+                    { label: 'Bien',      range: '75–89%', color: '#65A30D' },
+                    { label: 'Regular',   range: '50–74%', color: '#CA8A04' },
+                    { label: 'Bajo',      range: '25–49%', color: '#EA580C' },
+                    { label: 'Crítico',   range: '< 25%',  color: '#DC2626' },
+                  ];
+
+                  // ── Vista sección seleccionada ──────────────────────────
+                  if (seccionMapa) {
+                    const r = AFILIACION.find(x => x.seccion === Number(seccionMapa));
+                    if (!r) return (
+                      <div className="rounded-xl border border-slate-100 bg-slate-50 p-3 text-center">
+                        <p className="text-[10px] text-slate-400 italic">Sin datos para sección {seccionMapa}</p>
+                      </div>
+                    );
+
+                    const pct    = r.entregadas_sp > 0 ? (r.comprobadas / r.entregadas_sp) * 100 : 0;
+                    const noData = (r.entregadas_sp || 0) === 0;
+                    const barColor    = noData ? '#9CA3AF' : semColor(pct);
+                    const statusLabel = semLabel(pct, noData);
+
+                    return (
+                      <>
+                        {/* Cabecera sección */}
+                        <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5">
+                          <div className="flex items-start justify-between gap-2">
+                            <div>
+                              <p className="text-[9px] font-bold uppercase tracking-[0.14em] text-slate-400 leading-none mb-1">Entrega de credenciales</p>
+                              <p className="text-xs font-bold text-slate-800">Sección {seccionMapa}</p>
+                            </div>
+                            <span className="text-[9px] font-bold px-2 py-1 rounded-full whitespace-nowrap flex-shrink-0 text-white"
+                              style={{ backgroundColor: barColor }}>{statusLabel}</span>
+                          </div>
+                          <button onClick={() => setSeccionMapa('')}
+                            className="mt-1.5 text-[9px] font-bold flex items-center gap-1 transition-colors"
+                            style={{ color: BRAND }}>
+                            ← Ver todo el sector
+                          </button>
+                        </div>
+
+                        {/* KPIs sección */}
+                        <div className="grid grid-cols-2 gap-1.5">
+                          {[
+                            { label: 'Afiliados',      v: r.afiliados,            bg: 'bg-slate-50 border border-slate-100', txt: 'text-slate-700',   lbl: 'text-slate-400' },
+                            { label: 'Entregadas SP',  v: r.entregadas_sp,        bg: 'bg-amber-50',                         txt: 'text-amber-700',   lbl: 'text-amber-500' },
+                            { label: 'Comprobadas',    v: r.comprobadas,          bg: 'bg-emerald-50',                       txt: 'text-emerald-700', lbl: 'text-emerald-600' },
+                            { label: 'En stock',       v: r.en_stock,             bg: 'bg-blue-50',                          txt: 'text-blue-700',    lbl: 'text-blue-500' },
+                            { label: 'Sin entregar',   v: r.sin_entregar,         bg: 'bg-red-50',                           txt: 'text-red-700',     lbl: 'text-red-400' },
+                            { label: 'Sin datos',      v: r.sin_datos,            bg: 'bg-slate-50 border border-slate-100', txt: 'text-slate-500',   lbl: 'text-slate-400' },
+                          ].map(({ label, v, bg, txt, lbl }) => (
+                            <div key={label} className={`${bg} rounded-xl p-2 text-center`}>
+                              <p className={`text-[8px] font-bold uppercase tracking-widest leading-none mb-1 ${lbl}`}>{label}</p>
+                              <p className={`text-base font-black tabular-nums ${txt}`}>{fmt(v)}</p>
+                            </div>
+                          ))}
+                        </div>
+
+                        {/* Barra de progreso sección */}
+                        {!noData && (
+                          <div>
+                            <div className="h-2 rounded-full overflow-hidden"
+                              style={{ background: 'linear-gradient(90deg,#DC2626 0%,#CA8A04 40%,#65A30D 75%,#16A34A 100%)', opacity: 0.15 }} />
+                            <div className="h-2 rounded-full overflow-hidden -mt-2">
+                              <div className="h-full rounded-full transition-all duration-700"
+                                style={{ width: `${Math.min(pct, 100)}%`, backgroundColor: barColor }} />
+                            </div>
+                            <div className="flex justify-between mt-1">
+                              <span className="text-[8px] text-slate-300">0%</span>
+                              <span className="text-[8px] font-bold" style={{ color: barColor }}>{pct.toFixed(1)}% comprobado</span>
+                              <span className="text-[8px] text-slate-300">100%</span>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Escala */}
+                        <div className="rounded-xl border border-slate-100 p-2.5">
+                          <p className="text-[8px] font-bold uppercase tracking-widest text-slate-400 mb-1.5">Escala de avance</p>
+                          <div className="space-y-1">
+                            {SCALE.map(({ label, range, color }) => (
+                              <div key={label} className="flex items-center justify-between">
+                                <div className="flex items-center gap-1.5">
+                                  <div className="w-2 h-2 rounded-sm flex-shrink-0" style={{ backgroundColor: color }} />
+                                  <span className="text-[10px] font-medium text-slate-700">{label}</span>
+                                </div>
+                                <span className="text-[9px] text-slate-400 tabular-nums">{range}</span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      </>
+                    );
+                  }
+
+                  // ── Vista sector completo ───────────────────────────────
+                  const afRows         = AFILIACION.filter(r => Number(r.sp) === Number(user.poligono));
+                  const totEntregadas  = afRows.reduce((s, r) => s + (r.entregadas_sp || 0), 0);
+                  const totComprobadas = afRows.reduce((s, r) => s + (r.comprobadas   || 0), 0);
+                  const totAfiliados   = afRows.reduce((s, r) => s + (r.afiliados     || 0), 0);
+                  const pct    = totEntregadas > 0 ? (totComprobadas / totEntregadas) * 100 : 0;
+                  const noData = totEntregadas === 0;
+                  const barColor    = noData ? '#9CA3AF' : semColor(pct);
+                  const statusLabel = semLabel(pct, noData);
+
+                  const breakdown = afRows
+                    .filter(r => (r.entregadas_sp || 0) > 0)
+                    .map(r => ({
+                      key:           r.seccion,
+                      label:         `Sec. ${r.seccion}`,
+                      entregadas_sp: r.entregadas_sp,
+                      comprobadas:   r.comprobadas,
+                      pct:           (r.comprobadas / r.entregadas_sp) * 100,
+                    }))
+                    .sort((a, b) => a.pct - b.pct);
+
+                  return (
+                    <>
+                      {/* Cabecera sector */}
+                      <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5">
+                        <div className="flex items-start justify-between gap-2">
+                          <div>
+                            <p className="text-[9px] font-bold uppercase tracking-[0.14em] text-slate-400 leading-none mb-1">Entrega de credenciales</p>
+                            <p className="text-xs font-bold text-slate-800 leading-snug">Entregadas SP vs Comprobadas</p>
+                          </div>
+                          <span className="text-[9px] font-bold px-2 py-1 rounded-full whitespace-nowrap flex-shrink-0 text-white"
+                            style={{ backgroundColor: barColor }}>{statusLabel}</span>
+                        </div>
+                        <p className="text-[10px] text-slate-500 mt-1.5 flex items-center gap-1">
+                          <span className="w-1.5 h-1.5 rounded-full inline-block" style={{ backgroundColor: barColor }} />
+                          Sector {user.poligono} · {afRows.length} secciones · toca una para ver detalle
+                        </p>
+                      </div>
+
+                      {/* KPIs sector */}
+                      <div className="grid grid-cols-3 gap-1">
+                        <div className="bg-slate-50 rounded-xl p-2 text-center border border-slate-100">
+                          <p className="text-[8px] font-bold uppercase tracking-widest text-slate-400 leading-none mb-1">Afiliados</p>
+                          <p className="text-sm font-black tabular-nums text-slate-700">{fmt(totAfiliados)}</p>
+                        </div>
+                        <div className="bg-amber-50 rounded-xl p-2 text-center">
+                          <p className="text-[8px] font-bold uppercase tracking-widest text-amber-500 leading-none mb-1">Entregadas</p>
+                          <p className="text-sm font-black tabular-nums text-amber-700">{fmt(totEntregadas)}</p>
+                        </div>
+                        <div className="bg-emerald-50 rounded-xl p-2 text-center">
+                          <p className="text-[8px] font-bold uppercase tracking-widest text-emerald-600 leading-none mb-1">Comprobadas</p>
+                          <p className="text-sm font-black tabular-nums text-emerald-700">{fmt(totComprobadas)}</p>
+                        </div>
+                      </div>
+
+                      {/* Barra de progreso sector */}
+                      {!noData && (
+                        <div>
+                          <div className="h-2 rounded-full overflow-hidden"
+                            style={{ background: 'linear-gradient(90deg,#DC2626 0%,#CA8A04 40%,#65A30D 75%,#16A34A 100%)', opacity: 0.15 }} />
+                          <div className="h-2 rounded-full overflow-hidden -mt-2">
+                            <div className="h-full rounded-full transition-all duration-700"
+                              style={{ width: `${Math.min(pct, 100)}%`, backgroundColor: barColor }} />
+                          </div>
+                          <div className="flex justify-between mt-1">
+                            <span className="text-[8px] text-slate-300">0%</span>
+                            <span className="text-[8px] font-bold" style={{ color: barColor }}>{pct.toFixed(1)}% comprobado</span>
+                            <span className="text-[8px] text-slate-300">100%</span>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Escala */}
+                      <div className="rounded-xl border border-slate-100 p-2.5">
+                        <p className="text-[8px] font-bold uppercase tracking-widest text-slate-400 mb-1.5">Escala de avance</p>
+                        <div className="space-y-1">
+                          {SCALE.map(({ label, range, color }) => (
+                            <div key={label} className="flex items-center justify-between">
+                              <div className="flex items-center gap-1.5">
+                                <div className="w-2 h-2 rounded-sm flex-shrink-0" style={{ backgroundColor: color }} />
+                                <span className="text-[10px] font-medium text-slate-700">{label}</span>
+                              </div>
+                              <span className="text-[9px] text-slate-400 tabular-nums">{range}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* Breakdown por sección · peor → mejor */}
+                      {breakdown.length > 0 && (
+                        <div>
+                          <div className="flex items-center justify-between mb-1.5">
+                            <p className="text-[9px] font-bold uppercase tracking-widest text-slate-400">Por sección</p>
+                            <span className="text-[9px] text-slate-400">peor → mejor</span>
+                          </div>
+                          <div className="space-y-2">
+                            {breakdown.map(row => {
+                              const rc = semColor(row.pct);
+                              return (
+                                <button key={row.key} className="w-full text-left"
+                                  onClick={() => setSeccionMapa(String(row.key))}>
+                                  <div className="flex items-center justify-between mb-0.5">
+                                    <span className="text-[10px] font-semibold text-slate-700">{row.label}</span>
+                                    <div className="flex items-center gap-1.5">
+                                      <span className="text-[9px] text-slate-400 tabular-nums">{fmt(row.comprobadas)}/{fmt(row.entregadas_sp)}</span>
+                                      <span className="text-[9px] font-bold tabular-nums min-w-[2rem] text-right" style={{ color: rc }}>{row.pct.toFixed(0)}%</span>
+                                    </div>
+                                  </div>
+                                  <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                                    <div className="h-full rounded-full transition-all duration-500"
+                                      style={{ width: `${Math.min(row.pct, 100)}%`, backgroundColor: rc }} />
+                                  </div>
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
+                    </>
+                  );
+                })()}
+
+                {electoralMode !== 'semaforo_cred' && !seccionMapa && (() => {
                   const fmtN   = n => n != null ? Number(n).toLocaleString('es-MX') : '—';
                   const pctStr = (a, b) => b ? `${((a / b) * 100).toFixed(1)}%` : null;
 
@@ -949,7 +1346,7 @@ const Coordinador = () => {
                   );
                 })()}
 
-                {seccionMapa && (() => {
+                {electoralMode !== 'semaforo_cred' && seccionMapa && (() => {
                   const secSelData  = seccionesSector.find(s => s.seccion === Number(seccionMapa));
                   // detalleSec built from fresh Supabase fetch (same as TableroBoard)
                   const smPorUbt    = Object.fromEntries(smsDeSec.map(p => [p.ubt, p]));
@@ -1184,6 +1581,10 @@ const Coordinador = () => {
                   focusCoords={focusCoords}
                   onClearFocus={() => setFocusCoords(null)}
                   controlsLeftOffset={leftPanelOpen ? 'min(85vw, 300px)' : 0}
+                  afiliacionBySec={afiliacionBySec}
+                  mercadoBySec={mercadoBySec}
+                  electoralModeExternal={electoralMode}
+                  onElectoralModeChange={setElectoralMode}
                 />
               )}
             </div>

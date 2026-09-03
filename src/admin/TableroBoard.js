@@ -298,10 +298,11 @@ const TableroBoard = ({ readOnly = false }) => {
   const prevElectoralMode = useRef(null);
 
   // ── Mercado Solidario ─────────────────────────────────────────────────────
-  const [mercadoEntregas,  setMercadoEntregas]  = useState([]);   // lista de entregas disponibles
-  const [mercadoFiltro,    setMercadoFiltro]    = useState(null); // { año, mes, entrega }
-  const [mercadoBySec,     setMercadoBySec]     = useState({});   // seccion → { entregadas, pct, estatus, maxRef }
-  const [loadingMercado,   setLoadingMercado]   = useState(false);
+  const [mercadoEntregas,   setMercadoEntregas]   = useState([]);   // lista de entregas disponibles
+  const [mercadoFiltro,     setMercadoFiltro]     = useState(null); // null = todos; { año, mes, entrega } = filtrado
+  const [mercadoBySec,      setMercadoBySec]      = useState({});   // seccion → { total, pct, estatus, maxRef }
+  const [mercadoHistorico,  setMercadoHistorico]  = useState([]);   // [{ entrega, total }] para la gráfica
+  const [loadingMercado,    setLoadingMercado]    = useState(false);
 
   useEffect(() => {
     const fetchAll = async () => {
@@ -388,57 +389,73 @@ const TableroBoard = ({ readOnly = false }) => {
     }
   }, [electoralMode]);
 
-  // ── Mercado: carga lista de entregas al montar (siempre, para saber si mostrar la capa) ──
+  // ── Mercado: carga lista de entregas + histórico al montar ────────────────
   useEffect(() => {
-    supabaseAdmin.from('mercado').select('año,mes,entrega').order('entrega', { ascending: false })
+    supabaseAdmin.from('mercado').select('año,mes,entrega,piezas,sm_activas')
       .then(({ data }) => {
         if (!data) return;
+        // Lista de entregas únicas para el selector
         const map = new Map();
+        // Totales por entrega para la gráfica
+        const hist = {};
         for (const r of data) {
           const key = `${r.año}_${r.mes}_${r.entrega}`;
           if (!map.has(key)) map.set(key, { año: r.año, mes: r.mes, entrega: r.entrega });
+          const e = r.entrega;
+          if (e != null) {
+            hist[e] = (hist[e] ?? 0) + (Number(r.piezas ?? 0) * Number(r.sm_activas ?? 0));
+          }
         }
         const lista = [...map.values()].sort((a, b) => b.entrega - a.entrega || b.año - a.año);
         setMercadoEntregas(lista);
-        if (lista.length > 0) setMercadoFiltro(lista[0]);
+        // No se selecciona ninguna entrega → vista por defecto = totales (null)
+        const histArray = Object.entries(hist)
+          .map(([e, t]) => ({ entrega: Number(e), total: t }))
+          .sort((a, b) => a.entrega - b.entrega);
+        setMercadoHistorico(histArray);
       });
   }, []);
 
-  // ── Mercado: carga filas por entrega seleccionada ─────────────────────────
+  // ── Mercado: carga filas (todas o filtradas por entrega) ──────────────────
   useEffect(() => {
-    if (!mercadoFiltro) return;
     setLoadingMercado(true);
-    supabaseAdmin.from('mercado')
-      .select('seccion, sector, piezas, sm_activas, estatus, fracciones')
-      .eq('año', mercadoFiltro.año).eq('mes', mercadoFiltro.mes).eq('entrega', mercadoFiltro.entrega)
-      .then(({ data }) => {
-        if (!data) { setMercadoBySec({}); setLoadingMercado(false); return; }
-        // Agrupa por sección: suma piezas×sm_activas (= "Pedido" en el reporte MS)
-        const bySec = {};
-        for (const r of data) {
-          const sec = r.seccion;
-          if (!sec) continue;
-          if (!bySec[sec]) bySec[sec] = { total: 0, fracciones: r.fracciones ?? 0, sector: r.sector, estatusCounts: {} };
-          bySec[sec].total += (Number(r.piezas ?? 0) * Number(r.sm_activas ?? 0));
-          const est = r.estatus ?? 'PENDIENTE';
-          bySec[sec].estatusCounts[est] = (bySec[sec].estatusCounts[est] || 0) + 1;
-        }
-        const maxTotal = Math.max(...Object.values(bySec).map(v => v.total), 1);
-        const result = {};
-        for (const [sec, v] of Object.entries(bySec)) {
-          const estatus = Object.entries(v.estatusCounts).sort((a, b) => b[1] - a[1])[0]?.[0] ?? 'PENDIENTE';
-          result[Number(sec)] = {
-            total: v.total,
-            fracciones: v.fracciones,
-            sector: v.sector,
-            estatus,
-            pct: (v.total / maxTotal) * 100,
-            maxRef: maxTotal,
-          };
-        }
-        setMercadoBySec(result);
-        setLoadingMercado(false);
-      });
+    let query = supabaseAdmin.from('mercado').select('seccion, sector, piezas, sm_activas, estatus, fracciones');
+    if (mercadoFiltro) {
+      query = query.eq('año', mercadoFiltro.año).eq('mes', mercadoFiltro.mes).eq('entrega', mercadoFiltro.entrega);
+    }
+    query.then(({ data }) => {
+      if (!data) { setMercadoBySec({}); setLoadingMercado(false); return; }
+      // Agrupa por sección: suma piezas×sm_activas (= "Pedido" en el reporte MS)
+      const bySec = {};
+      for (const r of data) {
+        const sec = r.seccion;
+        if (!sec) continue;
+        if (!bySec[sec]) bySec[sec] = { total: 0, fracciones: r.fracciones ?? 0, sector: r.sector, estatusCounts: {} };
+        bySec[sec].total += (Number(r.piezas ?? 0) * Number(r.sm_activas ?? 0));
+        const est = r.estatus ?? 'PENDIENTE';
+        bySec[sec].estatusCounts[est] = (bySec[sec].estatusCounts[est] || 0) + 1;
+      }
+      // Usamos el percentil 75 como referencia (= 100%) en lugar del máximo absoluto.
+      // Esto evita que un sector outlier hunda el color de todas las demás secciones:
+      // ~25% de las secciones quedarán en verde (por encima del p75), el resto distribuido.
+      const sortedTotals = Object.values(bySec).map(v => v.total).sort((a, b) => a - b);
+      const p75idx = Math.max(Math.floor(sortedTotals.length * 0.75) - 1, 0);
+      const refMax = Math.max(sortedTotals[p75idx] ?? sortedTotals[sortedTotals.length - 1], 1);
+      const result = {};
+      for (const [sec, v] of Object.entries(bySec)) {
+        const estatus = Object.entries(v.estatusCounts).sort((a, b) => b[1] - a[1])[0]?.[0] ?? 'PENDIENTE';
+        result[Number(sec)] = {
+          total: v.total,
+          fracciones: v.fracciones,
+          sector: v.sector,
+          estatus,
+          pct: Math.min((v.total / refMax) * 100, 100), // cap en 100 — outliers positivos = verde
+          maxRef: refMax,
+        };
+      }
+      setMercadoBySec(result);
+      setLoadingMercado(false);
+    });
   }, [mercadoFiltro]);
 
   // ── Afiliación (local JSON) ───────────────────────────────────────────────
@@ -1097,15 +1114,17 @@ const TableroBoard = ({ readOnly = false }) => {
 
         {/* Filtro de entrega */}
         <div className="rounded-xl border border-slate-200 bg-slate-50 p-2.5">
-          <p className="text-[9px] font-bold uppercase tracking-[0.14em] text-slate-400 mb-1.5">Entrega</p>
+          <p className="text-[9px] font-bold uppercase tracking-[0.14em] text-slate-400 mb-1.5">Filtrar por entrega</p>
           <select
             value={mercadoFiltro ? `${mercadoFiltro.año}|${mercadoFiltro.mes}|${mercadoFiltro.entrega}` : ''}
             onChange={e => {
+              if (!e.target.value) { setMercadoFiltro(null); return; }
               const [año, mes, entrega] = e.target.value.split('|');
               setMercadoFiltro({ año: parseInt(año), mes, entrega: parseInt(entrega) });
             }}
             className="w-full text-xs border border-slate-200 rounded-lg px-2 py-1.5 bg-white text-slate-700 font-medium focus:outline-none focus:ring-2 focus:ring-emerald-300"
           >
+            <option value="">Todas las entregas</option>
             {mercadoEntregas.map(e => (
               <option key={`${e.año}|${e.mes}|${e.entrega}`} value={`${e.año}|${e.mes}|${e.entrega}`}>
                 Entrega {e.entrega} · {MESES[(['ENERO','FEBRERO','MARZO','ABRIL','MAYO','JUNIO','JULIO','AGOSTO','SEPTIEMBRE','OCTUBRE','NOVIEMBRE','DICIEMBRE'].indexOf(e.mes))]} {e.año}
@@ -1155,8 +1174,8 @@ const TableroBoard = ({ readOnly = false }) => {
         {seccionesConDatos > 0 && (
           <div>
             <div className="flex justify-between mb-0.5">
-              <span className="text-[9px] text-slate-400">Ref. máx: {fmt(maxRef)} uds</span>
-              <span className="text-[9px] font-semibold text-slate-500">sección líder = 100%</span>
+              <span className="text-[9px] text-slate-400">Ref p75: {fmt(maxRef)} uds</span>
+              <span className="text-[9px] font-semibold text-slate-500">p75 = 100%</span>
             </div>
             <div className="h-2 rounded-full overflow-hidden" style={{ background: 'linear-gradient(90deg,#DC2626 0%,#CA8A04 40%,#65A30D 75%,#16A34A 100%)', opacity: 0.15 }} />
             <div className="h-2 rounded-full overflow-hidden -mt-2">
@@ -1188,7 +1207,7 @@ const TableroBoard = ({ readOnly = false }) => {
 
         {/* Leyenda de colores */}
         <div className="rounded-xl border border-slate-100 p-2.5">
-          <p className="text-[9px] font-bold uppercase tracking-widest text-slate-400 mb-1.5">Escala (% vs. sección máx)</p>
+          <p className="text-[9px] font-bold uppercase tracking-widest text-slate-400 mb-1.5">Escala (% vs. percentil 75)</p>
           <div className="space-y-1">
             {[
               { label: 'Excelente', range: '≥ 90%',  color: '#16A34A' },
@@ -1208,6 +1227,38 @@ const TableroBoard = ({ readOnly = false }) => {
             ))}
           </div>
         </div>
+
+        {/* Top 10 secciones */}
+        {isMunicipio && (
+          <div className="rounded-xl border border-slate-100 p-2.5">
+            <div className="flex items-center justify-between mb-1.5">
+              <p className="text-[9px] font-bold uppercase tracking-widest text-slate-400">Top 10 secciones</p>
+              <span className="text-[9px] text-slate-400">mayor pedido</span>
+            </div>
+            <div className="space-y-1">
+              {Object.entries(mercadoBySec)
+                .filter(([, v]) => v.total > 0)
+                .sort((a, b) => b[1].total - a[1].total)
+                .slice(0, 10)
+                .map(([sec, v], i) => {
+                  const rowColor = semaforoColor(v.pct);
+                  return (
+                    <div key={sec} className="flex items-center gap-1.5">
+                      <span className="text-[8px] font-bold tabular-nums text-slate-300 w-3 flex-shrink-0 text-right">{i + 1}</span>
+                      <div className="flex-1 flex items-center justify-between min-w-0">
+                        <span className="text-[10px] font-semibold text-slate-700 truncate">Sec. {sec}</span>
+                        <div className="flex items-center gap-1 flex-shrink-0">
+                          <span className="text-[9px] text-slate-400 tabular-nums">{fmt(v.total)}</span>
+                          <span className="text-[8px] font-bold px-1 py-0.5 rounded text-white tabular-nums"
+                            style={{ backgroundColor: rowColor }}>{v.pct.toFixed(0)}%</span>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+            </div>
+          </div>
+        )}
 
         {/* Breakdown */}
         {breakdown && (
@@ -1241,6 +1292,75 @@ const TableroBoard = ({ readOnly = false }) => {
                 );
               })}
             </div>
+          </div>
+        )}
+
+        {/* Gráfica de crecimiento por entrega */}
+        {mercadoHistorico.length > 1 && (
+          <div className="rounded-xl border border-slate-100 p-2.5">
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-[9px] font-bold uppercase tracking-widest text-slate-400">Crecimiento por entrega</p>
+              <span className="text-[9px] text-slate-400">pedidos acumulados</span>
+            </div>
+            {(() => {
+              const maxH = Math.max(...mercadoHistorico.map(r => r.total), 1);
+              const BAR_H = 52; // px de alto para las barras
+              return (
+                <div className="flex items-end gap-0.5" style={{ height: BAR_H + 20 }}>
+                  {mercadoHistorico.map((r, i) => {
+                    const pctBar = (r.total / maxH) * 100;
+                    const isSelected = mercadoFiltro && mercadoFiltro.entrega === r.entrega;
+                    // Color: subida = verde, bajada vs anterior = rojo, igual = amarillo
+                    const prev = mercadoHistorico[i - 1];
+                    const trend = !prev ? '#16A34A'
+                      : r.total > prev.total ? '#16A34A'
+                      : r.total < prev.total ? '#DC2626'
+                      : '#CA8A04';
+                    return (
+                      <div key={r.entrega} className="flex-1 flex flex-col items-center gap-0.5"
+                        style={{ cursor: 'pointer' }}
+                        onClick={() => {
+                          // Buscar la entrega en la lista para tener año/mes
+                          const found = mercadoEntregas.find(e => e.entrega === r.entrega);
+                          if (found) setMercadoFiltro(isSelected ? null : found);
+                        }}
+                      >
+                        <div className="w-full rounded-t-sm transition-all duration-500 relative group"
+                          style={{
+                            height: `${Math.max(Math.round((pctBar / 100) * BAR_H), 3)}px`,
+                            backgroundColor: isSelected ? '#EA580C' : trend,
+                            opacity: isSelected ? 1 : 0.75,
+                            outline: isSelected ? '2px solid #EA580C' : 'none',
+                            outlineOffset: 1,
+                          }}
+                          title={`Entrega ${r.entrega}: ${r.total.toLocaleString('es-MX')} uds`}
+                        />
+                        <span className="text-[8px] tabular-nums font-bold leading-none"
+                          style={{ color: isSelected ? '#EA580C' : '#94A3B8' }}>
+                          {r.entrega}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              );
+            })()}
+            <div className="flex justify-between mt-1.5">
+              <span className="text-[8px] text-slate-300">Entrega 1</span>
+              <div className="flex items-center gap-2">
+                <span className="flex items-center gap-0.5 text-[8px] text-green-500"><span>▲</span>alza</span>
+                <span className="flex items-center gap-0.5 text-[8px] text-red-500"><span>▼</span>baja</span>
+              </div>
+              <span className="text-[8px] text-slate-300">última</span>
+            </div>
+            {!mercadoFiltro && (
+              <p className="text-[8px] text-slate-400 text-center mt-1">Toca una barra para filtrar por entrega</p>
+            )}
+            {mercadoFiltro && (
+              <p className="text-[8px] text-orange-500 text-center mt-1 font-semibold">
+                Filtrando: Entrega {mercadoFiltro.entrega} · <button onClick={() => setMercadoFiltro(null)} className="underline">Ver todas</button>
+              </p>
+            )}
           </div>
         )}
 
