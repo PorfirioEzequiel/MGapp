@@ -1,6 +1,6 @@
 import { useEffect, useState, useMemo } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import supabase, { supabaseStorage } from "../supabase/client";
+import supabase, { supabaseStorage as supabaseAdmin } from "../supabase/client";
 import MapTerritorial from "../map/MapTerritorial";
 
 // ── helpers ──────────────────────────────────────────────────────────────────
@@ -253,13 +253,13 @@ const FichaCiudadano = () => {
     if (!ciudadano.curp) { alert("El registro no tiene CURP. Guarda primero el CURP para poder subir fotos."); return; }
     setUploading(prev => ({ ...prev, [fieldName]: true }));
     const filePath = `ciudadanos/${fieldName}-${ciudadano.curp}`;
-    const { error: uploadError } = await supabaseStorage.storage
+    const { error: uploadError } = await supabaseAdmin.storage
       .from("fotos_estructura")
       .upload(filePath, file, { upsert: true });
     if (uploadError) {
       alert("Error al subir la foto: " + uploadError.message);
     } else {
-      const { data: urlData } = supabaseStorage.storage.from("fotos_estructura").getPublicUrl(filePath);
+      const { data: urlData } = supabaseAdmin.storage.from("fotos_estructura").getPublicUrl(filePath);
       const urlFinal = `${urlData.publicUrl}?t=${Date.now()}`;
       set(fieldName, urlFinal);
       const { error: dbError } = await supabase.from("ciudadania").update({ [fieldName]: urlFinal }).eq("id", id);
@@ -280,10 +280,11 @@ const FichaCiudadano = () => {
 
   async function handleSave() {
     setSaving(true);
-    const { error } = await supabase.from("ciudadania").update({
+    const toInt = (v) => { const n = parseInt(String(v ?? ""), 10); return Number.isFinite(n) ? n : null; };
+    const { error } = await supabaseAdmin.from("ciudadania").update({
       usuario: ciudadano.usuario, password: ciudadano.password,
-      dtto_fed: ciudadano.dtto_fed, dtto_loc: ciudadano.dtto_loc,
-      poligono: ciudadano.poligono, seccion: ciudadano.seccion, ubt: ciudadano.ubt,
+      dtto_fed: ciudadano.dtto_fed || null, dtto_loc: ciudadano.dtto_loc || null,
+      poligono: toInt(ciudadano.poligono), seccion: toInt(ciudadano.seccion), ubt: ciudadano.ubt || null,
       nombre: ciudadano.nombre, a_paterno: ciudadano.a_paterno, a_materno: ciudadano.a_materno,
       curp: ciudadano.curp, telefono_1: ciudadano.telefono_1, telefono_2: ciudadano.telefono_2,
       ingreso_estructura: ciudadano.ingreso_estructura, observaciones: ciudadano.observaciones,
