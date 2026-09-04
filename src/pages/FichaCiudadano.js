@@ -120,6 +120,8 @@ const FichaCiudadano = () => {
   const [fracciones, setFracciones] = useState([]);
   const [catalogo, setCatalogo] = useState([]);
   const [fraccionesCat, setFraccionesCat] = useState([]);
+  const [sectoresCat, setSectoresCat] = useState([]);
+  const [seccionesCat, setSeccionesCat] = useState([]);
 
   let viewer = null;
   try { viewer = JSON.parse(sessionStorage.getItem("user")); } catch { viewer = null; }
@@ -165,6 +167,26 @@ const FichaCiudadano = () => {
       });
   }, [ciudadano?.seccion]);
 
+  // Sectores — consulta directa (sin depender del catálogo completo)
+  useEffect(() => {
+    supabase.from("ubt_catalogo").select("sector").order("sector", { ascending: true })
+      .then(({ data }) => {
+        const uniq = [...new Set((data ?? []).map(r => r.sector).filter(s => s != null))].sort((a, b) => a - b);
+        setSectoresCat(uniq.map(String));
+      });
+  }, []);
+
+  // Secciones — consulta directa filtrada por sector elegido
+  useEffect(() => {
+    const pol = ciudadano?.poligono;
+    let q = supabase.from("ubt_catalogo").select("seccion").order("seccion", { ascending: true });
+    if (pol != null && pol !== "" && pol !== 0) q = q.eq("sector", pol);
+    q.then(({ data }) => {
+      const uniq = [...new Set((data ?? []).map(r => r.seccion).filter(s => s != null))].sort((a, b) => a - b);
+      setSeccionesCat(uniq.map(String));
+    });
+  }, [ciudadano?.poligono]);
+
   // Geometría de la sección para el mapa
   useEffect(() => {
     if (!ciudadano?.seccion) { setSeccionGeo(null); setFracciones([]); return; }
@@ -195,21 +217,15 @@ const FichaCiudadano = () => {
     return ensureOption([...new Set(base.map(r => r.dtto_loc))].filter(Boolean).sort(), curDttoLoc);
   }, [catalogo, curDttoFed, curDttoLoc]);
 
-  const sectores = useMemo(() => {
-    let base = catalogo;
-    if (curDttoFed) base = base.filter(r => r.dtto_fed === curDttoFed);
-    if (curDttoLoc) base = base.filter(r => r.dtto_loc === curDttoLoc);
-    return ensureOption([...new Set(base.map(r => r.poligono))].filter(Boolean).sort(), curPoligono);
-  }, [catalogo, curDttoFed, curDttoLoc, curPoligono]);
+  const sectores = useMemo(
+    () => ensureOption(sectoresCat, curPoligono),
+    [sectoresCat, curPoligono]
+  );
 
-  const secciones = useMemo(() => {
-    let base = catalogo;
-    if (curPoligono) base = base.filter(r => r.poligono === curPoligono);
-    return ensureOption(
-      [...new Set(base.map(r => r.seccion))].filter(Boolean).sort((a, b) => Number(a) - Number(b)),
-      curSeccion
-    );
-  }, [catalogo, curPoligono, curSeccion]);
+  const secciones = useMemo(
+    () => ensureOption(seccionesCat, curSeccion),
+    [seccionesCat, curSeccion]
+  );
 
   const ubts = useMemo(() => {
     // Prioridad: resultado de consulta directa por sección
