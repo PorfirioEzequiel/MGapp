@@ -670,20 +670,17 @@ export default function AgregarCiudadanoCP() {
 };
 
 
-  // ================= CARGAR SECCIONES =================
+  // ================= CARGAR SECCIONES (solo las del sector del SP) =================
   useEffect(() => {
-    const cargarSecciones = async () => {
-      const { data, error } = await supabase
-        .from("ciudadania")
-        .select("seccion")
-        .eq("poligono", user?.poligono || "")
-        .order('seccion', { ascending: true });
-      if (!error) {
-        const unicas = [...new Set(data.map((d) => d.seccion))];
+    if (step !== 2) return;
+    const pol = user?.poligono;
+    if (!pol) return;
+    supabase.from("ubt_catalogo").select("seccion").eq("sector", pol).order("seccion", { ascending: true })
+      .then(({ data, error }) => {
+        if (error || !data) return;
+        const unicas = [...new Set(data.map((d) => d.seccion).filter(Boolean))].sort((a, b) => a - b);
         setSecciones(unicas);
-      }
-    };
-    if (step === 2) cargarSecciones();
+      });
   }, [step, user]);
 
   // ✅ Al seleccionar sección, buscar UBT y datos del polígono
@@ -732,21 +729,6 @@ const handleSeccionChange = async (sec) => {
   }
 };
 
-// ================= CARGAR SECCIONES =================
-useEffect(() => {
-  const cargarSecciones = async () => {
-    const { data, error } = await supabase
-      .from("ciudadania")
-      .select("seccion")
-      .eq("poligono", user?.poligono || "");
-
-    if (!error && data?.length) {
-      const unicas = [...new Set(data.map((d) => d.seccion))];
-      setSecciones(unicas);
-    }
-  };
-  if (step === 2) cargarSecciones();
-}, [step, user]);
 
 // ✅ Cuando se carga un ciudadano existente, llenar automáticamente las UBT según su sección
 useEffect(() => {

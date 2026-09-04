@@ -126,6 +126,8 @@ const FichaCiudadano = () => {
   let viewer = null;
   try { viewer = JSON.parse(sessionStorage.getItem("user")); } catch { viewer = null; }
   const viewerEsSM = viewer?.puesto?.toUpperCase() === "SM";
+  const viewerEsSP = viewer?.puesto?.toUpperCase() === "SP";
+  const viewerPoligono = viewer?.poligono != null ? String(viewer.poligono) : null;
 
   // Cargar ciudadano
   useEffect(() => {
@@ -167,24 +169,36 @@ const FichaCiudadano = () => {
       });
   }, [ciudadano?.seccion]);
 
-  // Sectores — consulta directa (sin depender del catálogo completo)
+  // Sectores — si el viewer es SP solo muestra su sector, si no muestra todos
   useEffect(() => {
+    if (viewerEsSP && viewerPoligono) {
+      setSectoresCat([viewerPoligono]);
+      return;
+    }
     supabase.from("ubt_catalogo").select("sector").order("sector", { ascending: true })
       .then(({ data }) => {
         const uniq = [...new Set((data ?? []).map(r => r.sector).filter(s => s != null))].sort((a, b) => a - b);
         setSectoresCat(uniq.map(String));
       });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Secciones — consulta directa filtrada por sector elegido
+  // Secciones — carga solo cuando hay sector seleccionado; cancela peticiones anteriores (race condition)
   useEffect(() => {
-    const pol = ciudadano?.poligono;
-    let q = supabase.from("ubt_catalogo").select("seccion").order("seccion", { ascending: true });
-    if (pol != null && pol !== "" && pol !== 0) q = q.eq("sector", pol);
-    q.then(({ data }) => {
-      const uniq = [...new Set((data ?? []).map(r => r.seccion).filter(s => s != null))].sort((a, b) => a - b);
-      setSeccionesCat(uniq.map(String));
-    });
+    let cancelled = false;
+    const pol = ciudadano?.poligono ?? (viewerEsSP ? viewerPoligono : null);
+    if (pol == null || pol === "" || Number(pol) === 0) {
+      setSeccionesCat([]);
+      return;
+    }
+    supabase.from("ubt_catalogo").select("seccion").eq("sector", pol).order("seccion", { ascending: true })
+      .then(({ data }) => {
+        if (cancelled) return;
+        const uniq = [...new Set((data ?? []).map(r => r.seccion).filter(s => s != null))].sort((a, b) => a - b);
+        setSeccionesCat(uniq.map(String));
+      });
+    return () => { cancelled = true; };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ciudadano?.poligono]);
 
   // Geometría de la sección para el mapa
