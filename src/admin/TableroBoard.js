@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import * as XLSX from 'xlsx';
 import supabase, { supabaseStorage as supabaseAdmin } from '../supabase/client';
 import MapTerritorial from '../map/MapTerritorial';
 import MapaEstadoMexico from '../map/MapaEstadoMexico';
@@ -79,7 +80,7 @@ const CANDIDATOS_DIP = {
   MC:     { nombre: 'Saúl Nayan / Noelia Hdz.',     partido: 'MC',                resultado: '',         fill: '#F59E0B', stroke: '#B45309' },
 };
 
-// ── Alias de secciones históricas (fallback) ──────────────────────────────────
+// ── Alias de secciones históricas (fallback para cuando el dato directo no existe) ──
 const SECTION_ALIASES = {
   7011: 4213, 7012: 4213, 7013: 4213,
   7014: 4213, 7015: 4213, 7016: 4213, 7017: 4213,
@@ -87,6 +88,21 @@ const SECTION_ALIASES = {
   7021: 4228, 7022: 4228, 7023: 4228, 7024: 4228,
   6857: 4251, 6858: 4251, 6859: 4251, 6860: 4251, 6861: 4251,
   6862: 4251, 6863: 4251, 6864: 4251, 6865: 4251, 6866: 4251, 6867: 4251,
+};
+
+// ── Tabla de equivalencias IEEM 2024 ──────────────────────────────────────────
+// Secciones que se fraccionaron para 2026. En la capa IEEM 2024 se agrupan
+// bajo la sección histórica de origen para mantener la comparabilidad.
+const IEEM_2024_GRUPOS = {
+  // 4251 → fraccionada en 6857-6867
+  6857: 4251, 6858: 4251, 6859: 4251, 6860: 4251, 6861: 4251,
+  6862: 4251, 6863: 4251, 6864: 4251, 6865: 4251, 6866: 4251, 6867: 4251,
+  // 4191 → fraccionada en 7046-7053
+  7046: 4191, 7047: 4191, 7048: 4191, 7049: 4191,
+  7050: 4191, 7051: 4191, 7052: 4191, 7053: 4191,
+  // 4208 → fraccionada en 7054-7063
+  7054: 4208, 7055: 4208, 7056: 4208, 7057: 4208, 7058: 4208,
+  7059: 4208, 7060: 4208, 7061: 4208, 7062: 4208, 7063: 4208,
 };
 
 // ── UI primitives ─────────────────────────────────────────────────────────────
@@ -273,6 +289,9 @@ const TableroBoard = ({ readOnly = false }) => {
   const navigate = useNavigate();
 
   const [mapScope, setMapScope] = useState('tecamac'); // 'tecamac' | 'edomex'
+  const sessionUser  = useMemo(() => { try { return JSON.parse(sessionStorage.getItem('user') || '{}'); } catch { return {}; } }, []);
+  const isAdmin      = sessionUser?.puesto?.toLowerCase() === 'administrador';
+
   const [allSecciones,  setAllSecciones]  = useState([]);
   const [loadingMap,    setLoadingMap]    = useState(true);
   const [selectedDistrito, setSelectedDistrito] = useState(null);
@@ -285,17 +304,21 @@ const TableroBoard = ({ readOnly = false }) => {
   const [regCount,      setRegCount]     = useState(null);
   const [ciudadanosGeo, setCiudadanosGeo] = useState([]);
   const [loadingInfo,   setLoadingInfo]  = useState(false);
-  const [selectedSM,    setSelectedSM]   = useState(null);
-  const [focusCoords,   setFocusCoords]  = useState(null);
+  const [selectedSM,       setSelectedSM]      = useState(null);
+  const [focusCoords,      setFocusCoords]     = useState(null);
+  const [expandedMovFrac,  setExpandedMovFrac] = useState(null);
   const [electoralMode, setElectoralMode] = useState(null);
   const [electoralData, setElectoralData] = useState({});
   const [electoralDataIEEM, setElectoralDataIEEM] = useState({});
-  const [electoralData2024,     setElectoralData2024]     = useState({});
   const [electoralData2024IEEM, setElectoralData2024IEEM] = useState({});
   const [electoralDataSenado,   setElectoralDataSenado]   = useState({});
   const [electoralDataDip2024,  setElectoralDataDip2024]  = useState({});
   const [panelFade,     setPanelFade]     = useState(true);
   const prevElectoralMode = useRef(null);
+
+  // ── Totales territoriales globales ───────────────────────────────────────
+  const [globalFracciones, setGlobalFracciones] = useState({}); // seccion → count
+  const [globalSMs,        setGlobalSMs]        = useState({}); // seccion → count
 
   // ── Mercado Solidario ─────────────────────────────────────────────────────
   const [mercadoEntregas,   setMercadoEntregas]   = useState([]);   // lista de entregas disponibles
@@ -303,6 +326,10 @@ const TableroBoard = ({ readOnly = false }) => {
   const [mercadoBySec,      setMercadoBySec]      = useState({});   // seccion → { total, pct, estatus, maxRef }
   const [mercadoHistorico,  setMercadoHistorico]  = useState([]);   // [{ entrega, total }] para la gráfica
   const [loadingMercado,    setLoadingMercado]    = useState(false);
+
+  // ── Desdoble Movilizadores ────────────────────────────────────────────────
+  const [movCountBySec, setMovCountBySec] = useState({}); // seccion → movilizadores count
+  const [movDetailSec,  setMovDetailSec]  = useState([]); // movilizadores in selected section with { nombre, a_paterno, a_materno, movilizador }
 
   useEffect(() => {
     const fetchAll = async () => {
@@ -312,6 +339,26 @@ const TableroBoard = ({ readOnly = false }) => {
       setLoadingMap(false);
     };
     fetchAll();
+  }, []);
+
+  useEffect(() => {
+    Promise.all([
+      supabase.from('ubt_catalogo').select('seccion'),
+      supabase.from('ciudadania').select('seccion').eq('puesto', 'SM'),
+      supabase.from('ciudadania').select('seccion').eq('puesto', 'MOVILIZADOR').eq('status', 'ACTIVO'),
+    ]).then(([fracRes, smRes, movRes]) => {
+      const fracBySec = {};
+      (fracRes.data ?? []).forEach(r => { fracBySec[r.seccion] = (fracBySec[r.seccion] ?? 0) + 1; });
+      setGlobalFracciones(fracBySec);
+
+      const smBySec = {};
+      (smRes.data ?? []).forEach(r => { smBySec[r.seccion] = (smBySec[r.seccion] ?? 0) + 1; });
+      setGlobalSMs(smBySec);
+
+      const movBySec = {};
+      (movRes.data ?? []).forEach(r => { if (r.seccion) movBySec[r.seccion] = (movBySec[r.seccion] ?? 0) + 1; });
+      setMovCountBySec(movBySec);
+    });
   }, []);
 
   useEffect(() => {
@@ -337,22 +384,28 @@ const TableroBoard = ({ readOnly = false }) => {
   }, []);
 
   useEffect(() => {
-    fetch('/electoral_2024.json')
-      .then(r => r.json())
-      .then(rows => {
-        const m = {};
-        rows.forEach(row => { m[row.seccion] = row; });
-        setElectoralData2024(m);
-      })
-      .catch(() => {});
-  }, []);
-
-  useEffect(() => {
     fetch('/electoral_2024_ieem.json')
       .then(r => r.json())
       .then(rows => {
         const m = {};
         rows.forEach(row => { m[row.seccion] = row; });
+
+        // Construir sección histórica 4251 agregando las subsecciones fraccionadas
+        const NUM_KEYS = ['rosi','aaron','mc','pt','pvem','votos_nulos','total_validos','total','rosi_vs_aaron','casillas','lista_nominal'];
+        const firstSub = m[Object.keys(IEEM_2024_GRUPOS).map(Number).find(s => IEEM_2024_GRUPOS[s] === 4251)];
+        const agg4251 = { seccion: 4251, distrito_federal: firstSub?.distrito_federal ?? 5, distrito_local: firstSub?.distrito_local ?? 33 };
+        NUM_KEYS.forEach(k => { agg4251[k] = 0; });
+        Object.keys(IEEM_2024_GRUPOS).forEach(s => {
+          if (IEEM_2024_GRUPOS[s] !== 4251) return;
+          const r = m[Number(s)];
+          if (!r) return;
+          NUM_KEYS.forEach(k => { agg4251[k] += r[k] || 0; });
+        });
+        agg4251.ganador = agg4251.rosi >= agg4251.aaron ? 'ROSI' : 'AARON';
+        agg4251.diferencia_pct = agg4251.total_validos > 0
+          ? Math.abs(((agg4251.rosi - agg4251.aaron) / agg4251.total_validos) * 100).toFixed(2) : 0;
+        m[4251] = agg4251;
+
         setElectoralData2024IEEM(m);
       })
       .catch(() => {});
@@ -364,17 +417,40 @@ const TableroBoard = ({ readOnly = false }) => {
       .then(rows => {
         const m = {};
         rows.forEach(row => { m[row.seccion] = row; });
+        // Construir sección histórica 4251 agregando sus subsecciones fraccionadas
+        const SEN_KEYS = ['morena_coalicion','fuerza_x_mexico','mg_vs_fuerza','senado_mc','votos_nulos','casillas','lista_nominal','total_votos'];
+        const firstSub = m[Object.keys(IEEM_2024_GRUPOS).map(Number).find(s => IEEM_2024_GRUPOS[s] === 4251)];
+        const agg4251s = { seccion: 4251, distrito_federal: firstSub?.distrito_federal ?? 5 };
+        SEN_KEYS.forEach(k => { agg4251s[k] = 0; });
+        Object.keys(IEEM_2024_GRUPOS).forEach(s => {
+          if (IEEM_2024_GRUPOS[s] !== 4251) return;
+          const r = m[Number(s)];
+          if (!r) return;
+          SEN_KEYS.forEach(k => { agg4251s[k] += r[k] || 0; });
+        });
+        agg4251s.ganador = agg4251s.morena_coalicion >= agg4251s.fuerza_x_mexico ? 'MARIELA' : 'FUERZA';
+        agg4251s.diferencia_pct = agg4251s.total_votos > 0
+          ? Math.abs(((agg4251s.morena_coalicion - agg4251s.fuerza_x_mexico) / agg4251s.total_votos) * 100).toFixed(2) : 0;
+        m[4251] = agg4251s;
         setElectoralDataSenado(m);
       })
       .catch(() => {});
   }, []);
 
   useEffect(() => {
+    const DIP_KEYS = ['morena', 'pri', 'mc', 'total', 'nulos', 'lista_nominal'];
     fetch('/dip_2024.json')
       .then(r => r.json())
       .then(rows => {
         const m = {};
         rows.forEach(row => { m[row.seccion] = row; });
+        const group4251 = [6857,6858,6859,6860,6861,6862,6863,6864,6865,6866,6867];
+        const agg4251 = { seccion: 4251, distrito: m[6857]?.distrito ?? 33 };
+        DIP_KEYS.forEach(k => { agg4251[k] = 0; });
+        group4251.forEach(s => { if (m[s]) DIP_KEYS.forEach(k => { agg4251[k] += m[s][k] ?? 0; }); });
+        agg4251.ganador = agg4251.morena >= agg4251.pri && agg4251.morena >= agg4251.mc ? 'MORENA'
+                        : agg4251.pri >= agg4251.mc ? 'PRI' : 'MC';
+        m[4251] = agg4251;
         setElectoralDataDip2024(m);
       })
       .catch(() => {});
@@ -465,6 +541,18 @@ const TableroBoard = ({ readOnly = false }) => {
     return m;
   }, []);
 
+  // ── Desdoble Movilizadores — cálculo por sección ─────────────────────────
+  const movilizadoresBySec = useMemo(() => {
+    const result = {};
+    Object.keys(globalFracciones).forEach(sec => {
+      const s = Number(sec);
+      const meta = (globalFracciones[sec] ?? 0) * 10;
+      const count = movCountBySec[s] ?? 0;
+      result[s] = { count, meta, pct: meta > 0 ? Math.min((count / meta) * 100, 100) : 0 };
+    });
+    return result;
+  }, [globalFracciones, movCountBySec]);
+
   // ── Derivados ─────────────────────────────────────────────────────────────
   const distritos = useMemo(() =>
     [...new Set(allSecciones.map(s => s.distrito_federal))].filter(Boolean).sort((a, b) => a - b),
@@ -554,13 +642,12 @@ const TableroBoard = ({ readOnly = false }) => {
   // ── Estadísticas electorales filtradas ───────────────────────────────────
   const electoralStats = useMemo(() => {
     const isIEEM      = electoralMode === 'ayu_2021_ieem';
-    const is2024      = electoralMode === 'ayu_2024';
+    const is2024      = false;
     const is2024IEEM  = electoralMode === 'ayu_2024_ieem';
     const isSenado    = electoralMode === 'senado_2024';
     const isDip2024   = electoralMode === 'dip_2024';
     const isDip       = isDip2024;
     const dataSource  = isIEEM ? electoralDataIEEM
-                      : is2024 ? electoralData2024
                       : is2024IEEM ? electoralData2024IEEM
                       : isSenado ? electoralDataSenado
                       : isDip2024 ? electoralDataDip2024
@@ -586,12 +673,16 @@ const TableroBoard = ({ readOnly = false }) => {
     const senadoBuckets = {};
 
     for (const s of mapSecciones) {
-      const canonical = dataSource[s.seccion] !== undefined
-        ? s.seccion
-        : (SECTION_ALIASES[s.seccion] ?? s.seccion);
+      // IEEM 2024, Senado 2024 y Dip 2024: alias forzado para secciones fraccionadas
+      const canonical = ((is2024IEEM || isSenado || isDip2024) && IEEM_2024_GRUPOS[s.seccion])
+        ? IEEM_2024_GRUPOS[s.seccion]
+        : dataSource[s.seccion] !== undefined
+          ? s.seccion
+          : (SECTION_ALIASES[s.seccion] ?? s.seccion);
       if (counted.has(canonical)) continue;
       const d = dataSource[canonical];
       if (!d) continue;
+      if (isDip2024 && d.distrito !== 33) continue;
       if ((is2024 || is2024IEEM || isSenado) && dataSource[s.seccion] === undefined && dataSource[canonical] === undefined) continue;
       counted.add(canonical);
       secciones++;
@@ -691,7 +782,7 @@ const TableroBoard = ({ readOnly = false }) => {
              morena_solo_total, pt_solo_total, naem_solo_total,
              rosi_vs_aaron_total, mg_vs_fuerza_total, votos_nulos_total,
              groupLevel, senadoBreakdown };
-  }, [electoralData, electoralDataIEEM, electoralData2024, electoralData2024IEEM, electoralDataSenado,
+  }, [electoralData, electoralDataIEEM, electoralData2024IEEM, electoralDataSenado,
       electoralDataDip2024, electoralMode, mapSecciones,
       selectedSeccion, selectedSector, selectedDistrito]);
 
@@ -702,7 +793,7 @@ const TableroBoard = ({ readOnly = false }) => {
       const [spRes, geoRes] = await Promise.all([
         supabase.from('ciudadania').select('nombre, a_paterno, a_materno')
           .eq('puesto', 'SP').eq('poligono', selectedSector).eq('status', 'ACTIVO').maybeSingle(),
-        supabase.from('ciudadania').select('id, nombre, a_paterno, a_materno, latitud, longitud, puesto, ubt, seccion, url_foto_perfil')
+        supabase.from('ciudadania').select('id, nombre, a_paterno, a_materno, latitud, longitud, puesto, ubt, seccion, url_foto_perfil, telefono_1')
           .eq('poligono', selectedSector).eq('status', 'ACTIVO').not('latitud', 'is', null),
       ]);
       setSp(spRes.data ?? null);
@@ -715,22 +806,26 @@ const TableroBoard = ({ readOnly = false }) => {
   useEffect(() => {
     if (!selectedSeccion) {
       setSeccional(null); setPromotores([]); setFracciones([]); setRegCount(null);
-      setSelectedSM(null); setFocusCoords(null);
+      setSelectedSM(null); setFocusCoords(null); setExpandedMovFrac(null);
+      setMovDetailSec([]);
       return;
     }
     const run = async () => {
       setLoadingInfo(true);
-      const [rsRes, smRes, fracRes, regRes, geoRes, fracGeoRes] = await Promise.all([
+      const [rsRes, smRes, fracRes, regRes, geoRes, fracGeoRes, movRes] = await Promise.all([
         supabase.from('ciudadania').select('nombre, a_paterno, a_materno')
           .eq('puesto', 'SECCIONAL').eq('seccion', selectedSeccion).eq('status', 'ACTIVO').maybeSingle(),
-        supabase.from('ciudadania').select('nombre, a_paterno, a_materno, ubt, telefono_1, latitud, longitud, url_foto_perfil')
+        supabase.from('ciudadania').select('nombre, a_paterno, a_materno, ubt, usuario, telefono_1, latitud, longitud, url_foto_perfil')
           .eq('puesto', 'SM').eq('seccion', selectedSeccion).eq('status', 'ACTIVO').order('ubt', { ascending: true }),
         supabase.from('ubt_catalogo').select('fraccion').eq('seccion', selectedSeccion).order('fraccion', { ascending: true }),
         supabase.from('ciudadania').select('id', { count: 'exact', head: true })
           .eq('seccion', selectedSeccion).eq('status', 'ACTIVO'),
-        supabase.from('ciudadania').select('id, nombre, a_paterno, a_materno, latitud, longitud, puesto, ubt, seccion, url_foto_perfil')
+        supabase.from('ciudadania').select('id, nombre, a_paterno, a_materno, latitud, longitud, puesto, ubt, seccion, url_foto_perfil, telefono_1')
           .eq('seccion', selectedSeccion).eq('status', 'ACTIVO').not('latitud', 'is', null),
         supabase.from('fracciones').select('fraccion, seccion, geometry').eq('seccion', selectedSeccion),
+        supabase.from('ciudadania')
+          .select('nombre, a_paterno, a_materno, movilizador')
+          .eq('seccion', selectedSeccion).eq('puesto', 'MOVILIZADOR').eq('status', 'ACTIVO'),
       ]);
       setSeccional(rsRes.data ?? null);
       setPromotores(smRes.data ?? []);
@@ -742,6 +837,7 @@ const TableroBoard = ({ readOnly = false }) => {
       setFracciones(fraccionList.map(frac => ({
         fraccion: frac, seccion: selectedSeccion, geometry: geoByFrac[String(frac)] ?? null,
       })));
+      setMovDetailSec(movRes.data ?? []);
       setLoadingInfo(false);
     };
     run();
@@ -1029,6 +1125,234 @@ const TableroBoard = ({ readOnly = false }) => {
     );
   };
 
+  // ── Desdoble Movilizadores panel ─────────────────────────────────────────
+  const renderMovilizadoresPanel = () => {
+    const semaforoColor = (p) => {
+      if (p == null || isNaN(p)) return '#9CA3AF';
+      if (p >= 90) return '#16A34A';
+      if (p >= 75) return '#65A30D';
+      if (p >= 50) return '#CA8A04';
+      if (p >= 25) return '#EA580C';
+      return '#DC2626';
+    };
+    const semaforoLabel = (p) => {
+      if (p == null || isNaN(p)) return 'Sin datos';
+      if (p >= 90) return 'Excelente';
+      if (p >= 75) return 'Bien';
+      if (p >= 50) return 'Regular';
+      if (p >= 25) return 'Bajo';
+      return 'Crítico';
+    };
+
+    const isSeccion  = selectedSeccion != null;
+    const isSector   = !isSeccion && selectedSector != null;
+    const isDistrito = !isSeccion && !isSector && selectedDistrito != null;
+
+    const scopeLabel = isSeccion   ? `Sección ${selectedSeccion}`
+      : isSector    ? `Sector ${selectedSector}`
+      : isDistrito  ? `Distrito ${selectedDistrito}`
+      : 'Municipio completo';
+
+    // Filter movilizadoresBySec to scope
+    const scopeEntries = isSeccion
+      ? Object.entries(movilizadoresBySec).filter(([sec]) => Number(sec) === selectedSeccion)
+      : isSector
+        ? Object.entries(movilizadoresBySec).filter(([sec]) => allSecciones.find(s => s.seccion === Number(sec) && s.pologono === selectedSector))
+        : isDistrito
+          ? Object.entries(movilizadoresBySec).filter(([sec]) => allSecciones.find(s => s.seccion === Number(sec) && s.distrito_federal === selectedDistrito))
+          : Object.entries(movilizadoresBySec);
+
+    const totalCount = scopeEntries.reduce((s, [, v]) => s + v.count, 0);
+    const totalMeta  = scopeEntries.reduce((s, [, v]) => s + v.meta,  0);
+    const pctGlobal  = totalMeta > 0 ? Math.min((totalCount / totalMeta) * 100, 100) : null;
+    const noData     = totalMeta === 0;
+    const barColor   = semaforoColor(pctGlobal);
+    const statusLabel = semaforoLabel(pctGlobal);
+
+    // Breakdown
+    const breakdown = (() => {
+      if (isSeccion) return null;
+      if (isSector) {
+        return scopeEntries
+          .map(([sec, v]) => ({ label: `Sec. ${sec}`, key: sec, count: v.count, meta: v.meta, pct: v.pct }))
+          .filter(r => r.meta > 0)
+          .sort((a, b) => a.pct - b.pct);
+      }
+      // Municipio or Distrito → by sector
+      const bySector = {};
+      scopeEntries.forEach(([sec, v]) => {
+        const s = allSecciones.find(ss => ss.seccion === Number(sec));
+        const sectorKey = s?.pologono ?? '?';
+        if (!bySector[sectorKey]) bySector[sectorKey] = { count: 0, meta: 0 };
+        bySector[sectorKey].count += v.count;
+        bySector[sectorKey].meta  += v.meta;
+      });
+      return Object.entries(bySector)
+        .filter(([, v]) => v.meta > 0)
+        .map(([sp, v]) => ({ label: `Sector ${sp}`, key: sp, count: v.count, meta: v.meta, pct: v.meta > 0 ? (v.count / v.meta) * 100 : 0 }))
+        .sort((a, b) => a.pct - b.pct);
+    })();
+
+    const nivelLabel = isSeccion ? null
+      : isSector   ? 'Selecciona una sección para ver su detalle'
+      : isDistrito ? 'Selecciona un sector para ver por sección'
+      : 'Selecciona un sector para ver su avance por sección';
+
+    return (
+      <div className="space-y-2.5">
+
+        {/* Cabecera */}
+        <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5">
+          <div className="flex items-start justify-between gap-2">
+            <div>
+              <p className="text-[9px] font-bold uppercase tracking-[0.14em] text-slate-400 leading-none mb-1">Desdoble Movilizadores</p>
+              <p className="text-xs font-bold text-slate-800 leading-snug">Movilizadores registrados vs meta</p>
+            </div>
+            <span className="text-[9px] font-bold px-2 py-1 rounded-full whitespace-nowrap flex-shrink-0 text-white"
+              style={{ backgroundColor: noData ? '#9CA3AF' : barColor }}>
+              {statusLabel}
+            </span>
+          </div>
+          <p className="text-[10px] text-slate-500 mt-1.5 flex items-center gap-1">
+            <span className="w-1.5 h-1.5 rounded-full inline-block" style={{ backgroundColor: noData ? '#9CA3AF' : barColor }} />
+            {scopeLabel}
+          </p>
+        </div>
+
+        {/* Métricas clave */}
+        <div className="grid grid-cols-3 gap-1.5">
+          <div className="bg-sky-50 rounded-xl p-2 text-center">
+            <p className="text-[9px] font-bold uppercase tracking-widest text-sky-500 leading-none mb-1">Registrados</p>
+            <p className="text-lg font-bold tabular-nums text-sky-700">{fmt(totalCount)}</p>
+          </div>
+          <div className="bg-slate-50 rounded-xl p-2 text-center">
+            <p className="text-[9px] font-bold uppercase tracking-widest text-slate-500 leading-none mb-1">Meta</p>
+            <p className="text-lg font-bold tabular-nums text-slate-700">{fmt(totalMeta)}</p>
+          </div>
+          <div className="rounded-xl p-2 text-center" style={{ backgroundColor: (noData ? '#9CA3AF' : barColor) + '18' }}>
+            <p className="text-[9px] font-bold uppercase tracking-widest leading-none mb-1" style={{ color: noData ? '#9CA3AF' : barColor }}>Avance</p>
+            <p className="text-lg font-bold tabular-nums" style={{ color: noData ? '#9CA3AF' : barColor }}>
+              {noData ? '—' : `${pctGlobal.toFixed(1)}%`}
+            </p>
+          </div>
+        </div>
+
+        {/* Barra de progreso */}
+        {!noData && (
+          <div>
+            <div className="h-2.5 rounded-full overflow-hidden" style={{ background: 'linear-gradient(90deg,#DC2626 0%,#CA8A04 40%,#65A30D 75%,#16A34A 100%)', opacity: 0.15 }} />
+            <div className="h-2.5 rounded-full overflow-hidden -mt-2.5">
+              <div className="h-full rounded-full transition-all duration-700"
+                style={{ width: `${Math.min(pctGlobal, 100)}%`, backgroundColor: barColor }} />
+            </div>
+            <div className="flex justify-between mt-1">
+              <span className="text-[9px] text-slate-300">0%</span>
+              <span className="text-[9px] font-bold" style={{ color: barColor }}>{pctGlobal.toFixed(1)}% completado</span>
+              <span className="text-[9px] text-slate-300">100%</span>
+            </div>
+          </div>
+        )}
+
+        {/* Section-level detail: fracciones + movilizadores por SM */}
+        {isSeccion && fracciones.length > 0 && (
+          <div className="rounded-xl border border-slate-200 overflow-hidden shadow-sm">
+            <div className="bg-slate-50 border-b border-slate-100 px-3 py-2">
+              <p className="text-[9px] font-bold uppercase tracking-widest text-slate-400">Avance por SM · meta: 10 por fracción</p>
+            </div>
+            <div className="divide-y divide-slate-50">
+              {fracciones.map(f => {
+                const sm = promotores.find(p => p.ubt === f.fraccion);
+                const smMov = movDetailSec.filter(m => sm && m.movilizador === sm.usuario);
+                const smCount = smMov.length;
+                const smPct = Math.min((smCount / 10) * 100, 100);
+                const smColor = semaforoColor(smPct === 0 ? null : smPct);
+                return (
+                  <div key={f.fraccion} className="px-3 py-2">
+                    <div className="flex items-center justify-between mb-1">
+                      <div>
+                        <span className="text-[10px] font-bold text-slate-600">Fracc. {f.fraccion}</span>
+                        {sm && <span className="text-[9px] text-slate-400 ml-1.5">{fullName(sm)}</span>}
+                        {!sm && <span className="text-[9px] text-slate-300 italic ml-1.5">Sin SM</span>}
+                      </div>
+                      <span className="text-[10px] font-bold tabular-nums" style={{ color: smCount === 0 ? '#9CA3AF' : smColor }}>
+                        {smCount}/10
+                      </span>
+                    </div>
+                    <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                      <div className="h-full rounded-full transition-all duration-500"
+                        style={{ width: `${smPct}%`, backgroundColor: smCount === 0 ? '#9CA3AF' : smColor }} />
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* Leyenda */}
+        <div className="rounded-xl border border-slate-100 p-2.5">
+          <p className="text-[9px] font-bold uppercase tracking-widest text-slate-400 mb-1.5">Escala de avance</p>
+          <div className="space-y-1">
+            {[
+              { label: 'Excelente', range: '≥ 90%',  color: '#16A34A' },
+              { label: 'Bien',      range: '75–89%', color: '#65A30D' },
+              { label: 'Regular',   range: '50–74%', color: '#CA8A04' },
+              { label: 'Bajo',      range: '25–49%', color: '#EA580C' },
+              { label: 'Crítico',   range: '< 25%',  color: '#DC2626' },
+              { label: 'Sin datos', range: '—',       color: '#9CA3AF' },
+            ].map(({ label, range, color }) => (
+              <div key={label} className="flex items-center justify-between">
+                <div className="flex items-center gap-1.5">
+                  <div className="w-2 h-2 rounded-sm flex-shrink-0" style={{ backgroundColor: color }} />
+                  <span className="text-[10px] font-medium text-slate-700">{label}</span>
+                </div>
+                <span className="text-[9px] text-slate-400 tabular-nums">{range}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Breakdown por nivel */}
+        {breakdown && breakdown.length > 0 && (
+          <div>
+            <div className="flex items-center justify-between mb-1.5">
+              <p className="text-[9px] font-bold uppercase tracking-widest text-slate-400">
+                {isSector ? 'Avance por sección' : 'Avance por sector'}
+              </p>
+              <span className="text-[9px] text-slate-400">peor → mejor</span>
+            </div>
+            <div className="space-y-1.5">
+              {breakdown.map(row => {
+                const rowColor = semaforoColor(row.pct);
+                return (
+                  <div key={row.key}>
+                    <div className="flex items-center justify-between mb-0.5">
+                      <span className="text-[10px] font-semibold text-slate-700">{row.label}</span>
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-[9px] text-slate-400 tabular-nums">{fmt(row.count)}/{fmt(row.meta)}</span>
+                        <span className="text-[9px] font-bold tabular-nums min-w-[2.5rem] text-right" style={{ color: rowColor }}>
+                          {row.pct.toFixed(0)}%
+                        </span>
+                      </div>
+                    </div>
+                    <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
+                      <div className="h-full rounded-full transition-all duration-500"
+                        style={{ width: `${Math.min(row.pct, 100)}%`, backgroundColor: rowColor }} />
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {nivelLabel && (
+          <p className="text-[9px] text-slate-400 text-center leading-snug pt-1">{nivelLabel}</p>
+        )}
+      </div>
+    );
+  };
+
   // ── Mercado Solidario panel ───────────────────────────────────────────────
   const renderMercadoPanel = () => {
     const MESES = ['ENE','FEB','MAR','ABR','MAY','JUN','JUL','AGO','SEP','OCT','NOV','DIC'];
@@ -1185,25 +1509,6 @@ const TableroBoard = ({ readOnly = false }) => {
           </div>
         )}
 
-        {/* Estatus por sección */}
-        {seccionesEnScope.length > 0 && (
-          <div className="rounded-xl border border-slate-100 p-2.5">
-            <p className="text-[9px] font-bold uppercase tracking-widest text-slate-400 mb-1.5">Por estatus</p>
-            <div className="grid grid-cols-2 gap-1">
-              {[
-                { key: 'ENTREGADO',    label: 'Entregado',    color: '#16A34A', bg: '#f0fdf4' },
-                { key: 'PARCIAL',      label: 'Parcial',      color: '#EA580C', bg: '#fff7ed' },
-                { key: 'PENDIENTE',    label: 'Pendiente',    color: '#CA8A04', bg: '#fefce8' },
-                { key: 'NO_ENTREGADO', label: 'No entregado', color: '#DC2626', bg: '#fef2f2' },
-              ].map(({ key, label, color, bg }) => (
-                <div key={key} className="flex items-center justify-between rounded-lg px-2 py-1.5" style={{ backgroundColor: bg }}>
-                  <span className="text-[10px] font-medium" style={{ color }}>{label}</span>
-                  <span className="text-xs font-bold tabular-nums" style={{ color }}>{estatusCount[key]}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
 
         {/* Leyenda de colores */}
         <div className="rounded-xl border border-slate-100 p-2.5">
@@ -1750,7 +2055,7 @@ const TableroBoard = ({ readOnly = false }) => {
             {isSenado
               ? <><strong className="text-slate-500">Fuente:</strong> PREP / Actas de cómputo IEEM · Senaduría · Estado de México 2024. Filtrado al municipio de Tecámac (82), 197 secciones. Secciones 7011–7017 y 7018–7024 agrupadas en secciones históricas 4213 y 4228 respectivamente.</>
               : is2024IEEM
-                ? <><strong className="text-slate-500">Fuente:</strong> Cómputo oficial IEEM · Municipio 82 (Tecámac) · Ayuntamiento 2024. Coalición PAN·PRI·PRD·NAEM (Aaron Urbina) sumada en todas sus combinaciones por sección. Secciones 7011–7017 y 7018–7024 agrupadas en secciones históricas 4213 y 4228 respectivamente.</>
+                ? <><strong className="text-slate-500">Fuente:</strong> Cómputo oficial IEEM · Municipio 82 (Tecámac) · Ayuntamiento 2024. Coalición PAN·PRI·PRD·NAEM (Aaron Urbina) sumada en todas sus combinaciones por sección. Secciones 7011–7017 y 7018–7024 agrupadas en históricas 4213 y 4228. Secciones 6857–6867 contabilizadas individualmente (no existían en 2021 como sección independiente).</>
               : is2024
                 ? <><strong className="text-slate-500">Fuente:</strong> Base de datos interna · Ayuntamiento Tecámac 2024. Secciones 7011–7017 y 7018–7024 agrupadas en secciones históricas 4213 y 4228 respectivamente.</>
                 : isIEEM
@@ -1827,7 +2132,6 @@ const TableroBoard = ({ readOnly = false }) => {
             <SectionTitle>Responsables</SectionTitle>
             <div className="divide-y divide-slate-50">
               <ResponsableRow role="SP" name={fullName(sp)} roleColor="bg-violet-100 text-violet-700" avatarColor="bg-violet-100 text-violet-600" />
-              <ResponsableRow role="RS" name={fullName(seccional)} roleColor="bg-pink-100 text-pink-700" avatarColor="bg-pink-100 text-pink-600" />
             </div>
           </div>
 
@@ -1841,34 +2145,83 @@ const TableroBoard = ({ readOnly = false }) => {
                     <tr>
                       <th className="text-left px-2.5 py-2 text-[9px] font-bold uppercase tracking-widest text-slate-400">Fracc.</th>
                       <th className="text-left px-2.5 py-2 text-[9px] font-bold uppercase tracking-widest text-slate-400">Promotora SM</th>
-                      <th className="px-2.5 py-2 w-6"></th>
+                      <th className="px-2 py-2 text-center text-[9px] font-bold uppercase tracking-widest text-slate-400 w-16">MGS</th>
+                      <th className="px-2 py-2 w-5"></th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-50">
                     {fracciones.map(f => {
-                      const sm         = promotores.find(p => p.ubt === f.fraccion);
-                      const isSelected = selectedSM?.ubt === f.fraccion;
-                      const hasCoords  = sm?.latitud && Number(sm.latitud) !== 0 && !isNaN(Number(sm.latitud));
-                      const dot        = sm ? (hasCoords ? 'bg-emerald-400' : 'bg-blue-400') : 'bg-slate-200';
+                      const sm           = promotores.find(p => p.ubt === f.fraccion);
+                      const isSelected   = selectedSM?.ubt === f.fraccion;
+                      const hasCoords    = sm?.latitud && Number(sm.latitud) !== 0 && !isNaN(Number(sm.latitud));
+                      const dot          = sm ? (hasCoords ? 'bg-emerald-400' : 'bg-blue-400') : 'bg-slate-200';
+                      const movOpen      = expandedMovFrac === f.fraccion;
                       return (
-                        <tr
-                          key={f.fraccion}
-                          onClick={() => sm && handleSelectSM(sm)}
-                          className={`transition-colors ${sm ? 'cursor-pointer' : ''} ${isSelected ? 'bg-blue-50 ring-1 ring-inset ring-blue-200' : 'hover:bg-slate-50'}`}
-                        >
-                          <td className={`px-2.5 py-2 font-bold text-[11px] ${isSelected ? 'text-blue-700' : 'text-slate-600'}`}>
-                            <div className="flex items-center gap-1.5">
-                              <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${dot}`} />
-                              {f.fraccion}
-                            </div>
-                          </td>
-                          <td className={`px-2.5 py-2 text-[11px] ${isSelected ? 'text-blue-600 font-semibold' : 'text-slate-600'}`}>
-                            {fullName(sm) || <span className="text-slate-300 italic text-[10px]">Sin asignar</span>}
-                          </td>
-                          <td className="px-2.5 py-2 text-center text-xs">
-                            {sm && (hasCoords ? '📍' : <span className="text-amber-400 font-bold">!</span>)}
-                          </td>
-                        </tr>
+                        <React.Fragment key={f.fraccion}>
+                          <tr
+                            onClick={() => sm && handleSelectSM(sm)}
+                            className={`transition-colors ${sm ? 'cursor-pointer' : ''} ${isSelected ? 'bg-blue-50 ring-1 ring-inset ring-blue-200' : movOpen ? 'bg-sky-50/40' : 'hover:bg-slate-50'}`}
+                          >
+                            <td className={`px-2.5 py-2 font-bold text-[11px] ${isSelected ? 'text-blue-700' : 'text-slate-600'}`}>
+                              <div className="flex items-center gap-1.5">
+                                <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${dot}`} />
+                                {f.fraccion}
+                              </div>
+                            </td>
+                            <td className={`px-2.5 py-2 text-[11px] ${isSelected ? 'text-blue-600 font-semibold' : 'text-slate-600'}`}>
+                              {fullName(sm) || <span className="text-slate-300 italic text-[10px]">Sin asignar</span>}
+                            </td>
+                            <td className="px-2 py-1.5 text-center">
+                              <button
+                                onClick={e => { e.stopPropagation(); setExpandedMovFrac(movOpen ? null : f.fraccion); }}
+                                className={`text-[9px] font-bold px-2 py-1 rounded-md border transition-all duration-150 leading-none ${
+                                  movOpen
+                                    ? 'bg-sky-500 text-white border-sky-500 shadow-sm'
+                                    : 'bg-white text-sky-500 border-sky-200 hover:bg-sky-50 hover:border-sky-300'
+                                }`}
+                              >
+                                MGS
+                              </button>
+                            </td>
+                            <td className="px-2 py-2 text-center text-xs">
+                              {sm && (hasCoords ? '📍' : <span className="text-amber-400 font-bold">!</span>)}
+                            </td>
+                          </tr>
+
+                          {movOpen && (
+                            <tr>
+                              <td colSpan={4} className="p-0">
+                                <div className="bg-sky-50/60 border-t border-sky-100 px-3 pt-2.5 pb-3">
+                                  <p className="text-[9px] font-bold uppercase tracking-widest text-sky-500 mb-2">
+                                    Movilizadores · Fracción {f.fraccion}
+                                    {sm && (() => {
+                                      const cnt = movDetailSec.filter(m => m.movilizador === sm.usuario).length;
+                                      return <span className="ml-2 text-slate-400 normal-case">{cnt}/10</span>;
+                                    })()}
+                                  </p>
+                                  <div className="grid grid-cols-2 gap-1">
+                                    {Array.from({ length: 10 }, (_, i) => {
+                                      const smMovs = sm ? movDetailSec.filter(m => m.movilizador === sm.usuario) : [];
+                                      const mov = smMovs[i];
+                                      return (
+                                        <div key={i} className={`flex items-center gap-1.5 px-2 py-1.5 rounded-lg border shadow-sm ${mov ? 'bg-white border-sky-200' : 'bg-white border-sky-100'}`}>
+                                          <span className={`w-4 h-4 rounded-full text-[9px] font-bold flex items-center justify-center flex-shrink-0 leading-none ${mov ? 'bg-sky-500 text-white' : 'bg-sky-100 text-sky-500'}`}>
+                                            {i + 1}
+                                          </span>
+                                          {mov ? (
+                                            <span className="text-[10px] text-slate-700 font-medium truncate">{fullName(mov)}</span>
+                                          ) : (
+                                            <span className="text-[10px] text-slate-300 italic truncate">Vacío</span>
+                                          )}
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
+                                </div>
+                              </td>
+                            </tr>
+                          )}
+                        </React.Fragment>
                       );
                     })}
                   </tbody>
@@ -1909,12 +2262,14 @@ const TableroBoard = ({ readOnly = false }) => {
 
     // SECTOR
     if (selectedSector != null) {
-      const secData      = allSecciones.filter(s => s.pologono === selectedSector);
-      const listaNominal = secData.reduce((s, x) => s + (Number(x.lista_nominal) || 0), 0);
-      const af           = afiliacionStats;
-      const afKey        = String(selectedSector);
-      const afSect       = af?.bySector?.[afKey];
-      const secRows      = secData
+      const secData           = allSecciones.filter(s => s.pologono === selectedSector);
+      const listaNominal      = secData.reduce((s, x) => s + (Number(x.lista_nominal) || 0), 0);
+      const fraccionesSector  = secData.reduce((s, x) => s + (globalFracciones[x.seccion] ?? 0), 0);
+      const smsSector         = secData.reduce((s, x) => s + (globalSMs[x.seccion] ?? 0), 0);
+      const af                = afiliacionStats;
+      const afKey             = String(selectedSector);
+      const afSect            = af?.bySector?.[afKey];
+      const secRows           = secData
         .map(s => ({ sec: s.seccion, ...afiliacionBySec[s.seccion] }))
         .filter(r => r.afiliados != null)
         .sort((a, b) => a.sec - b.sec)
@@ -1925,6 +2280,8 @@ const TableroBoard = ({ readOnly = false }) => {
           <div className="grid grid-cols-2 gap-1.5">
             <StatCard label="Lista Nominal" value={fmt(listaNominal)} accent wide />
             <StatCard label="Secciones" value={secData.length} sub="en este sector" />
+            <StatCard label="Fracciones" value={fraccionesSector || '—'} sub="en este sector" />
+            <StatCard label="SMs" value={smsSector || '—'} sub="activas" />
             <StatCard label="Ubicados" value={ciudadanosGeo.length || '—'} sub="con coordenadas" />
           </div>
           {afSect && (
@@ -1945,12 +2302,14 @@ const TableroBoard = ({ readOnly = false }) => {
 
     // DISTRITO
     if (selectedDistrito != null) {
-      const secData      = allSecciones.filter(s => s.distrito_federal === selectedDistrito);
-      const listaNominal = secData.reduce((s, x) => s + (Number(x.lista_nominal) || 0), 0);
-      const af           = afiliacionStats;
-      const dKey         = String(selectedDistrito);
-      const afDist       = af?.byDistrito?.[dKey];
-      const sectoresEnDist = [...new Set(secData.map(s => s.pologono))].sort((a,b) => a-b);
+      const secData           = allSecciones.filter(s => s.distrito_federal === selectedDistrito);
+      const listaNominal      = secData.reduce((s, x) => s + (Number(x.lista_nominal) || 0), 0);
+      const fraccionesDistrito = secData.reduce((s, x) => s + (globalFracciones[x.seccion] ?? 0), 0);
+      const smsDistrito        = secData.reduce((s, x) => s + (globalSMs[x.seccion] ?? 0), 0);
+      const af                = afiliacionStats;
+      const dKey              = String(selectedDistrito);
+      const afDist            = af?.byDistrito?.[dKey];
+      const sectoresEnDist    = [...new Set(secData.map(s => s.pologono))].sort((a,b) => a-b);
       const sectRows = sectoresEnDist
         .map(s => af?.bySector?.[String(s)] ? { label: `Sector ${s}`, ...af.bySector[String(s)] } : null)
         .filter(Boolean);
@@ -1960,7 +2319,9 @@ const TableroBoard = ({ readOnly = false }) => {
           <div className="grid grid-cols-2 gap-1.5">
             <StatCard label="Lista Nominal" value={fmt(listaNominal)} accent wide />
             <StatCard label="Secciones" value={secData.length} />
-            <StatCard label="Sectores" value={sectores.length} />
+            <StatCard label="Sectores" value={sectoresEnDist.length} />
+            <StatCard label="Fracciones" value={fraccionesDistrito || '—'} sub="en este distrito" />
+            <StatCard label="SMs" value={smsDistrito || '—'} sub="activas" />
           </div>
           {afDist && (
             <div className="bg-white border border-slate-100 rounded-xl p-3 shadow-sm">
@@ -1975,11 +2336,13 @@ const TableroBoard = ({ readOnly = false }) => {
     }
 
     // MUNICIPIO
-    const totalNominal  = allSecciones.reduce((s, x) => s + (Number(x.lista_nominal) || 0), 0);
-    const totalSectores = [...new Set(allSecciones.map(s => s.pologono))].length;
-    const af            = afiliacionStats;
-    const afTotal       = af?.total;
-    const sectorRows    = Object.entries(af?.bySector ?? {})
+    const totalNominal    = allSecciones.reduce((s, x) => s + (Number(x.lista_nominal) || 0), 0);
+    const totalSectores   = [...new Set(allSecciones.map(s => s.pologono))].length;
+    const totalFracciones = Object.values(globalFracciones).reduce((s, n) => s + n, 0);
+    const totalSMsMun     = Object.values(globalSMs).reduce((s, n) => s + n, 0);
+    const af              = afiliacionStats;
+    const afTotal         = af?.total;
+    const sectorRows      = Object.entries(af?.bySector ?? {})
       .sort((a,b) => Number(a[0]) - Number(b[0]))
       .map(([k, v]) => ({ label: `S-${k}`, ...v }));
 
@@ -1990,6 +2353,8 @@ const TableroBoard = ({ readOnly = false }) => {
           <StatCard label="Secciones" value={allSecciones.length} sub="en el municipio" />
           <StatCard label="Distritos" value={distritos.length} />
           <StatCard label="Sectores" value={totalSectores} />
+          <StatCard label="Fracciones" value={totalFracciones || '—'} sub="total municipal" />
+          <StatCard label="SMs" value={totalSMsMun || '—'} sub="activas" />
         </div>
         {afTotal?.afiliados > 0 && (
           <div className="bg-white border border-slate-100 rounded-xl p-3 shadow-sm">
@@ -2004,6 +2369,95 @@ const TableroBoard = ({ readOnly = false }) => {
   };
 
   const levelLabel = ['Vista general del municipio', `Distrito Federal ${selectedDistrito ?? ''}`, `Sector ${selectedSector ?? ''}`, `Sección ${selectedSeccion ?? ''}`][currentLevel];
+
+  const downloadEstructuraExcel = useCallback(() => {
+    const rows = allSecciones
+      .slice()
+      .sort((a, b) => (a.distrito_federal ?? 0) - (b.distrito_federal ?? 0) || (a.pologono ?? 0) - (b.pologono ?? 0) || a.seccion - b.seccion)
+      .map(s => ({
+        'Distrito Federal': s.distrito_federal ?? '',
+        'Sector':           s.pologono ?? '',
+        'Sección':          s.seccion,
+        'Fracciones':       globalFracciones[s.seccion] ?? 0,
+        'SMs':              globalSMs[s.seccion] ?? 0,
+      }));
+
+    const ws = XLSX.utils.json_to_sheet(rows);
+    ws['!cols'] = [{ wch: 18 }, { wch: 10 }, { wch: 10 }, { wch: 12 }, { wch: 8 }];
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Estructura Territorial');
+    XLSX.writeFile(wb, `estructura_territorial_${new Date().toISOString().slice(0,10)}.xlsx`);
+  }, [allSecciones, globalFracciones, globalSMs]);
+
+  const downloadReporteAvancesExcel = useCallback(() => {
+    const fecha = new Date().toISOString().slice(0, 10);
+
+    const rows = allSecciones
+      .slice()
+      .sort((a, b) =>
+        (a.pologono ?? 0) - (b.pologono ?? 0) ||
+        a.seccion - b.seccion
+      )
+      .map(s => {
+        const sec  = s.seccion;
+        const af   = afiliacionBySec[sec] ?? {};
+        const ms   = mercadoBySec[sec]    ?? {};
+        const mov  = movilizadoresBySec[sec] ?? {};
+
+        const credPct = af.entregadas_sp > 0
+          ? Math.round((af.comprobadas / af.entregadas_sp) * 100)
+          : 0;
+        const msPct  = ms.total > 0 && ms.maxRef > 0
+          ? Math.min(Math.round((ms.total / ms.maxRef) * 100), 100)
+          : 0;
+        const movPct = mov.meta > 0
+          ? Math.min(Math.round((mov.count / mov.meta) * 100), 100)
+          : 0;
+
+        return {
+          'Sector':                   s.pologono ?? '',
+          'Sección':                  sec,
+          'Fracciones':               globalFracciones[sec] ?? 0,
+          'SMs':                      globalSMs[sec] ?? 0,
+          // Afiliados
+          'Afiliados':                af.afiliados ?? '',
+          // Credenciales
+          'Cred. Entregadas SP':      af.entregadas_sp ?? '',
+          'Cred. Comprobadas':        af.comprobadas ?? '',
+          '% Avance Credenciales':    af.entregadas_sp > 0 ? `${credPct}%` : '',
+          // Mercado Solidario
+          'MS Piezas':                ms.total ?? '',
+          'MS Estatus':               ms.estatus ?? '',
+          '% Avance MS':              ms.total > 0 ? `${msPct}%` : '',
+          // Movilizadores
+          'Movilizadores Activos':    mov.count ?? 0,
+          'Meta Movilizadores':       mov.meta  ?? 0,
+          '% Avance Movilizadores':   mov.meta > 0 ? `${movPct}%` : '',
+        };
+      });
+
+    const ws = XLSX.utils.json_to_sheet(rows);
+    ws['!cols'] = [
+      { wch: 9 },  // Sector
+      { wch: 10 }, // Sección
+      { wch: 12 }, // Fracciones
+      { wch: 7 },  // SMs
+      { wch: 11 }, // Afiliados
+      { wch: 20 }, // Cred. Entregadas SP
+      { wch: 20 }, // Cred. Comprobadas
+      { wch: 22 }, // % Avance Credenciales
+      { wch: 13 }, // MS Piezas
+      { wch: 16 }, // MS Estatus
+      { wch: 14 }, // % Avance MS
+      { wch: 22 }, // Movilizadores Activos
+      { wch: 20 }, // Meta Movilizadores
+      { wch: 24 }, // % Avance Movilizadores
+    ];
+
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Reporte Avances');
+    XLSX.writeFile(wb, `reporte_avances_${fecha}.xlsx`);
+  }, [allSecciones, globalFracciones, globalSMs, afiliacionBySec, mercadoBySec, movilizadoresBySec]);
 
   return (
     <div className="min-h-screen bg-slate-50 font-sans">
@@ -2054,6 +2508,32 @@ const TableroBoard = ({ readOnly = false }) => {
 
           {!loadingMap && mapScope === 'tecamac' && (
             <div className="flex items-center gap-4 ml-auto flex-shrink-0">
+              {isAdmin && (
+                <div className="hidden sm:flex items-center gap-2">
+                  <button
+                    onClick={downloadEstructuraExcel}
+                    disabled={!allSecciones.length}
+                    title="Descargar Excel: sección, fracciones y SMs"
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-emerald-200 bg-emerald-50 text-emerald-700 text-[11px] font-semibold hover:bg-emerald-100 transition-colors disabled:opacity-40 disabled:pointer-events-none"
+                  >
+                    <svg width="13" height="13" viewBox="0 0 20 20" fill="currentColor">
+                      <path fillRule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm3.293-7.707a1 1 0 011.414 0L9 10.586V3a1 1 0 112 0v7.586l1.293-1.293a1 1 0 111.414 1.414l-3 3a1 1 0 01-1.414 0l-3-3a1 1 0 010-1.414z" clipRule="evenodd" />
+                    </svg>
+                    Estructura
+                  </button>
+                  <button
+                    onClick={downloadReporteAvancesExcel}
+                    disabled={!allSecciones.length}
+                    title="Descargar Excel: avances por sección — afiliados, credenciales y mercado solidario"
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-blue-200 bg-blue-50 text-blue-700 text-[11px] font-semibold hover:bg-blue-100 transition-colors disabled:opacity-40 disabled:pointer-events-none"
+                  >
+                    <svg width="13" height="13" viewBox="0 0 20 20" fill="currentColor">
+                      <path fillRule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm3.293-7.707a1 1 0 011.414 0L9 10.586V3a1 1 0 112 0v7.586l1.293-1.293a1 1 0 111.414 1.414l-3 3a1 1 0 01-1.414 0l-3-3a1 1 0 010-1.414z" clipRule="evenodd" />
+                    </svg>
+                    Avances
+                  </button>
+                </div>
+              )}
               <div className="hidden md:flex items-center gap-4">
                 <div className="text-right">
                   <p className="text-[9px] font-bold uppercase tracking-widest text-slate-400 leading-none">Secciones</p>
@@ -2163,10 +2643,10 @@ const TableroBoard = ({ readOnly = false }) => {
                 {/* Header dinámico */}
                 <div className="flex items-center justify-between mb-2 gap-2">
                   <SectionTitle accent={
+                    electoralMode === 'semaforo_mov'      ? 'bg-sky-600' :
                     electoralMode === 'semaforo_cred'     ? 'bg-emerald-600' :
                     electoralMode === 'semaforo_mercado'  ? 'bg-orange-500' :
                     electoralMode === 'dip_2024'          ? 'bg-slate-700' :
-                    electoralMode === 'ayu_2024'          ? 'bg-blue-700' :
                     electoralMode === 'ayu_2024_ieem'     ? 'bg-emerald-700' :
                     electoralMode === 'senado_2024'       ? 'bg-rose-900' :
                     electoralMode === 'ayu_2021_ieem'     ? 'bg-emerald-700' :
@@ -2174,23 +2654,23 @@ const TableroBoard = ({ readOnly = false }) => {
                     currentLevel === 3 ? 'bg-violet-500' : currentLevel === 2 ? 'bg-emerald-500' :
                     currentLevel === 1 ? 'bg-blue-500' : 'bg-slate-400'
                   }>
-                    {electoralMode === 'semaforo_cred'
-                      ? 'Entrega de credenciales'
-                      : electoralMode === 'semaforo_mercado'
-                        ? 'Mercado Solidario'
-                      : electoralMode === 'dip_2024'
-                        ? 'Diputación Local 2024 · Interno'
-                        : electoralMode === 'senado_2024'
-                            ? 'Electoral 2024 · Senaduría'
-                            : electoralMode === 'ayu_2024_ieem'
-                              ? 'Electoral 2024 · IEEM oficial'
-                              : electoralMode === 'ayu_2024'
-                                ? 'Electoral 2024 · Rosi Wong'
+                    {electoralMode === 'semaforo_mov'
+                      ? 'Desdoble Movilizadores'
+                      : electoralMode === 'semaforo_cred'
+                        ? 'Entrega de credenciales'
+                        : electoralMode === 'semaforo_mercado'
+                          ? 'Mercado Solidario'
+                        : electoralMode === 'dip_2024'
+                          ? 'Diputación Local 2024 · Interno'
+                          : electoralMode === 'senado_2024'
+                              ? 'Electoral 2024 · Senaduría'
+                              : electoralMode === 'ayu_2024_ieem'
+                                ? 'Electoral 2024 · IEEM oficial'
                                 : electoralMode === 'ayu_2021_ieem'
-                                  ? 'Electoral 2021 · IEEM oficial'
-                                  : electoralMode
-                                    ? 'Análisis electoral · Ayuntamiento 2021'
-                                    : (currentLevel === 3 ? `Sección ${selectedSeccion}` : currentLevel === 2 ? `Sector ${selectedSector}` : currentLevel === 1 ? `Distrito ${selectedDistrito}` : 'Vista general')
+                                    ? 'Electoral 2021 · IEEM oficial'
+                                    : electoralMode
+                                      ? 'Análisis electoral · Ayuntamiento 2021'
+                                      : (currentLevel === 3 ? `Sección ${selectedSeccion}` : currentLevel === 2 ? `Sector ${selectedSector}` : currentLevel === 1 ? `Distrito ${selectedDistrito}` : 'Vista general')
                     }
                   </SectionTitle>
                   {electoralMode && (
@@ -2209,13 +2689,15 @@ const TableroBoard = ({ readOnly = false }) => {
                   transform: panelFade ? 'translateY(0)' : 'translateY(6px)',
                   transition: 'opacity 0.25s ease, transform 0.25s ease',
                 }}>
-                  {electoralMode === 'semaforo_cred'
-                    ? renderSemaforoPanel()
-                    : electoralMode === 'semaforo_mercado'
-                      ? renderMercadoPanel()
-                      : electoralMode
-                        ? renderElectoralPanel()
-                        : renderInfoPanel()}
+                  {electoralMode === 'semaforo_mov'
+                    ? renderMovilizadoresPanel()
+                    : electoralMode === 'semaforo_cred'
+                      ? renderSemaforoPanel()
+                      : electoralMode === 'semaforo_mercado'
+                        ? renderMercadoPanel()
+                        : electoralMode
+                          ? renderElectoralPanel()
+                          : renderInfoPanel()}
                 </div>
               </div>
             )}
@@ -2242,6 +2724,7 @@ const TableroBoard = ({ readOnly = false }) => {
                 onClearFocus={() => { setSelectedSM(null); setFocusCoords(null); }}
                 afiliacionBySec={afiliacionBySec}
                 mercadoBySec={mercadoBySec}
+                movilizadoresBySec={movilizadoresBySec}
                 hasMercado={mercadoEntregas.length > 0}
                 printContext={printContext}
                 electoralModeExternal={electoralMode}

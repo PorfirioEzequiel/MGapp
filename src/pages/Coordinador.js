@@ -1,9 +1,75 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import supabase from '../supabase/client';
 import MapTerritorial from '../map/MapTerritorial';
 import ToggleStatusButtonCP from './ToggleStatusButtonCP';
 import AFILIACION from '../data/afiliacion.json';
+
+// ── Splash screen (mismo estilo que VisorConsultor) ───────────────────────────
+const SPLASH_MSGS = [
+  'Accediendo al sector…',
+  'Cargando estructura territorial…',
+  'Preparando mapa…',
+  'Iniciando…',
+];
+const SPLASH_CSS = `
+  @keyframes sp-spin    { to { transform: rotate(360deg); } }
+  @keyframes sp-float-a { 0%,100%{transform:translateY(0) translateX(0)} 50%{transform:translateY(-28px) translateX(14px)} }
+  @keyframes sp-float-b { 0%,100%{transform:translateY(0) translateX(0)} 50%{transform:translateY(-18px) translateX(-22px)} }
+  @keyframes sp-float-c { 0%,100%{transform:translateY(0) translateX(0)} 50%{transform:translateY(22px) translateX(16px)} }
+  @keyframes sp-float-d { 0%,100%{transform:translateY(0) translateX(0)} 50%{transform:translateY(-12px) translateX(-10px)} }
+  @keyframes sp-exit    { to { opacity:0; transform:scale(1.012); } }
+`;
+const SplashScreen = ({ onDone }) => {
+  const [msgIdx,  setMsgIdx]  = useState(0);
+  const [fade,    setFade]    = useState(true);
+  const [exiting, setExiting] = useState(false);
+  useEffect(() => {
+    let i = 0;
+    const iv = setInterval(() => {
+      setFade(false);
+      setTimeout(() => {
+        i += 1;
+        if (i >= SPLASH_MSGS.length) { clearInterval(iv); setExiting(true); setTimeout(onDone, 580); return; }
+        setMsgIdx(i); setFade(true);
+      }, 300);
+    }, 900);
+    return () => clearInterval(iv);
+  }, [onDone]);
+  const pct = ((msgIdx + 1) / SPLASH_MSGS.length) * 100;
+  return (
+    <>
+      <style>{SPLASH_CSS}</style>
+      <div style={{ position:'fixed', inset:0, zIndex:50, background:'#0f172a', display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', animation: exiting ? 'sp-exit 0.55s cubic-bezier(0.4,0,1,1) forwards' : 'none' }}>
+        <svg style={{ position:'absolute', inset:0, width:'100%', height:'100%', opacity:0.04, pointerEvents:'none' }}>
+          <defs><pattern id="sp-dots" width="36" height="36" patternUnits="userSpaceOnUse"><circle cx="18" cy="18" r="0.9" fill="white"/></pattern></defs>
+          <rect width="100%" height="100%" fill="url(#sp-dots)"/>
+        </svg>
+        <div style={{ position:'absolute', top:'7%', left:'4%', width:340, height:340, borderRadius:'50%', border:'1px solid rgba(155,30,50,0.09)', animation:'sp-float-a 15s ease-in-out infinite', willChange:'transform', pointerEvents:'none' }}/>
+        <div style={{ position:'absolute', bottom:'10%', right:'7%', width:190, height:190, borderRadius:'50%', background:'rgba(155,30,50,0.04)', animation:'sp-float-b 10s ease-in-out infinite', willChange:'transform', pointerEvents:'none' }}/>
+        <div style={{ position:'absolute', top:'52%', left:'13%', width:88, height:88, borderRadius:'50%', border:'1px solid rgba(255,255,255,0.04)', animation:'sp-float-c 6.5s ease-in-out infinite', willChange:'transform', pointerEvents:'none' }}/>
+        <div style={{ position:'absolute', top:'18%', right:'16%', width:44, height:44, borderRadius:'50%', background:'rgba(155,30,50,0.08)', animation:'sp-float-d 4s ease-in-out infinite', willChange:'transform', pointerEvents:'none' }}/>
+        <div style={{ marginBottom:44, textAlign:'center', position:'relative', zIndex:1 }}>
+          <div style={{ display:'inline-flex', alignItems:'center', justifyContent:'center', width:58, height:58, borderRadius:15, background:'#7B1528', marginBottom:16, boxShadow:'0 0 0 1px rgba(155,30,50,0.28), 0 10px 36px rgba(123,21,40,0.45)' }}>
+            <span style={{ color:'#fff', fontWeight:900, fontSize:19, letterSpacing:'0.13em', fontFamily:'system-ui' }}>SM</span>
+          </div>
+          <div style={{ color:'#f1f5f9', fontWeight:700, fontSize:17, letterSpacing:'-0.01em', fontFamily:'system-ui', marginBottom:3 }}>Sistema de Monitoreo</div>
+          <div style={{ color:'rgba(148,163,184,0.65)', fontSize:11, fontWeight:600, letterSpacing:'0.26em', textTransform:'uppercase', fontFamily:'system-ui' }}>Tecámac · Estado de México</div>
+        </div>
+        <div style={{ position:'relative', marginBottom:34, zIndex:1 }}>
+          <svg width="58" height="58" viewBox="0 0 58 58" style={{ display:'block', animation:'sp-spin 1.25s linear infinite' }}>
+            <circle cx="29" cy="29" r="24" fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth="2.5"/>
+            <circle cx="29" cy="29" r="24" fill="none" stroke="#9B1E32" strokeWidth="2.5" strokeLinecap="round" strokeDasharray="37.7 113.1" transform="rotate(-90 29 29)"/>
+          </svg>
+        </div>
+        <p style={{ fontSize:13, fontWeight:500, fontFamily:'system-ui', color:'rgba(203,213,225,0.8)', opacity: fade ? 1 : 0, transition:'opacity 0.3s ease', minHeight:20, marginBottom:20, position:'relative', zIndex:1 }}>{SPLASH_MSGS[msgIdx]}</p>
+        <div style={{ width:152, height:1.5, background:'rgba(255,255,255,0.07)', borderRadius:99, overflow:'hidden', position:'relative', zIndex:1 }}>
+          <div style={{ height:'100%', background:'#9B1E32', borderRadius:99, width:`${pct}%`, transition:'width 0.7s cubic-bezier(0.4,0,0.2,1)', boxShadow:'0 0 8px rgba(155,30,50,0.55)' }}/>
+        </div>
+      </div>
+    </>
+  );
+};
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 const fullName = (p) => p ? `${p.nombre} ${p.a_paterno} ${p.a_materno}`.trim() : null;
@@ -164,7 +230,7 @@ const SeccionRow = ({ seccion, sm, fracciones, onClick }) => {
 
 // ── Bottom Tab Bar ────────────────────────────────────────────────────────────
 const TABS = [
-  { key: 'resumen',     label: 'Inicio',      Icon: IcoHome  },
+  { key: 'resumen',     label: 'Listas Generales', Icon: IcoHome  },
   { key: 'mapa',        label: 'Mapa',        Icon: IcoMap   },
   { key: 'actividades', label: 'Actividades', Icon: IcoClip  },
 ];
@@ -188,7 +254,7 @@ const Coordinador = () => {
   }, [user, usuario, navigate]);
 
   // ── State ──────────────────────────────────────────────────────────────────
-  const [tab, setTab]                           = useState('resumen');
+  const [tab, setTab]                           = useState('mapa');
   const [loading, setLoading]                   = useState(true);
   const [promotores, setPromotores]             = useState([]);
   const [seccionesSector, setSeccionesSector]   = useState([]);
@@ -432,18 +498,7 @@ const Coordinador = () => {
   const tdCls = 'px-4 py-3 text-sm border-b border-slate-50';
 
   // ── Loading skeleton ───────────────────────────────────────────────────────
-  if (loading) return (
-    <div className="flex flex-col items-center justify-center gap-4" style={{ height: '100dvh', background: 'linear-gradient(135deg, #F8FAFC 0%, #FDF6F7 100%)' }}>
-      <div className="w-14 h-14 rounded-2xl flex items-center justify-center shadow-sm" style={{ background: `linear-gradient(135deg, ${BRAND} 0%, #A52040 100%)` }}>
-        <span className="text-white text-xs font-black tracking-widest">SP</span>
-      </div>
-      <div className="flex flex-col items-center gap-2">
-        <div className="w-8 h-8 rounded-full border-2 border-slate-200 animate-spin" style={{ borderTopColor: BRAND }} />
-        <p className="text-sm font-bold text-slate-500">Cargando sector {user.poligono}…</p>
-        <p className="text-xs text-slate-400">Sistema de Monitoreo · Tecámac</p>
-      </div>
-    </div>
-  );
+  if (loading) return <SplashScreen onDone={() => setLoading(false)} />;
 
   // ── Render ─────────────────────────────────────────────────────────────────
   return (
@@ -493,64 +548,6 @@ const Coordinador = () => {
         {tab === 'resumen' && (
           <div className="h-full overflow-y-auto">
             <div className="p-4 space-y-4" style={{ paddingBottom: 24 }}>
-
-              {/* KPIs */}
-              <div className="grid grid-cols-2 gap-3">
-                <KpiCard label="SM Activas" value={promotores.length}
-                  sub={`de ${metaFracciones} fracciones meta`} color="brand" wide />
-                <KpiCard label="Sin cubrir" value={sinCubrir}
-                  color={sinCubrir > 0 ? 'red' : 'emerald'} />
-                <KpiCard label="Cobertura" value={`${cobertura}%`}
-                  color={cobertura >= 80 ? 'emerald' : cobertura >= 50 ? 'amber' : 'red'} />
-              </div>
-
-              {/* Progress */}
-              <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-4">
-                <div className="flex items-center justify-between mb-3">
-                  <div>
-                    <p className="text-[9px] font-black uppercase tracking-[0.18em] text-slate-400">Avance del sector</p>
-                    <p className="text-[11px] text-slate-500 mt-0.5 font-medium">
-                      {sinCubrir > 0 ? `${sinCubrir} fracciones sin cubrir` : sinCubrir === 0 && metaFracciones > 0 ? '¡Cobertura completa!' : 'Sin datos del catálogo'}
-                    </p>
-                  </div>
-                  <div className="text-right">
-                    <span className="text-2xl font-black tabular-nums leading-none"
-                      style={{ color: cobertura >= 80 ? '#10B981' : cobertura >= 50 ? '#F59E0B' : BRAND }}>
-                      {cobertura}%
-                    </span>
-                    <p className="text-[10px] text-slate-400 mt-0.5 tabular-nums font-medium">
-                      {promotores.length}<span className="text-slate-200">/{metaFracciones || '—'}</span>
-                    </p>
-                  </div>
-                </div>
-                <div className="h-2.5 bg-slate-100 rounded-full overflow-hidden">
-                  <div className="h-full rounded-full transition-all duration-700"
-                    style={{ width: `${cobertura}%`, background: cobertura >= 80 ? 'linear-gradient(90deg, #059669, #10B981)' : cobertura >= 50 ? 'linear-gradient(90deg, #D97706, #F59E0B)' : `linear-gradient(90deg, ${BRAND}, #A52040)` }} />
-                </div>
-              </div>
-
-              {/* Growth chart */}
-              {crecimientoSM.length > 0 && (
-                <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-4">
-                  <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500 mb-3">Crecimiento de SM</p>
-                  <GrowthChart data={crecimientoSM} meta={metaFracciones} />
-                </div>
-              )}
-
-              {/* Sections — click goes to map */}
-              <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
-                <div className="px-4 py-3 border-b border-slate-100 flex items-center justify-between">
-                  <p className="text-[9px] font-black uppercase tracking-[0.18em] text-slate-400">Cobertura por sección</p>
-                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-500">{coberturaSeccion.length} secciones</span>
-                </div>
-                {coberturaSeccion.length === 0
-                  ? <p className="text-sm text-slate-400 italic text-center py-8">Sin datos del catálogo.</p>
-                  : coberturaSeccion.map(s => (
-                    <SeccionRow key={s.seccion} seccion={s.seccion} sm={s.sm} fracciones={s.fracciones}
-                      onClick={() => { setSeccionMapa(String(s.seccion)); setTab('mapa'); }} />
-                  ))
-                }
-              </div>
 
               {/* ── Credenciales delivery analysis ─────────────────────── */}
               {(() => {
