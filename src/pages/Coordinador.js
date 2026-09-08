@@ -1248,21 +1248,6 @@ const Coordinador = () => {
                           </div>
                         )}
 
-                        {/* Escala */}
-                        <div className="rounded-xl border border-slate-100 p-2.5">
-                          <p className="text-[8px] font-bold uppercase tracking-widest text-slate-400 mb-1.5">Escala de avance</p>
-                          <div className="space-y-1">
-                            {SCALE.map(({ label, range, color }) => (
-                              <div key={label} className="flex items-center justify-between">
-                                <div className="flex items-center gap-1.5">
-                                  <div className="w-2 h-2 rounded-sm flex-shrink-0" style={{ backgroundColor: color }} />
-                                  <span className="text-[10px] font-medium text-slate-700">{label}</span>
-                                </div>
-                                <span className="text-[9px] text-slate-400 tabular-nums">{range}</span>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
                       </>
                     );
                   }
@@ -1338,22 +1323,6 @@ const Coordinador = () => {
                           </div>
                         </div>
                       )}
-
-                      {/* Escala */}
-                      <div className="rounded-xl border border-slate-100 p-2.5">
-                        <p className="text-[8px] font-bold uppercase tracking-widest text-slate-400 mb-1.5">Escala de avance</p>
-                        <div className="space-y-1">
-                          {SCALE.map(({ label, range, color }) => (
-                            <div key={label} className="flex items-center justify-between">
-                              <div className="flex items-center gap-1.5">
-                                <div className="w-2 h-2 rounded-sm flex-shrink-0" style={{ backgroundColor: color }} />
-                                <span className="text-[10px] font-medium text-slate-700">{label}</span>
-                              </div>
-                              <span className="text-[9px] text-slate-400 tabular-nums">{range}</span>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
 
                       {/* Breakdown por sección · peor → mejor */}
                       {breakdown.length > 0 && (
