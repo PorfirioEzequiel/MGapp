@@ -342,8 +342,10 @@ const Coordinador = () => {
   const [sheetSnap, setSheetSnap] = useState('peek'); // 'peek' | 'half' | 'full'
   const [isMobile, setIsMobile] = useState(() => window.innerWidth < 768);
   const [leftPanelOpen, setLeftPanelOpen] = useState(true);
-  const sheetRef = useRef(null);
-  const dragRef  = useRef({ active: false, startY: 0, baseY: 0, containerH: 0 });
+  const sheetRef    = useRef(null);
+  const handleRef   = useRef(null);
+  const dragRef     = useRef({ active: false, startY: 0, baseY: 0, containerH: 0, lastY: 0, lastT: 0, velocityY: 0 });
+  const prevSnapRef = useRef(null);
   const [fraccionesDeSec, setFraccionesDeSec]   = useState([]);
   const [smsDeSec, setSmsDeSec]                 = useState([]);
   const [regCountSec, setRegCountSec]           = useState(null);
@@ -365,30 +367,31 @@ const Coordinador = () => {
   };
 
   const onHandleTouchStart = (e) => {
-    const h = sheetRef.current?.parentElement?.clientHeight ?? 600;
-    dragRef.current = { active: true, startY: e.touches[0].clientY, baseY: getSnapPx(sheetSnap, h), containerH: h };
-  };
-  const onHandleTouchMove = (e) => {
-    if (!dragRef.current.active || !sheetRef.current) return;
-    e.preventDefault();
-    const dy  = e.touches[0].clientY - dragRef.current.startY;
-    const h   = dragRef.current.containerH;
-    const raw = Math.max(getSnapPx('full', h), Math.min(h - 84, dragRef.current.baseY + dy));
+    if (!sheetRef.current) return;
+    const h  = sheetRef.current.parentElement?.clientHeight ?? window.innerHeight;
+    // Cancel any in-progress CSS transition and capture current pixel position
     sheetRef.current.style.transition = 'none';
-    sheetRef.current.style.transform  = `translateY(${raw}px)`;
+    const matrix = new DOMMatrix(getComputedStyle(sheetRef.current).transform);
+    const baseY  = isNaN(matrix.m42) || matrix.m42 === 0 ? getSnapPx(sheetSnap, h) : matrix.m42;
+    const startY = e.touches[0].clientY;
+    dragRef.current = { active: true, startY, baseY, containerH: h, lastY: startY, lastT: Date.now(), velocityY: 0 };
   };
+
   const onHandleTouchEnd = (e) => {
     if (!dragRef.current.active || !sheetRef.current) return;
     dragRef.current.active = false;
-    sheetRef.current.style.transition = '';
-    sheetRef.current.style.transform  = '';
-    const dy   = e.changedTouches[0].clientY - dragRef.current.startY;
-    const THRESHOLD = 55;
+    const dy  = e.changedTouches[0].clientY - dragRef.current.startY;
+    const vel = dragRef.current.velocityY; // px/ms, positive = downward
+    const FLICK = 0.35, THRESHOLD = 50;
     let next = sheetSnap;
-    if      (dy < -THRESHOLD && sheetSnap === 'peek')  next = 'half';
-    else if (dy < -THRESHOLD && sheetSnap === 'half')  next = 'full';
-    else if (dy >  THRESHOLD && sheetSnap === 'full')  next = 'half';
-    else if (dy >  THRESHOLD && sheetSnap === 'half')  next = 'peek';
+    const goUp   = vel < -FLICK || (Math.abs(vel) < FLICK && dy < -THRESHOLD);
+    const goDown = vel >  FLICK || (Math.abs(vel) < FLICK && dy >  THRESHOLD);
+    if (goUp)   { if (sheetSnap === 'peek') next = 'half'; else if (sheetSnap === 'half') next = 'full'; }
+    if (goDown) { if (sheetSnap === 'full') next = 'half'; else if (sheetSnap === 'half') next = 'peek'; }
+    // Snap imperatively (no React re-render flash)
+    const snapY = getSnapPx(next, dragRef.current.containerH);
+    sheetRef.current.style.transition = 'transform 0.42s cubic-bezier(0.22, 1, 0.36, 1)';
+    sheetRef.current.style.transform  = `translateY(${snapY}px)`;
     setSheetSnap(next);
   };
 
@@ -411,6 +414,42 @@ const Coordinador = () => {
     window.addEventListener('resize', onResize);
     return () => window.removeEventListener('resize', onResize);
   }, []);
+
+  // Non-passive touchmove so e.preventDefault() actually works (React uses passive by default)
+  useEffect(() => {
+    const el = handleRef.current;
+    if (!el) return;
+    const onMove = (e) => {
+      if (!dragRef.current.active || !sheetRef.current) return;
+      e.preventDefault();
+      const touch = e.touches[0];
+      const dy  = touch.clientY - dragRef.current.startY;
+      const h   = dragRef.current.containerH;
+      const raw = Math.max(getSnapPx('full', h), Math.min(h - 84, dragRef.current.baseY + dy));
+      const now = Date.now();
+      const dt  = now - dragRef.current.lastT;
+      if (dt > 0) dragRef.current.velocityY = (touch.clientY - dragRef.current.lastY) / dt;
+      dragRef.current.lastY = touch.clientY;
+      dragRef.current.lastT = now;
+      sheetRef.current.style.transition = 'none';
+      sheetRef.current.style.transform  = `translateY(${raw}px)`;
+    };
+    el.addEventListener('touchmove', onMove, { passive: false });
+    return () => el.removeEventListener('touchmove', onMove);
+  }, []);
+
+  // Drive snap position from state for non-drag snaps (button/chip clicks)
+  useEffect(() => {
+    if (!sheetRef.current || !isMobile || dragRef.current.active) return;
+    const el = sheetRef.current;
+    const h  = el.parentElement?.clientHeight ?? window.innerHeight;
+    const snapY = getSnapPx(sheetSnap, h);
+    el.style.transition = prevSnapRef.current === null
+      ? 'none'
+      : 'transform 0.42s cubic-bezier(0.22, 1, 0.36, 1)';
+    el.style.transform  = `translateY(${snapY}px)`;
+    prevSnapRef.current = sheetSnap;
+  }, [sheetSnap, isMobile]);
 
   // ── Fetch ──────────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -1208,10 +1247,6 @@ const Coordinador = () => {
                 : 'flex-shrink-0 flex flex-col bg-white border-r border-slate-100 overflow-hidden'}
               style={isMobile ? {
                 height: '100%',
-                transform: sheetSnap === 'full'  ? 'translateY(3%)'
-                         : sheetSnap === 'half'  ? 'translateY(50%)'
-                         : 'translateY(calc(100% - 84px))',
-                transition: 'transform 0.38s cubic-bezier(0.32, 0.72, 0, 1)',
                 willChange: 'transform',
                 boxShadow: '0 -4px 24px rgba(0,0,0,0.13), 0 -1px 4px rgba(0,0,0,0.06)',
               } : {
@@ -1224,10 +1259,10 @@ const Coordinador = () => {
               {/* ── Mobile: drag handle + peek row + chips ──────────────── */}
               {isMobile && (
               <div
+                ref={handleRef}
                 className="flex-shrink-0 pt-2.5 pb-2 cursor-grab select-none"
                 style={{ WebkitUserSelect: 'none' }}
                 onTouchStart={onHandleTouchStart}
-                onTouchMove={onHandleTouchMove}
                 onTouchEnd={onHandleTouchEnd}
               >
                 {/* Handle pill */}
@@ -1239,27 +1274,53 @@ const Coordinador = () => {
                 <div className="flex items-center justify-between px-4 pb-1">
                   <div className="flex items-center gap-2 min-w-0">
                     <div className="w-6 h-6 rounded-lg flex items-center justify-center text-white text-[9px] font-black flex-shrink-0"
-                      style={{ background: `linear-gradient(135deg, ${BRAND} 0%, #A52040 100%)` }}>SP</div>
+                      style={{ background: seccionMapa ? '#334155' : `linear-gradient(135deg, ${BRAND} 0%, #A52040 100%)` }}>
+                      {seccionMapa ? (
+                        <svg width={11} height={11} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M9 6.75V15m6-6v8.25m.503 3.498l4.875-2.437c.381-.19.622-.58.622-1.006V4.82c0-.836-.88-1.38-1.628-1.006l-3.869 1.934c-.317.159-.69.159-1.006 0L9.503 3.252a1.125 1.125 0 00-1.006 0L3.622 5.689C3.24 5.88 3 6.27 3 6.695V19.18c0 .836.88 1.38 1.628 1.006l3.869-1.934c.317-.159.69-.159 1.006 0l4.994 2.497c.317.158.69.158 1.006 0z" />
+                        </svg>
+                      ) : 'SP'}
+                    </div>
                     <div className="min-w-0">
-                      <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-400 leading-none">Sector {user.poligono}</p>
-                      <p className="text-xs font-bold text-slate-800 leading-snug mt-0.5">{promotores.length} SM activas</p>
+                      {seccionMapa ? (
+                        <>
+                          <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-400 leading-none">Sección {seccionMapa}</p>
+                          <p className="text-[11px] font-bold text-slate-600 leading-snug mt-0.5">{smsDeSec.length} SM · {fraccionesDeSec.length} fracc.</p>
+                        </>
+                      ) : (
+                        <>
+                          <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-400 leading-none">Sector {user.poligono}</p>
+                          <p className="text-xs font-bold text-slate-800 leading-snug mt-0.5">{promotores.length} SM activas</p>
+                        </>
+                      )}
                     </div>
                   </div>
 
-                  {/* KPIs compactos */}
                   <div className="flex items-center gap-2 flex-shrink-0">
-                    {coberturaSeccion.length > 0 && (() => {
-                      const totalSM  = coberturaSeccion.reduce((s, x) => s + x.sm, 0);
-                      const totalFrac = coberturaSeccion.reduce((s, x) => s + x.fracciones, 0);
-                      const cob = pctNum(totalSM, totalFrac);
-                      const col = cob === 100 ? '#10B981' : cob >= 60 ? '#3B82F6' : cob >= 30 ? '#F59E0B' : '#EF4444';
-                      return (
-                        <span className="text-[11px] font-bold tabular-nums px-2 py-1 rounded-lg"
-                          style={{ backgroundColor: col + '18', color: col }}>
-                          {cob}% cob.
-                        </span>
-                      );
-                    })()}
+                    {seccionMapa ? (
+                      <button
+                        onClick={() => setSeccionMapa('')}
+                        className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-[11px] font-bold border active:scale-95 transition-all"
+                        style={{ backgroundColor: '#FFF1F2', color: BRAND, borderColor: '#FECDD3' }}>
+                        <svg width={10} height={10} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M10.5 19.5L3 12m0 0l7.5-7.5M3 12h18" />
+                        </svg>
+                        Todo el sector
+                      </button>
+                    ) : (
+                      coberturaSeccion.length > 0 && (() => {
+                        const totalSM  = coberturaSeccion.reduce((s, x) => s + x.sm, 0);
+                        const totalFrac = coberturaSeccion.reduce((s, x) => s + x.fracciones, 0);
+                        const cob = pctNum(totalSM, totalFrac);
+                        const col = cob === 100 ? '#10B981' : cob >= 60 ? '#3B82F6' : cob >= 30 ? '#F59E0B' : '#EF4444';
+                        return (
+                          <span className="text-[11px] font-bold tabular-nums px-2 py-1 rounded-lg"
+                            style={{ backgroundColor: col + '18', color: col }}>
+                            {cob}% cob.
+                          </span>
+                        );
+                      })()
+                    )}
                     <button
                       onClick={() => setSheetSnap(s => s === 'peek' ? 'half' : 'peek')}
                       className="w-7 h-7 rounded-lg flex items-center justify-center text-slate-400 active:scale-90 transition-all"
