@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import supabase, { supabaseStorage as supabaseAdmin } from '../supabase/client';
 import MapTerritorial from '../map/MapTerritorial';
@@ -339,7 +339,9 @@ const Coordinador = () => {
   const [tabActividades, setTabActividades]     = useState('seccion');
   const [seccionMapa, setSeccionMapa]           = useState('');
   const [smFiltroLocal, setSmFiltroLocal]       = useState('');
-  const [leftPanelOpen, setLeftPanelOpen]       = useState(() => window.innerWidth >= 768);
+  const [sheetSnap, setSheetSnap] = useState('peek'); // 'peek' | 'half' | 'full'
+  const sheetRef = useRef(null);
+  const dragRef  = useRef({ active: false, startY: 0, baseY: 0, containerH: 0 });
   const [fraccionesDeSec, setFraccionesDeSec]   = useState([]);
   const [smsDeSec, setSmsDeSec]                 = useState([]);
   const [regCountSec, setRegCountSec]           = useState(null);
@@ -353,6 +355,40 @@ const Coordinador = () => {
   const [electoralData2024IEEM, setElectoralData2024IEEM] = useState({});
   const [electoralDataSenado,   setElectoralDataSenado]   = useState({});
   const [electoralDataDip2024,  setElectoralDataDip2024]  = useState({});
+
+  const getSnapPx = (snap, h) => {
+    if (snap === 'full') return Math.round(h * 0.03);
+    if (snap === 'half') return Math.round(h * 0.50);
+    return h - 84; // peek: 84px visibles
+  };
+
+  const onHandleTouchStart = (e) => {
+    const h = sheetRef.current?.parentElement?.clientHeight ?? 600;
+    dragRef.current = { active: true, startY: e.touches[0].clientY, baseY: getSnapPx(sheetSnap, h), containerH: h };
+  };
+  const onHandleTouchMove = (e) => {
+    if (!dragRef.current.active || !sheetRef.current) return;
+    e.preventDefault();
+    const dy  = e.touches[0].clientY - dragRef.current.startY;
+    const h   = dragRef.current.containerH;
+    const raw = Math.max(getSnapPx('full', h), Math.min(h - 84, dragRef.current.baseY + dy));
+    sheetRef.current.style.transition = 'none';
+    sheetRef.current.style.transform  = `translateY(${raw}px)`;
+  };
+  const onHandleTouchEnd = (e) => {
+    if (!dragRef.current.active || !sheetRef.current) return;
+    dragRef.current.active = false;
+    sheetRef.current.style.transition = '';
+    sheetRef.current.style.transform  = '';
+    const dy   = e.changedTouches[0].clientY - dragRef.current.startY;
+    const THRESHOLD = 55;
+    let next = sheetSnap;
+    if      (dy < -THRESHOLD && sheetSnap === 'peek')  next = 'half';
+    else if (dy < -THRESHOLD && sheetSnap === 'half')  next = 'full';
+    else if (dy >  THRESHOLD && sheetSnap === 'full')  next = 'half';
+    else if (dy >  THRESHOLD && sheetSnap === 'half')  next = 'peek';
+    setSheetSnap(next);
+  };
 
   // ── Bloquear scroll del body en tab mapa para evitar que los gestos
   //    del mapa desplacen la shell de la app en móvil ──────────────────────────
@@ -784,9 +820,9 @@ const Coordinador = () => {
         </button>
         {tab === 'mapa' && (
           <button
-            onClick={() => setLeftPanelOpen(v => !v)}
+            onClick={() => setSheetSnap(s => s === 'peek' ? 'half' : s === 'half' ? 'full' : 'peek')}
             className="flex items-center justify-center w-11 h-11 md:w-9 md:h-9 rounded-xl border transition-all active:scale-95 flex-shrink-0"
-            style={leftPanelOpen
+            style={sheetSnap !== 'peek'
               ? { background: `linear-gradient(135deg, ${BRAND} 0%, #A52040 100%)`, color: '#fff', borderColor: 'transparent' }
               : { backgroundColor: '#F8FAFC', color: '#374151', borderColor: '#E2E8F0' }}>
             <svg width={16} height={16} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.2}>
@@ -1122,58 +1158,130 @@ const Coordinador = () => {
 
         {/* ── TAB: MAPA ────────────────────────────────────────────────────── */}
         {tab === 'mapa' && (
-          <div className="h-full flex relative">
+          <div className="h-full relative overflow-hidden">
 
-            <aside
-              className="absolute top-0 left-0 bottom-0 z-10 flex flex-col bg-white border-r border-slate-100 shadow-xl transition-transform duration-300 ease-out overflow-y-auto"
+            {/* Mapa — siempre ocupa todo el ancho */}
+            <div className="absolute inset-0" style={{ touchAction: 'none', overscrollBehavior: 'none' }}>
+              {seccionesSector.length === 0 ? (
+                <div className="flex flex-col items-center justify-center h-full gap-3">
+                  <div className="w-8 h-8 rounded-full border-2 border-slate-200 animate-spin" style={{ borderTopColor: BRAND }} />
+                  <p className="text-sm text-slate-400 font-medium">Cargando mapa del sector…</p>
+                </div>
+              ) : (
+                <MapTerritorial
+                  secciones={seccionesSector}
+                  fraccionesGeo={fraccionesConSM}
+                  ciudadanos={ciudadanosGeo}
+                  selectedSeccion={seccionMapa ? Number(seccionMapa) : null}
+                  onSelectSeccion={sec => { setSeccionMapa(String(sec.seccion)); setFocusCoords(null); }}
+                  spName={fullName(user)}
+                  focusCoords={focusCoords}
+                  onClearFocus={() => setFocusCoords(null)}
+                  controlsLeftOffset={0}
+                  afiliacionBySec={afiliacionBySec}
+                  hasMercado={mercadoRows.length > 0}
+                  mercadoBySec={mercadoBySec}
+                  electoralModeExternal={electoralMode}
+                  onElectoralModeChange={setElectoralMode}
+                  initialStyle="satelite"
+                  gestureHandling="greedy"
+                  readOnly
+                />
+              )}
+            </div>
+
+            {/* ── Bottom Sheet ─────────────────────────────────────────────── */}
+            <div
+              ref={sheetRef}
+              className="absolute inset-x-0 bottom-0 z-10 flex flex-col bg-white rounded-t-2xl"
               style={{
-                width: 'min(85vw, 300px)',
-                transform: leftPanelOpen ? 'translateX(0)' : 'translateX(-105%)',
+                height: '100%',
+                transform: sheetSnap === 'full'  ? 'translateY(3%)'
+                         : sheetSnap === 'half'  ? 'translateY(50%)'
+                         : 'translateY(calc(100% - 84px))',
+                transition: 'transform 0.38s cubic-bezier(0.32, 0.72, 0, 1)',
+                willChange: 'transform',
+                boxShadow: '0 -4px 24px rgba(0,0,0,0.13), 0 -1px 4px rgba(0,0,0,0.06)',
               }}
             >
-              <div className="flex-shrink-0 px-4 pt-3 pb-3 border-b border-slate-100 bg-slate-50">
-                <div className="flex items-center justify-between mb-2">
-                  <div>
-                    <p className="text-[9px] font-black uppercase tracking-[0.18em] text-slate-400 leading-none">Sector {user.poligono}</p>
-                    <p className="text-xs font-bold text-slate-700 mt-0.5">{promotores.length} SM activas</p>
-                  </div>
-                  <button onClick={() => setLeftPanelOpen(false)}
-                    className="w-7 h-7 rounded-lg flex items-center justify-center text-slate-400 hover:bg-slate-200 transition-colors active:scale-90">
-                    <svg width={14} height={14} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-                    </svg>
-                  </button>
+              {/* ── Drag handle + peek row ──────────────────────────────── */}
+              <div
+                className="flex-shrink-0 pt-2.5 pb-2 cursor-grab select-none"
+                style={{ WebkitUserSelect: 'none' }}
+                onTouchStart={onHandleTouchStart}
+                onTouchMove={onHandleTouchMove}
+                onTouchEnd={onHandleTouchEnd}
+              >
+                {/* Handle pill */}
+                <div className="flex justify-center mb-2.5">
+                  <div className="w-9 h-1 rounded-full bg-slate-200" />
                 </div>
 
-                <div>
-                  <p className="text-[9px] font-bold uppercase tracking-[0.15em] text-slate-400 mb-1.5">Secciones</p>
-                  <div className="flex flex-wrap gap-1">
-                    {coberturaSeccion.map(s => {
-                      const isActive = String(s.seccion) === seccionMapa;
-                      const pct = pctNum(s.sm, s.fracciones);
-                      const col = pct === 100 ? '#10B981' : pct >= 60 ? '#3B82F6' : pct >= 30 ? '#F59E0B' : '#EF4444';
-                      return (
-                        <button key={s.seccion}
-                          onClick={() => setSeccionMapa(isActive ? '' : String(s.seccion))}
-                          className="px-2 py-1 rounded-lg text-[11px] font-bold border transition-all active:scale-95"
-                          style={isActive
-                            ? { backgroundColor: BRAND, color: '#fff', borderColor: BRAND }
-                            : { backgroundColor: col + '18', color: col, borderColor: col + '40' }}>
-                          {s.seccion}
-                        </button>
-                      );
-                    })}
-                    {seccionMapa && (
-                      <button onClick={() => setSeccionMapa('')}
-                        className="px-2 py-1 rounded-lg text-[11px] font-bold border border-slate-200 text-slate-400 bg-white active:scale-95 transition-all">
-                        Todo
-                      </button>
-                    )}
+                {/* Peek row — siempre visible */}
+                <div className="flex items-center justify-between px-4 pb-1">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <div className="w-6 h-6 rounded-lg flex items-center justify-center text-white text-[9px] font-black flex-shrink-0"
+                      style={{ background: `linear-gradient(135deg, ${BRAND} 0%, #A52040 100%)` }}>SP</div>
+                    <div className="min-w-0">
+                      <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-400 leading-none">Sector {user.poligono}</p>
+                      <p className="text-xs font-bold text-slate-800 leading-snug mt-0.5">{promotores.length} SM activas</p>
+                    </div>
                   </div>
+
+                  {/* KPIs compactos */}
+                  <div className="flex items-center gap-2 flex-shrink-0">
+                    {coberturaSeccion.length > 0 && (() => {
+                      const totalSM  = coberturaSeccion.reduce((s, x) => s + x.sm, 0);
+                      const totalFrac = coberturaSeccion.reduce((s, x) => s + x.fracciones, 0);
+                      const cob = pctNum(totalSM, totalFrac);
+                      const col = cob === 100 ? '#10B981' : cob >= 60 ? '#3B82F6' : cob >= 30 ? '#F59E0B' : '#EF4444';
+                      return (
+                        <span className="text-[11px] font-bold tabular-nums px-2 py-1 rounded-lg"
+                          style={{ backgroundColor: col + '18', color: col }}>
+                          {cob}% cob.
+                        </span>
+                      );
+                    })()}
+                    <button
+                      onClick={() => setSheetSnap(s => s === 'peek' ? 'half' : 'peek')}
+                      className="w-7 h-7 rounded-lg flex items-center justify-center text-slate-400 active:scale-90 transition-all"
+                      style={{ backgroundColor: '#F1F5F9' }}>
+                      <svg width={13} height={13} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}
+                        style={{ transform: sheetSnap === 'peek' ? 'rotate(180deg)' : 'none', transition: 'transform 0.3s' }}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
+                      </svg>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Chips de sección — visibles siempre (debajo del peek row) */}
+                <div className="px-4 pt-2 pb-1 flex flex-wrap gap-1 border-t border-slate-100 mt-2">
+                  {coberturaSeccion.map(s => {
+                    const isActive = String(s.seccion) === seccionMapa;
+                    const p = pctNum(s.sm, s.fracciones);
+                    const col = p === 100 ? '#10B981' : p >= 60 ? '#3B82F6' : p >= 30 ? '#F59E0B' : '#EF4444';
+                    return (
+                      <button key={s.seccion}
+                        onClick={() => { setSeccionMapa(isActive ? '' : String(s.seccion)); if (sheetSnap === 'peek') setSheetSnap('half'); }}
+                        className="px-2 py-1 rounded-lg text-[11px] font-bold border transition-all active:scale-95"
+                        style={isActive
+                          ? { backgroundColor: BRAND, color: '#fff', borderColor: BRAND }
+                          : { backgroundColor: col + '18', color: col, borderColor: col + '40' }}>
+                        {s.seccion}
+                      </button>
+                    );
+                  })}
+                  {seccionMapa && (
+                    <button onClick={() => setSeccionMapa('')}
+                      className="px-2 py-1 rounded-lg text-[11px] font-bold border border-slate-200 text-slate-400 bg-white active:scale-95 transition-all">
+                      Todo
+                    </button>
+                  )}
                 </div>
               </div>
 
-              <div className="flex-1 p-3 space-y-3">
+              {/* ── Contenido scrollable ────────────────────────────────── */}
+              <div className="flex-1 overflow-y-auto overscroll-contain p-3 space-y-3">
 
                 {/* ── Capa activa: Entrega de credenciales ─────────────── */}
                 {electoralMode === 'semaforo_cred' && (() => {
@@ -2180,35 +2288,6 @@ const Coordinador = () => {
                 })()}
 
               </div>
-            </aside>
-
-            <div className="flex-1 min-w-0 h-full" style={{ touchAction: 'none', overscrollBehavior: 'none' }}>
-              {seccionesSector.length === 0 ? (
-                <div className="flex flex-col items-center justify-center h-full gap-3">
-                  <div className="w-8 h-8 rounded-full border-2 border-slate-200 animate-spin" style={{ borderTopColor: BRAND }} />
-                  <p className="text-sm text-slate-400 font-medium">Cargando mapa del sector…</p>
-                </div>
-              ) : (
-                <MapTerritorial
-                  secciones={seccionesSector}
-                  fraccionesGeo={fraccionesConSM}
-                  ciudadanos={ciudadanosGeo}
-                  selectedSeccion={seccionMapa ? Number(seccionMapa) : null}
-                  onSelectSeccion={sec => { setSeccionMapa(String(sec.seccion)); setFocusCoords(null); }}
-                  spName={fullName(user)}
-                  focusCoords={focusCoords}
-                  onClearFocus={() => setFocusCoords(null)}
-                  controlsLeftOffset={leftPanelOpen ? 'min(85vw, 300px)' : 0}
-                  afiliacionBySec={afiliacionBySec}
-                  hasMercado={mercadoRows.length > 0}
-                  mercadoBySec={mercadoBySec}
-                  electoralModeExternal={electoralMode}
-                  onElectoralModeChange={setElectoralMode}
-                  initialStyle="satelite"
-                  gestureHandling="greedy"
-                  readOnly
-                />
-              )}
             </div>
 
           </div>
