@@ -824,6 +824,8 @@ const MapTerritorial = ({
   electoralModeExternal = null,
   onElectoralModeChange = null,
   readOnly = false,
+  initialStyle = 'claro',
+  gestureHandling = 'cooperative',
   // Capa de colaboradores controlada desde el padre (opcional)
   layerCiudadanos = null,
   // Desplazamiento horizontal del panel de controles (para evitar solapamiento con paneles externos)
@@ -834,7 +836,7 @@ const MapTerritorial = ({
 
   const [activeMarker,    setActiveMarker]    = useState(null);
   const [sectorColorMap,  setSectorColorMap]  = useState({});
-  const [currentStyle,    setCurrentStyle]    = useState('claro');
+  const [currentStyle,    setCurrentStyle]    = useState(initialStyle);
   const [hovered,         setHovered]         = useState(null);  // { data, tipo }
   const [tooltipPos,      setTooltipPos]      = useState({ x: 0, y: 0 });
   const [generating,      setGenerating]      = useState(false);
@@ -1500,6 +1502,8 @@ const MapTerritorial = ({
                 key={key}
                 onClick={() => setCurrentStyle(key)}
                 className={`px-2.5 py-1 rounded-md text-xs font-medium transition-all ${
+                  !ctrlsOpen ? 'hidden md:inline-flex' : ''
+                } ${
                   currentStyle === key
                     ? 'bg-blue-600 text-white shadow-sm'
                     : 'text-gray-600 hover:bg-gray-100'
@@ -1511,7 +1515,7 @@ const MapTerritorial = ({
             {/* Ocultar / Mostrar menú */}
             <button
               onClick={() => setCtrlsOpen(v => !v)}
-              className="px-2 py-1 rounded-md text-xs font-medium transition-all text-gray-400 hover:bg-gray-100 hover:text-gray-600 border border-gray-200"
+              className="px-3 py-2 md:px-2 md:py-1 rounded-md text-xs font-medium transition-all text-gray-400 hover:bg-gray-100 hover:text-gray-600 border border-gray-200"
               title={ctrlsOpen ? 'Ocultar menú' : 'Mostrar menú'}
             >
               {ctrlsOpen ? '✕ Ocultar' : '≡ Menú'}
@@ -1533,7 +1537,7 @@ const MapTerritorial = ({
                   </button>
                   <button
                     onClick={() => handleSetElectoralMode(electoralMode === 'ayu_2021_ieem' ? null : 'ayu_2021_ieem')}
-                    className={`w-full px-2.5 py-1 rounded-md text-xs font-medium transition-all text-left leading-tight ${
+                    className={`w-full px-2.5 py-2 md:py-1 rounded-md text-xs font-medium transition-all text-left leading-tight ${
                       electoralMode === 'ayu_2021_ieem' ? 'bg-rose-900 text-white shadow-sm' : 'text-gray-600 hover:bg-gray-100'
                     }`}
                     title="Cómputo oficial IEEM — Ayuntamiento 2021"
@@ -1542,7 +1546,7 @@ const MapTerritorial = ({
                   </button>
                   <button
                     onClick={() => handleSetElectoralMode(electoralMode === 'ayu_2024_ieem' ? null : 'ayu_2024_ieem')}
-                    className={`w-full px-2.5 py-1 rounded-md text-xs font-medium transition-all text-left leading-tight ${
+                    className={`w-full px-2.5 py-2 md:py-1 rounded-md text-xs font-medium transition-all text-left leading-tight ${
                       electoralMode === 'ayu_2024_ieem' ? 'bg-emerald-700 text-white shadow-sm' : 'text-gray-600 hover:bg-gray-100'
                     }`}
                     title="Ayuntamiento 2024 — Cómputo oficial IEEM"
@@ -1551,7 +1555,7 @@ const MapTerritorial = ({
                   </button>
                   <button
                     onClick={() => handleSetElectoralMode(electoralMode === 'senado_2024' ? null : 'senado_2024')}
-                    className={`w-full px-2.5 py-1 rounded-md text-xs font-medium transition-all text-left leading-tight ${
+                    className={`w-full px-2.5 py-2 md:py-1 rounded-md text-xs font-medium transition-all text-left leading-tight ${
                       electoralMode === 'senado_2024' ? 'bg-rose-900 text-white shadow-sm' : 'text-gray-600 hover:bg-gray-100'
                     }`}
                     title="Senaduría 2024 — Mariela Gutiérrez vs Fuerza x México"
@@ -1560,7 +1564,7 @@ const MapTerritorial = ({
                   </button>
                   <button
                     onClick={() => handleSetElectoralMode(electoralMode === 'dip_2024' ? null : 'dip_2024')}
-                    className={`w-full px-2.5 py-1 rounded-md text-xs font-medium transition-all text-left leading-tight ${
+                    className={`w-full px-2.5 py-2 md:py-1 rounded-md text-xs font-medium transition-all text-left leading-tight ${
                       electoralMode === 'dip_2024' ? 'bg-slate-700 text-white shadow-sm' : 'text-gray-600 hover:bg-gray-100'
                     }`}
                     title="Diputación Local 2024 — datos internos"
@@ -1576,7 +1580,7 @@ const MapTerritorial = ({
                   <div className="w-full h-px bg-gray-200 my-0.5" />
                   <button
                     onClick={() => handleSetElectoralMode(electoralMode === 'semaforo_cred' ? null : 'semaforo_cred')}
-                    className={`w-full px-2.5 py-1 rounded-md text-xs font-medium transition-all text-left leading-tight flex items-center gap-1 ${
+                    className={`w-full px-2.5 py-2 md:py-1 rounded-md text-xs font-medium transition-all text-left leading-tight flex items-center gap-1 ${
                       electoralMode === 'semaforo_cred' ? 'text-white shadow-sm' : 'text-gray-600 hover:bg-gray-100'
                     }`}
                     style={electoralMode === 'semaforo_cred' ? { background: 'linear-gradient(90deg,#DC2626 0%,#CA8A04 50%,#16A34A 100%)' } : {}}
@@ -1593,7 +1597,7 @@ const MapTerritorial = ({
                   <div className="w-full h-px bg-gray-200 my-0.5" />
                   <button
                     onClick={() => handleSetElectoralMode(electoralMode === 'semaforo_mercado' ? null : 'semaforo_mercado')}
-                    className={`w-full px-2.5 py-1 rounded-md text-xs font-medium transition-all text-left leading-tight flex items-center gap-1 ${
+                    className={`w-full px-2.5 py-2 md:py-1 rounded-md text-xs font-medium transition-all text-left leading-tight flex items-center gap-1 ${
                       electoralMode === 'semaforo_mercado' ? 'text-white shadow-sm' : 'text-gray-600 hover:bg-gray-100'
                     }`}
                     style={electoralMode === 'semaforo_mercado' ? { background: 'linear-gradient(90deg,#DC2626 0%,#CA8A04 50%,#16A34A 100%)' } : {}}
@@ -1609,7 +1613,7 @@ const MapTerritorial = ({
                 <div className="w-full h-px bg-gray-200 my-0.5" />
                 <button
                   onClick={() => handleSetElectoralMode(electoralMode === 'semaforo_mov' ? null : 'semaforo_mov')}
-                  className={`w-full px-2.5 py-1 rounded-md text-xs font-medium transition-all text-left leading-tight flex items-center gap-1 ${
+                  className={`w-full px-2.5 py-2 md:py-1 rounded-md text-xs font-medium transition-all text-left leading-tight flex items-center gap-1 ${
                     electoralMode === 'semaforo_mov' ? 'text-white shadow-sm' : 'text-gray-600 hover:bg-gray-100'
                   }`}
                   style={electoralMode === 'semaforo_mov' ? { background: 'linear-gradient(90deg,#DC2626 0%,#CA8A04 50%,#16A34A 100%)' } : {}}
@@ -1624,7 +1628,7 @@ const MapTerritorial = ({
                   <div className="w-full h-px bg-gray-200 my-0.5" />
                   <button
                     onClick={() => setShowCasillasPjem(v => !v)}
-                    className={`w-full px-2.5 py-1 rounded-md text-xs font-medium transition-all text-left leading-tight ${
+                    className={`w-full px-2.5 py-2 md:py-1 rounded-md text-xs font-medium transition-all text-left leading-tight ${
                       showCasillasPjem ? 'bg-amber-700 text-white shadow-sm' : 'text-gray-600 hover:bg-gray-100'
                     }`}
                     title="Ubicaciones físicas de casillas — PJEM"
@@ -1639,7 +1643,7 @@ const MapTerritorial = ({
                 <div className="w-full h-px bg-gray-200 my-0.5" />
                 <button
                   onClick={() => setShowCiudadanos(v => !v)}
-                  className={`w-full px-2.5 py-1 rounded-md text-xs font-medium transition-all text-left leading-tight ${
+                  className={`w-full px-2.5 py-2 md:py-1 rounded-md text-xs font-medium transition-all text-left leading-tight ${
                     showCiudadanos ? 'bg-teal-600 text-white shadow-sm' : 'text-gray-600 hover:bg-gray-100'
                   }`}
                   title="Mostrar u ocultar marcadores de colaboradores"
@@ -1734,7 +1738,7 @@ const MapTerritorial = ({
             streetViewControl: false,
             fullscreenControl: true,
             zoomControl: true,
-            gestureHandling: 'cooperative',
+            gestureHandling,
           }}
         >
           {/* ── Polígonos de secciones ──────────────────────────────── */}
