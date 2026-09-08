@@ -833,6 +833,7 @@ const MapTerritorial = ({
 }) => {
   const mapRef        = useRef(null);
   const containerRef  = useRef(null);
+  const zoomTimerRef  = useRef(null);
 
   const [activeMarker,    setActiveMarker]    = useState(null);
   const [sectorColorMap,  setSectorColorMap]  = useState({});
@@ -860,13 +861,30 @@ const MapTerritorial = ({
 
   const { isLoaded } = useJsApiLoader({ googleMapsApiKey: GOOGLE_API_KEY, libraries: GOOGLE_LIBRARIES });
 
-  // Anillos de las fracciones ya parseados, para detectar en cuál cae un punto
+  // Anillos de las fracciones ya parseados, para detectar en cuál cae un punto y para renderizar
   const fraccionRings = useMemo(
     () => fraccionesGeo
       .map(f => ({ fraccion: f.fraccion, rings: parseWKT(f.geometry) }))
       .filter(f => f.rings.length),
     [fraccionesGeo]
   );
+
+  // Paths de secciones pre-parseados — evita llamar parseWKT en cada render
+  const seccionPaths = useMemo(() => {
+    const m = new Map();
+    secciones.forEach(sec => { m.set(sec.id ?? sec.seccion, parseWKT(sec.geometry)); });
+    return m;
+  }, [secciones]);
+
+  // Lookup rápido fraccion → rings para renderizado (reutiliza fraccionRings)
+  const fraccionPathMap = useMemo(() => {
+    const m = new Map();
+    fraccionRings.forEach(f => m.set(f.fraccion, f.rings));
+    return m;
+  }, [fraccionRings]);
+
+  // Si hay alguna fracción con geometría (solo recalcula cuando cambia fraccionRings)
+  const hasFracGeom = fraccionRings.length > 0;
 
   const findFraccionAt = useCallback((lat, lng) => {
     const point = { lat, lng };
@@ -1167,7 +1185,11 @@ const MapTerritorial = ({
   }, []);
 
   const onZoomChanged = useCallback(() => {
-    if (mapRef.current) setCurrentZoom(mapRef.current.getZoom());
+    if (!mapRef.current) return;
+    clearTimeout(zoomTimerRef.current);
+    zoomTimerRef.current = setTimeout(() => {
+      setCurrentZoom(mapRef.current?.getZoom() ?? 11);
+    }, 200);
   }, []);
 
   // ── Generar PDF con formato ───────────────────────────────────────────────
@@ -1178,7 +1200,7 @@ const MapTerritorial = ({
       // 1. Fit bounds al contenido actual
       const bounds = new window.google.maps.LatLngBounds();
       let hasBounds = false;
-      const hasFracGeo = fraccionesGeo.some(f => f.geometry && parseWKT(f.geometry).length > 0);
+      const hasFracGeo = fraccionRings.length > 0;
       const geoSource  = hasFracGeo ? fraccionesGeo : secciones;
       geoSource.forEach(item => {
         parseWKT(item.geometry ?? '').flat().forEach(p => { bounds.extend(p); hasBounds = true; });
@@ -1747,20 +1769,23 @@ const MapTerritorial = ({
             rotateControl: false,
             clickableIcons: false,
             gestureHandling,
+            tilt: 0,
+            minZoom: 10,
+            maxZoom: 19,
+            restriction: {
+              latLngBounds: { north: 20.05, south: 19.55, east: -98.72, west: -99.20 },
+              strictBounds: false,
+            },
           }}
         >
           {/* ── Polígonos de secciones ──────────────────────────────── */}
           {(() => {
-            // Solo ceder el protagonismo a las fracciones si hay geometrías reales
-            const hasFracGeom = fraccionesGeo.some(
-              f => f.geometry && parseWKT(f.geometry).length > 0
-            );
             const isSemaforo        = electoralMode === 'semaforo_cred';
             const isSemaforoMercado = electoralMode === 'semaforo_mercado';
             const isSemaforoMov     = electoralMode === 'semaforo_mov';
 
             return secciones.map((sec, idx) => {
-              const paths      = parseWKT(sec.geometry);
+              const paths      = seccionPaths.get(sec.id ?? sec.seccion) ?? [];
               if (!paths.length) return null;
               const elResult   = electoralMode === 'ayu_2021'
                 ? getElectoralResult(sec.seccion)
@@ -1857,7 +1882,7 @@ const MapTerritorial = ({
 
           {/* ── Etiquetas de sección (zoom-aware) ──────────────────── */}
           {currentZoom >= 12 && secciones.map((sec, idx) => {
-            const paths = parseWKT(sec.geometry);
+            const paths = seccionPaths.get(sec.id ?? sec.seccion) ?? [];
             if (!paths.length) return null;
             const center = getCenter(paths);
             const isSelected = selectedSeccion != null && selectedSeccion === sec.seccion;
@@ -1945,7 +1970,7 @@ const MapTerritorial = ({
             return uniqueSectors.map(sector => {
               const secsInSector = secciones.filter(s => s.pologono === sector);
               const centroids = secsInSector
-                .map(s => { const p = parseWKT(s.geometry); return p.length ? getCenter(p) : null; })
+                .map(s => { const p = seccionPaths.get(s.id ?? s.seccion) ?? []; return p.length ? getCenter(p) : null; })
                 .filter(Boolean);
               if (!centroids.length) return null;
               const lat = centroids.reduce((s, c) => s + c.lat, 0) / centroids.length;
@@ -1997,7 +2022,7 @@ const MapTerritorial = ({
                                : electoralData;
               if (dataSource[sec.seccion] !== undefined) continue; // has own data, not aliased
               if (dataSource[alias] === undefined) continue; // alias target also missing, skip
-              const paths = parseWKT(sec.geometry);
+              const paths = seccionPaths.get(sec.id ?? sec.seccion) ?? [];
               if (!paths.length) continue;
               const c = getCenter(paths);
               if (!groups[alias]) groups[alias] = { lats: [], lngs: [], count: 0 };
@@ -2045,7 +2070,7 @@ const MapTerritorial = ({
           {showFracciones && fraccionesGeo
             .filter(f => String(f.seccion) === String(selectedSeccion))
             .map((f) => {
-            const paths = parseWKT(f.geometry);
+            const paths = fraccionPathMap.get(f.fraccion) ?? [];
             if (!paths.length) return null;
             const { fill, stroke } = fracColor(f);
             const isFocused  = focusCoords?.ubt === f.fraccion;
@@ -2078,7 +2103,7 @@ const MapTerritorial = ({
           {showFracciones && fraccionesGeo
             .filter(f => String(f.seccion) === String(selectedSeccion))
             .map((f) => {
-            const paths = parseWKT(f.geometry);
+            const paths = fraccionPathMap.get(f.fraccion) ?? [];
             if (!paths.length) return null;
             const center  = getCenter(paths);
             const { fill } = fracColor(f);
