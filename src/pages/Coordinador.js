@@ -1187,7 +1187,7 @@ const Coordinador = () => {
                   spName={fullName(user)}
                   focusCoords={focusCoords}
                   onClearFocus={() => setFocusCoords(null)}
-                  controlsLeftOffset={!isMobile && leftPanelOpen ? 300 : 0}
+                  controlsLeftOffset={0}
                   afiliacionBySec={afiliacionBySec}
                   hasMercado={mercadoRows.length > 0}
                   mercadoBySec={mercadoBySec}
