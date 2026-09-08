@@ -340,6 +340,8 @@ const Coordinador = () => {
   const [seccionMapa, setSeccionMapa]           = useState('');
   const [smFiltroLocal, setSmFiltroLocal]       = useState('');
   const [sheetSnap, setSheetSnap] = useState('peek'); // 'peek' | 'half' | 'full'
+  const [isMobile, setIsMobile] = useState(() => window.innerWidth < 768);
+  const [leftPanelOpen, setLeftPanelOpen] = useState(true);
   const sheetRef = useRef(null);
   const dragRef  = useRef({ active: false, startY: 0, baseY: 0, containerH: 0 });
   const [fraccionesDeSec, setFraccionesDeSec]   = useState([]);
@@ -403,6 +405,12 @@ const Coordinador = () => {
       body.style.overscrollBehavior = prev.overscrollBehavior;
     };
   }, [tab]);
+
+  useEffect(() => {
+    const onResize = () => setIsMobile(window.innerWidth < 768);
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
 
   // ── Fetch ──────────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -820,7 +828,9 @@ const Coordinador = () => {
         </button>
         {tab === 'mapa' && (
           <button
-            onClick={() => setSheetSnap(s => s === 'peek' ? 'half' : s === 'half' ? 'full' : 'peek')}
+            onClick={() => isMobile
+              ? setSheetSnap(s => s === 'peek' ? 'half' : s === 'half' ? 'full' : 'peek')
+              : setLeftPanelOpen(o => !o)}
             className="flex items-center justify-center w-11 h-11 md:w-9 md:h-9 rounded-xl border transition-all active:scale-95 flex-shrink-0"
             style={sheetSnap !== 'peek'
               ? { background: `linear-gradient(135deg, ${BRAND} 0%, #A52040 100%)`, color: '#fff', borderColor: 'transparent' }
@@ -1158,10 +1168,10 @@ const Coordinador = () => {
 
         {/* ── TAB: MAPA ────────────────────────────────────────────────────── */}
         {tab === 'mapa' && (
-          <div className="h-full relative overflow-hidden">
+          <div className={isMobile ? 'h-full relative overflow-hidden' : 'h-full flex'}>
 
-            {/* Mapa — siempre ocupa todo el ancho */}
-            <div className="absolute inset-0" style={{ touchAction: 'none', overscrollBehavior: 'none' }}>
+            {/* Mapa */}
+            <div className={isMobile ? 'absolute inset-0' : 'flex-1 h-full'} style={{ touchAction: 'none', overscrollBehavior: 'none', ...(!isMobile ? { order: 2 } : {}) }}>
               {seccionesSector.length === 0 ? (
                 <div className="flex flex-col items-center justify-center h-full gap-3">
                   <div className="w-8 h-8 rounded-full border-2 border-slate-200 animate-spin" style={{ borderTopColor: BRAND }} />
@@ -1177,7 +1187,7 @@ const Coordinador = () => {
                   spName={fullName(user)}
                   focusCoords={focusCoords}
                   onClearFocus={() => setFocusCoords(null)}
-                  controlsLeftOffset={0}
+                  controlsLeftOffset={!isMobile && leftPanelOpen ? 300 : 0}
                   afiliacionBySec={afiliacionBySec}
                   hasMercado={mercadoRows.length > 0}
                   mercadoBySec={mercadoBySec}
@@ -1190,11 +1200,13 @@ const Coordinador = () => {
               )}
             </div>
 
-            {/* ── Bottom Sheet ─────────────────────────────────────────────── */}
+            {/* ── Panel: left sidebar (desktop) / bottom sheet (mobile) ────── */}
             <div
               ref={sheetRef}
-              className="absolute inset-x-0 bottom-0 z-10 flex flex-col bg-white rounded-t-2xl"
-              style={{
+              className={isMobile
+                ? 'absolute inset-x-0 bottom-0 z-10 flex flex-col bg-white rounded-t-2xl'
+                : 'flex-shrink-0 flex flex-col bg-white border-r border-slate-100 overflow-hidden'}
+              style={isMobile ? {
                 height: '100%',
                 transform: sheetSnap === 'full'  ? 'translateY(3%)'
                          : sheetSnap === 'half'  ? 'translateY(50%)'
@@ -1202,9 +1214,15 @@ const Coordinador = () => {
                 transition: 'transform 0.38s cubic-bezier(0.32, 0.72, 0, 1)',
                 willChange: 'transform',
                 boxShadow: '0 -4px 24px rgba(0,0,0,0.13), 0 -1px 4px rgba(0,0,0,0.06)',
+              } : {
+                order: 1,
+                width: leftPanelOpen ? 300 : 0,
+                transition: 'width 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+                boxShadow: leftPanelOpen ? '2px 0 8px rgba(0,0,0,0.05)' : 'none',
               }}
             >
-              {/* ── Drag handle + peek row ──────────────────────────────── */}
+              {/* ── Mobile: drag handle + peek row + chips ──────────────── */}
+              {isMobile && (
               <div
                 className="flex-shrink-0 pt-2.5 pb-2 cursor-grab select-none"
                 style={{ WebkitUserSelect: 'none' }}
@@ -1254,7 +1272,7 @@ const Coordinador = () => {
                   </div>
                 </div>
 
-                {/* Chips de sección — visibles siempre (debajo del peek row) */}
+                {/* Chips de sección */}
                 <div className="px-4 pt-2 pb-1 flex flex-wrap gap-1 border-t border-slate-100 mt-2">
                   {coberturaSeccion.map(s => {
                     const isActive = String(s.seccion) === seccionMapa;
@@ -1279,9 +1297,59 @@ const Coordinador = () => {
                   )}
                 </div>
               </div>
+              )}
+
+              {/* ── Desktop: panel header with chips ────────────────────── */}
+              {!isMobile && (
+                <div className="flex-shrink-0 px-3 py-3 border-b border-slate-100" style={{ minWidth: 300 }}>
+                  <div className="flex items-center gap-2 mb-2.5">
+                    <div className="w-5 h-5 rounded-lg flex items-center justify-center text-white text-[8px] font-black flex-shrink-0"
+                      style={{ background: `linear-gradient(135deg, ${BRAND} 0%, #A52040 100%)` }}>SP</div>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-[9px] font-black uppercase tracking-[0.16em] text-slate-400 leading-none">Sector {user.poligono}</p>
+                      <p className="text-[11px] font-bold text-slate-800 leading-snug mt-0.5">{promotores.length} SM activas</p>
+                    </div>
+                    {coberturaSeccion.length > 0 && (() => {
+                      const totalSM   = coberturaSeccion.reduce((s, x) => s + x.sm, 0);
+                      const totalFrac = coberturaSeccion.reduce((s, x) => s + x.fracciones, 0);
+                      const cob = pctNum(totalSM, totalFrac);
+                      const col = cob === 100 ? '#10B981' : cob >= 60 ? '#3B82F6' : cob >= 30 ? '#F59E0B' : '#EF4444';
+                      return (
+                        <span className="text-[10px] font-bold tabular-nums px-1.5 py-0.5 rounded-lg flex-shrink-0"
+                          style={{ backgroundColor: col + '18', color: col }}>
+                          {cob}% cob.
+                        </span>
+                      );
+                    })()}
+                  </div>
+                  <div className="flex flex-wrap gap-1">
+                    {coberturaSeccion.map(s => {
+                      const isActive = String(s.seccion) === seccionMapa;
+                      const p = pctNum(s.sm, s.fracciones);
+                      const col = p === 100 ? '#10B981' : p >= 60 ? '#3B82F6' : p >= 30 ? '#F59E0B' : '#EF4444';
+                      return (
+                        <button key={s.seccion}
+                          onClick={() => setSeccionMapa(isActive ? '' : String(s.seccion))}
+                          className="px-2 py-1 rounded-lg text-[10px] font-bold border transition-all hover:opacity-80"
+                          style={isActive
+                            ? { backgroundColor: BRAND, color: '#fff', borderColor: BRAND }
+                            : { backgroundColor: col + '18', color: col, borderColor: col + '40' }}>
+                          {s.seccion}
+                        </button>
+                      );
+                    })}
+                    {seccionMapa && (
+                      <button onClick={() => setSeccionMapa('')}
+                        className="px-2 py-1 rounded-lg text-[10px] font-bold border border-slate-200 text-slate-400 bg-white hover:bg-slate-50 transition-all">
+                        Todo
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )}
 
               {/* ── Contenido scrollable ────────────────────────────────── */}
-              <div className="flex-1 overflow-y-auto overscroll-contain p-3 space-y-3">
+              <div className="flex-1 overflow-y-auto overscroll-contain p-3 space-y-3" style={!isMobile ? { minWidth: 300 } : {}}>
 
                 {/* ── Capa activa: Entrega de credenciales ─────────────── */}
                 {electoralMode === 'semaforo_cred' && (() => {
