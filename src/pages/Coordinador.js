@@ -630,26 +630,26 @@ const Coordinador = () => {
     for (const r of mercadoRows) {
       const sec = r.seccion;
       if (!sec) continue;
-      if (!bySec[sec]) bySec[sec] = { total: 0, totalEntregadas: 0, totalPiezas: 0, estatusCounts: {} };
-      bySec[sec].total          += Number(r.piezas ?? 0) * Number(r.sm_activas ?? 1);
+      if (!bySec[sec]) bySec[sec] = { total: 0, totalEntregadas: 0, totalPiezas: 0, estatusCounts: {}, rows: [] };
+      bySec[sec].total           += Number(r.piezas ?? 0) * Number(r.sm_activas ?? 1);
       bySec[sec].totalEntregadas += Number(r.entregadas ?? 0);
       bySec[sec].totalPiezas     += Number(r.piezas ?? 0);
-      const est = r.estatus ?? 'PENDIENTE';
+      bySec[sec].rows.push(r);
+      const est = (r.estatus ?? 'PENDIENTE').toUpperCase();
       bySec[sec].estatusCounts[est] = (bySec[sec].estatusCounts[est] || 0) + 1;
     }
-    const sortedTotals = Object.values(bySec).map(v => v.total).filter(v => v > 0).sort((a, b) => a - b);
-    const p75idx = Math.max(Math.floor(sortedTotals.length * 0.75) - 1, 0);
-    const refMax = Math.max(sortedTotals[p75idx] ?? sortedTotals[sortedTotals.length - 1] ?? 1, 1);
     const result = {};
     for (const [sec, v] of Object.entries(bySec)) {
+      const deliveryRate = v.totalPiezas > 0 ? Math.min((v.totalEntregadas / v.totalPiezas) * 100, 100) : 0;
       const estatus = Object.entries(v.estatusCounts).sort((a, b) => b[1] - a[1])[0]?.[0] ?? 'PENDIENTE';
       result[Number(sec)] = {
-        total:          v.total,
+        total:           v.total,
         totalEntregadas: v.totalEntregadas,
-        totalPiezas:    v.totalPiezas,
+        totalPiezas:     v.totalPiezas,
+        deliveryRate,
         estatus,
-        pct:      Math.min((v.total / refMax) * 100, 100),
-        maxRef:   refMax,
+        estatusCounts:   v.estatusCounts,
+        rows:            v.rows,
       };
     }
     return result;
@@ -1265,9 +1265,17 @@ const Coordinador = () => {
                 onTouchStart={onHandleTouchStart}
                 onTouchEnd={onHandleTouchEnd}
               >
-                {/* Handle pill */}
-                <div className="flex justify-center mb-2.5">
-                  <div className="w-9 h-1 rounded-full bg-slate-200" />
+                {/* Handle pill + hint word */}
+                <div className="flex flex-col items-center mb-2.5">
+                  <div className="w-9 h-1 rounded-full bg-slate-200 mb-1.5" />
+                  <span
+                    className="text-[8px] font-bold uppercase tracking-[0.2em] select-none"
+                    style={{
+                      color: sheetSnap === 'peek' ? '#94A3B8' : '#CBD5E1',
+                      transition: 'color 0.38s cubic-bezier(0.22, 1, 0.36, 1)',
+                    }}>
+                    {sheetSnap === 'peek' ? 'Mostrar más' : 'Ocultar'}
+                  </span>
                 </div>
 
                 {/* Peek row — siempre visible */}
@@ -1326,7 +1334,10 @@ const Coordinador = () => {
                       className="w-7 h-7 rounded-lg flex items-center justify-center text-slate-400 active:scale-90 transition-all"
                       style={{ backgroundColor: '#F1F5F9' }}>
                       <svg width={13} height={13} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}
-                        style={{ transform: sheetSnap === 'peek' ? 'rotate(180deg)' : 'none', transition: 'transform 0.3s' }}>
+                        style={{
+                          transform: sheetSnap === 'peek' ? 'rotate(180deg)' : 'rotate(0deg)',
+                          transition: 'transform 0.38s cubic-bezier(0.22, 1, 0.36, 1)',
+                        }}>
                         <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
                       </svg>
                     </button>
@@ -1607,16 +1618,127 @@ const Coordinador = () => {
                 {/* ── Capa activa: Mercado Solidario ───────────────────────── */}
                 {electoralMode === 'semaforo_mercado' && (() => {
                   const secKeys = Object.keys(mercadoBySec).map(Number).sort((a, b) => a - b);
-                  const totalPedido   = secKeys.reduce((s, k) => s + (mercadoBySec[k]?.total ?? 0), 0);
-                  const totalEntregado = secKeys.reduce((s, k) => s + (mercadoBySec[k]?.totalEntregadas ?? 0), 0);
-                  const totalPiezas   = secKeys.reduce((s, k) => s + (mercadoBySec[k]?.totalPiezas ?? 0), 0);
-                  const secFiltradas  = seccionMapa ? secKeys.filter(k => k === Number(seccionMapa)) : secKeys;
 
                   if (!secKeys.length) return (
                     <div className="rounded-xl border border-dashed border-slate-200 p-4 text-center">
                       <p className="text-xs text-slate-400">Sin datos de Mercado Solidario para este sector.</p>
                     </div>
                   );
+
+                  const drColor = (r) => r >= 100 ? '#16A34A' : r >= 75 ? '#65A30D' : r >= 50 ? '#CA8A04' : r >= 25 ? '#EA580C' : '#DC2626';
+                  const drBg    = (r) => r >= 100 ? 'bg-emerald-50' : r >= 75 ? 'bg-lime-50' : r >= 50 ? 'bg-amber-50' : r >= 25 ? 'bg-orange-50' : 'bg-red-50';
+                  const drTxt   = (r) => r >= 100 ? 'text-emerald-700' : r >= 75 ? 'text-lime-700' : r >= 50 ? 'text-amber-700' : r >= 25 ? 'text-orange-700' : 'text-red-700';
+
+                  /* ── Vista: sección seleccionada ─────────────────────────── */
+                  if (seccionMapa) {
+                    const sec = Number(seccionMapa);
+                    const d   = mercadoBySec[sec];
+                    if (!d) return null;
+                    const dr  = d.deliveryRate;
+                    const col = drColor(dr);
+                    const entregadas = d.estatusCounts['ENTREGADO'] ?? 0;
+                    const pendientes = d.estatusCounts['PENDIENTE'] ?? 0;
+                    const otrosCount = d.rows.length - entregadas - pendientes;
+
+                    return (
+                      <>
+                        {/* Cabecera sección */}
+                        <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5">
+                          <div className="flex items-start justify-between gap-2">
+                            <div>
+                              <p className="text-[9px] font-bold uppercase tracking-[0.14em] text-slate-400 leading-none mb-1">Mercado Solidario</p>
+                              <p className="text-xs font-bold text-slate-800">Sección {sec}</p>
+                            </div>
+                            <span className="text-[9px] font-bold px-2 py-1 rounded-full text-white" style={{ backgroundColor: col }}>
+                              {dr.toFixed(0)}% entregado
+                            </span>
+                          </div>
+                          <button onClick={() => setSeccionMapa('')}
+                            className="mt-1.5 text-[9px] font-bold flex items-center gap-1 transition-colors"
+                            style={{ color: BRAND }}>
+                            ← Ver todo el sector
+                          </button>
+                        </div>
+
+                        {/* Barra grande de entrega */}
+                        <div className={`${drBg(dr)} rounded-xl px-3 py-3`}>
+                          <div className="flex items-end justify-between mb-2">
+                            <div>
+                              <p className="text-[9px] font-bold uppercase tracking-widest text-slate-400 leading-none mb-1">Tasa de entrega</p>
+                              <p className={`text-2xl font-black tabular-nums leading-none ${drTxt(dr)}`}>{dr.toFixed(1)}%</p>
+                            </div>
+                            <p className="text-[10px] text-slate-500 tabular-nums text-right">
+                              <span className="font-bold text-slate-700">{fmt(d.totalEntregadas)}</span> de {fmt(d.totalPiezas)} pzas
+                            </p>
+                          </div>
+                          <div className="h-2 bg-white/60 rounded-full overflow-hidden">
+                            <div className="h-full rounded-full transition-all duration-700" style={{ width: `${dr}%`, backgroundColor: col }} />
+                          </div>
+                        </div>
+
+                        {/* Desglose de estatus */}
+                        <div className="grid grid-cols-2 gap-1.5">
+                          <div className="bg-emerald-50 rounded-xl p-2.5 text-center">
+                            <p className="text-[8px] font-bold uppercase tracking-widest text-emerald-500 leading-none mb-1">Entregado</p>
+                            <p className="text-base font-black text-emerald-700 tabular-nums">{entregadas}</p>
+                            <p className="text-[8px] text-emerald-500 mt-0.5">registros</p>
+                          </div>
+                          <div className="bg-amber-50 rounded-xl p-2.5 text-center">
+                            <p className="text-[8px] font-bold uppercase tracking-widest text-amber-500 leading-none mb-1">Pendiente</p>
+                            <p className="text-base font-black text-amber-700 tabular-nums">{pendientes}</p>
+                            <p className="text-[8px] text-amber-500 mt-0.5">registros</p>
+                          </div>
+                        </div>
+                        {otrosCount > 0 && (
+                          <div className="bg-slate-50 rounded-xl px-3 py-2 flex items-center justify-between">
+                            <p className="text-[9px] text-slate-500 font-semibold">Otros estatus</p>
+                            <span className="text-[9px] font-bold text-slate-600 tabular-nums">{otrosCount} registros</span>
+                          </div>
+                        )}
+
+                        {/* Registros individuales */}
+                        {d.rows.length > 0 && (
+                          <div className="space-y-1.5">
+                            <p className="text-[9px] font-bold uppercase tracking-widest text-slate-400">Registros</p>
+                            {d.rows.map((r, i) => {
+                              const est = (r.estatus ?? 'PENDIENTE').toUpperCase();
+                              const isDone = est === 'ENTREGADO';
+                              const piezas = Number(r.piezas ?? 0);
+                              const entregadasR = Number(r.entregadas ?? 0);
+                              const rRate = piezas > 0 ? Math.min((entregadasR / piezas) * 100, 100) : 0;
+                              return (
+                                <div key={i} className="rounded-lg bg-slate-50 px-2.5 py-2 flex items-center justify-between gap-2">
+                                  <div className="min-w-0">
+                                    <p className="text-[10px] font-semibold text-slate-700 truncate">{r.nombre ?? `Entrega ${r.entrega ?? i + 1}`}</p>
+                                    <p className="text-[8px] text-slate-400 tabular-nums">
+                                      {r.mes && r.año ? `${r.mes}/${r.año} · ` : ''}{entregadasR}/{piezas} pzas
+                                    </p>
+                                  </div>
+                                  <div className="flex flex-col items-end gap-1 flex-shrink-0">
+                                    <span className={`text-[8px] font-bold px-1.5 py-0.5 rounded-full ${isDone ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>
+                                      {est}
+                                    </span>
+                                    <span className="text-[9px] font-bold tabular-nums" style={{ color: drColor(rRate) }}>{rRate.toFixed(0)}%</span>
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </>
+                    );
+                  }
+
+                  /* ── Vista: sector completo ──────────────────────────────── */
+                  const totalEntregadas = secKeys.reduce((s, k) => s + (mercadoBySec[k]?.totalEntregadas ?? 0), 0);
+                  const totalPiezas     = secKeys.reduce((s, k) => s + (mercadoBySec[k]?.totalPiezas ?? 0), 0);
+                  const globalRate      = totalPiezas > 0 ? Math.min((totalEntregadas / totalPiezas) * 100, 100) : 0;
+                  const completadas     = secKeys.filter(k => (mercadoBySec[k]?.deliveryRate ?? 0) >= 100).length;
+                  const enProgreso      = secKeys.filter(k => { const r = mercadoBySec[k]?.deliveryRate ?? 0; return r > 0 && r < 100; }).length;
+                  const sinIniciar      = secKeys.filter(k => (mercadoBySec[k]?.deliveryRate ?? 0) === 0).length;
+                  const col             = drColor(globalRate);
+
+                  const sortedSecs = [...secKeys].sort((a, b) => (mercadoBySec[a]?.deliveryRate ?? 0) - (mercadoBySec[b]?.deliveryRate ?? 0));
 
                   return (
                     <>
@@ -1625,61 +1747,72 @@ const Coordinador = () => {
                         <div className="flex items-start justify-between gap-2">
                           <div>
                             <p className="text-[9px] font-bold uppercase tracking-[0.14em] text-slate-400 leading-none mb-1">Mercado Solidario</p>
-                            <p className="text-xs font-bold text-slate-800 leading-snug">
-                              {seccionMapa ? `Sección ${seccionMapa}` : `Sector ${user.poligono}`}
-                            </p>
+                            <p className="text-xs font-bold text-slate-800">Sector {user.poligono}</p>
                           </div>
-                          <span className="text-[9px] font-bold px-2 py-1 rounded-full text-white bg-emerald-600">
-                            {seccionMapa ? '1 sección' : `${secKeys.length} secciones`}
+                          <span className="text-[9px] font-bold px-2 py-1 rounded-full text-white" style={{ backgroundColor: col }}>
+                            {globalRate.toFixed(0)}% global
                           </span>
                         </div>
-                        {seccionMapa && (
-                          <button onClick={() => setSeccionMapa('')}
-                            className="mt-1.5 text-[9px] font-bold flex items-center gap-1 transition-colors"
-                            style={{ color: BRAND }}>
-                            ← Ver todo el sector
-                          </button>
-                        )}
                       </div>
 
-                      {/* KPIs */}
-                      {!seccionMapa && (
-                        <div className="grid grid-cols-3 gap-1">
-                          {[
-                            { label: 'Pedido',     v: fmt(totalPedido),    bg: 'bg-blue-50',    txt: 'text-blue-700',   lbl: 'text-blue-500' },
-                            { label: 'Piezas',     v: fmt(totalPiezas),    bg: 'bg-slate-50 border border-slate-100', txt: 'text-slate-700', lbl: 'text-slate-400' },
-                            { label: 'Entregadas', v: fmt(totalEntregado), bg: 'bg-emerald-50',  txt: 'text-emerald-700', lbl: 'text-emerald-600' },
-                          ].map(({ label, v, bg, txt, lbl }) => (
-                            <div key={label} className={`${bg} rounded-xl p-2 text-center`}>
-                              <p className={`text-[8px] font-bold uppercase tracking-widest leading-none mb-1 ${lbl}`}>{label}</p>
-                              <p className={`text-sm font-black tabular-nums ${txt}`}>{v}</p>
-                            </div>
-                          ))}
+                      {/* Barra global */}
+                      <div className={`${drBg(globalRate)} rounded-xl px-3 py-3`}>
+                        <div className="flex items-end justify-between mb-2">
+                          <div>
+                            <p className="text-[9px] font-bold uppercase tracking-widest text-slate-400 leading-none mb-1">Tasa de entrega global</p>
+                            <p className={`text-3xl font-black tabular-nums leading-none ${drTxt(globalRate)}`}>{globalRate.toFixed(1)}%</p>
+                          </div>
+                          <p className="text-[10px] text-slate-500 tabular-nums text-right">
+                            <span className="font-bold text-slate-700">{fmt(totalEntregadas)}</span><br />de {fmt(totalPiezas)} pzas
+                          </p>
                         </div>
-                      )}
+                        <div className="h-2 bg-white/60 rounded-full overflow-hidden">
+                          <div className="h-full rounded-full transition-all duration-700" style={{ width: `${globalRate}%`, backgroundColor: col }} />
+                        </div>
+                      </div>
 
-                      {/* Por sección */}
-                      <div className="space-y-2">
+                      {/* KPIs de avance */}
+                      <div className="grid grid-cols-3 gap-1">
+                        <div className="bg-emerald-50 rounded-xl p-2 text-center">
+                          <p className="text-[8px] font-bold uppercase tracking-widest text-emerald-500 leading-none mb-1">Completas</p>
+                          <p className="text-sm font-black text-emerald-700 tabular-nums">{completadas}</p>
+                          <p className="text-[8px] text-emerald-400">secc.</p>
+                        </div>
+                        <div className="bg-amber-50 rounded-xl p-2 text-center">
+                          <p className="text-[8px] font-bold uppercase tracking-widest text-amber-500 leading-none mb-1">En proceso</p>
+                          <p className="text-sm font-black text-amber-700 tabular-nums">{enProgreso}</p>
+                          <p className="text-[8px] text-amber-400">secc.</p>
+                        </div>
+                        <div className="bg-slate-50 rounded-xl p-2 text-center border border-slate-100">
+                          <p className="text-[8px] font-bold uppercase tracking-widest text-slate-400 leading-none mb-1">Sin iniciar</p>
+                          <p className="text-sm font-black text-slate-600 tabular-nums">{sinIniciar}</p>
+                          <p className="text-[8px] text-slate-400">secc.</p>
+                        </div>
+                      </div>
+
+                      {/* Por sección — ordenado de menor a mayor avance */}
+                      <div className="space-y-1.5">
                         <div className="flex items-center justify-between">
                           <p className="text-[9px] font-bold uppercase tracking-widest text-slate-400">Por sección</p>
-                          <span className="text-[9px] text-slate-400">volumen · pedido</span>
+                          <span className="text-[8px] text-slate-400">menor avance primero</span>
                         </div>
-                        {secFiltradas.map(sec => {
-                          const d = mercadoBySec[sec];
+                        {sortedSecs.map(sec => {
+                          const d  = mercadoBySec[sec];
                           if (!d) return null;
-                          const barColor = d.pct >= 90 ? '#16A34A' : d.pct >= 60 ? '#65A30D' : d.pct >= 30 ? '#CA8A04' : '#F59E0B';
+                          const dr  = d.deliveryRate;
+                          const col = drColor(dr);
                           return (
                             <button key={sec} className="w-full text-left"
-                              onClick={() => setSeccionMapa(seccionMapa === String(sec) ? '' : String(sec))}>
+                              onClick={() => setSeccionMapa(String(sec))}>
                               <div className="flex items-center justify-between mb-0.5">
                                 <span className="text-[10px] font-semibold text-slate-700">Sección {sec}</span>
                                 <div className="flex items-center gap-1.5">
-                                  <span className="text-[9px] text-slate-400 tabular-nums">{fmt(d.totalEntregadas)}/{fmt(d.totalPiezas)} pzas</span>
-                                  <span className="text-[9px] font-bold" style={{ color: barColor }}>{d.pct.toFixed(0)}%</span>
+                                  <span className="text-[8px] text-slate-400 tabular-nums">{fmt(d.totalEntregadas)}/{fmt(d.totalPiezas)} pzas</span>
+                                  <span className="text-[9px] font-black tabular-nums" style={{ color: col }}>{dr.toFixed(0)}%</span>
                                 </div>
                               </div>
                               <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden">
-                                <div className="h-full rounded-full transition-all duration-500" style={{ width: `${d.pct}%`, backgroundColor: barColor }} />
+                                <div className="h-full rounded-full transition-all duration-500" style={{ width: `${dr}%`, backgroundColor: col }} />
                               </div>
                             </button>
                           );

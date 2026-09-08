@@ -568,10 +568,10 @@ const HoverTooltip = ({ data, pos, containerRef, isDark, tipo = 'seccion', secci
           <div className="flex items-center justify-between mb-1">
             <span className={`text-xs font-semibold ${sub}`}>Mercado Solidario</span>
             <span className={`text-[10px] tabular-nums font-bold`}
-              style={{ color: getSemaforoColor(mercado.pct).fill }}>
-              {mercado.total != null ? mercado.total : '—'}
+              style={{ color: getSemaforoColor(mercado.deliveryRate).fill }}>
+              {mercado.totalEntregadas != null ? mercado.totalEntregadas : '—'}
               <span className={`font-normal ml-1 ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
-                / {mercado.maxRef} ref · {mercado.pct != null ? `${mercado.pct.toFixed(0)}%` : '—'}
+                / {mercado.totalPiezas} pzas · {mercado.deliveryRate != null ? `${mercado.deliveryRate.toFixed(0)}%` : '—'}
               </span>
             </span>
           </div>
@@ -585,7 +585,7 @@ const HoverTooltip = ({ data, pos, containerRef, isDark, tipo = 'seccion', secci
           )}
           <div className={`h-1 rounded-full overflow-hidden mt-1.5 ${isDark ? 'bg-gray-700' : 'bg-gray-100'}`}>
             <div className="h-full rounded-full"
-              style={{ width: `${Math.min(mercado.pct ?? 0, 100)}%`, backgroundColor: getSemaforoColor(mercado.pct).fill }} />
+              style={{ width: `${Math.min(mercado.deliveryRate ?? 0, 100)}%`, backgroundColor: getSemaforoColor(mercado.deliveryRate).fill }} />
           </div>
         </div>
       )}
@@ -1813,7 +1813,7 @@ const MapTerritorial = ({
                 : isSemaforoMercado
                   ? (() => {
                       const ms = mercadoBySec[sec.seccion];
-                      return getSemaforoColor(ms ? ms.pct : null);
+                      return getSemaforoColor(ms ? ms.deliveryRate : null);
                     })()
                 : isSemaforoMov
                   ? (() => {
