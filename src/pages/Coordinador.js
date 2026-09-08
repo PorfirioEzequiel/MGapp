@@ -1475,7 +1475,7 @@ const Coordinador = () => {
                 })()}
 
                 {/* ── Capa activa: Resultados electorales ─────────────────── */}
-                {electoralMode && electoralMode !== 'semaforo_cred' && electoralMode !== 'semaforo_mercado' && (() => {
+                {electoralMode && electoralMode !== 'semaforo_cred' && electoralMode !== 'semaforo_mercado' && electoralMode !== 'semaforo_mov' && (() => {
                   if (!electoralStats) return (
                     <div className="space-y-2">
                       <div className="rounded-xl border border-dashed border-slate-200 p-4 text-center">
@@ -1793,7 +1793,7 @@ const Coordinador = () => {
                   );
                 })()}
 
-                {!electoralMode && !seccionMapa && (() => {
+                {(!electoralMode || electoralMode === 'semaforo_mov') && !seccionMapa && (() => {
                   const fmtN   = n => n != null ? Number(n).toLocaleString('es-MX') : '—';
                   const pctStr = (a, b) => b ? `${((a / b) * 100).toFixed(1)}%` : null;
 
@@ -1991,7 +1991,7 @@ const Coordinador = () => {
                   );
                 })()}
 
-                {!electoralMode && seccionMapa && (() => {
+                {(!electoralMode || electoralMode === 'semaforo_mov') && seccionMapa && (() => {
                   const secSelData  = seccionesSector.find(s => s.seccion === Number(seccionMapa));
                   // detalleSec built from fresh Supabase fetch (same as TableroBoard)
                   const smPorUbt    = Object.fromEntries(smsDeSec.map(p => [p.ubt, p]));
