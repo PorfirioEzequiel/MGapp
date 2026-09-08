@@ -839,6 +839,7 @@ const MapTerritorial = ({
   const [currentStyle,    setCurrentStyle]    = useState(initialStyle);
   const [hovered,         setHovered]         = useState(null);  // { data, tipo }
   const [tooltipPos,      setTooltipPos]      = useState({ x: 0, y: 0 });
+  const [isMobileMap,     setIsMobileMap]     = useState(() => window.innerWidth < 768);
   const [generating,      setGenerating]      = useState(false);
   const [currentZoom,     setCurrentZoom]     = useState(11);
   const [localElectoralMode, setLocalElectoralMode] = useState(null);
@@ -896,6 +897,11 @@ const MapTerritorial = ({
   const selectedSecRef    = useRef(selectedSeccion);
   useEffect(() => { seccionesRef.current = secciones; }, [secciones]);
   useEffect(() => { selectedSecRef.current = selectedSeccion; }, [selectedSeccion]);
+  useEffect(() => {
+    const onResize = () => setIsMobileMap(window.innerWidth < 768);
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
   useEffect(() => {
     fetch('/tecamac_casillas_pjem.json')
       .then(r => r.json())
@@ -1486,8 +1492,8 @@ const MapTerritorial = ({
       <div
         ref={containerRef}
         className="relative flex-1 min-h-[400px]"
-        onMouseMove={handleContainerMouseMove}
-        onMouseLeave={() => setHovered(null)}
+        onMouseMove={isMobileMap ? undefined : handleContainerMouseMove}
+        onMouseLeave={isMobileMap ? undefined : () => setHovered(null)}
       >
         {/* Panel de control flotante */}
         <div
@@ -1736,8 +1742,10 @@ const MapTerritorial = ({
             styles: styleDef.styles,
             mapTypeControl: false,
             streetViewControl: false,
-            fullscreenControl: true,
-            zoomControl: true,
+            fullscreenControl: false,
+            zoomControl: false,
+            rotateControl: false,
+            clickableIcons: false,
             gestureHandling,
           }}
         >
@@ -1827,9 +1835,9 @@ const MapTerritorial = ({
                     <Polygon
                       key={`sec-${sec.id}-${ri}`}
                       paths={ring}
-                      onMouseOver={isBg ? undefined : () => onPolyMouseOver(sec)}
-                      onMouseMove={isBg ? undefined : onPolyMouseMove}
-                      onMouseOut={isBg ? undefined : onPolyMouseOut}
+                      onMouseOver={isBg || isMobileMap ? undefined : () => onPolyMouseOver(sec)}
+                      onMouseMove={isBg || isMobileMap ? undefined : onPolyMouseMove}
+                      onMouseOut={isBg || isMobileMap ? undefined : onPolyMouseOut}
                       onClick={isBg ? undefined : () => onSelectSeccion?.(sec)}
                       options={{
                         fillColor:    isSelected && !electoralMode ? '#FBBF24' : color.fill,
@@ -2049,9 +2057,9 @@ const MapTerritorial = ({
                   <Polygon
                     key={`frac-${f.fraccion}-${ri}`}
                     paths={ring}
-                    onMouseOver={() => onFracMouseOver(f)}
-                    onMouseMove={onPolyMouseMove}
-                    onMouseOut={onPolyMouseOut}
+                    onMouseOver={isMobileMap ? undefined : () => onFracMouseOver(f)}
+                    onMouseMove={isMobileMap ? undefined : onPolyMouseMove}
+                    onMouseOut={isMobileMap ? undefined : onPolyMouseOut}
                     options={{
                       fillColor:    isAssigned ? '#DC2626' : fill,
                       strokeColor:  isAssigned ? '#7F1D1D' : isFocused ? '#92400E' : isHovered ? '#111827' : stroke,
@@ -2499,7 +2507,7 @@ const MapTerritorial = ({
         </GoogleMap>
 
         {/* ── Tooltip dinámico de hover ───────────────────────────────── */}
-        {hovered && (
+        {hovered && !isMobileMap && (
           <HoverTooltip
             data={hovered.data}
             tipo={hovered.tipo}
