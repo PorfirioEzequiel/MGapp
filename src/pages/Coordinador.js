@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
-import supabase from '../supabase/client';
+import supabase, { supabaseStorage as supabaseAdmin } from '../supabase/client';
 import MapTerritorial from '../map/MapTerritorial';
 import ToggleStatusButtonCP from './ToggleStatusButtonCP';
 import AFILIACION from '../data/afiliacion.json';
@@ -76,6 +76,75 @@ const fullName = (p) => p ? `${p.nombre} ${p.a_paterno} ${p.a_materno}`.trim() :
 const MESES = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
 const mesLabel = (mes) => { const [y, m] = mes.split('-'); return `${MESES[Number(m)-1]} ${y.slice(2)}`; };
 const pctNum = (a, b) => b ? Math.round((a / b) * 100) : 0;
+const fmt    = (n)    => n != null ? Number(n).toLocaleString('es-MX') : '—';
+const pct    = (a, b) => b ? `${((a / b) * 100).toFixed(1)}%` : null;
+
+// ── Análisis político dinámico (Senaduría) ────────────────────────────────────
+const buildSenadoInsight = (breakdown, groupLevel, scopeLabel) => {
+  if (!breakdown || !breakdown.length) return null;
+  const unidad     = groupLevel === 'seccion' ? 'secciones' : groupLevel === 'sector' ? 'sectores' : 'distritos';
+  const unidadSing = groupLevel === 'seccion' ? 'sección'   : groupLevel === 'sector' ? 'sector'   : 'distrito';
+  const ganados    = breakdown.filter(u => u.won).length;
+  const total      = breakdown.length;
+  const mejor      = breakdown[0];
+  const peor       = breakdown[breakdown.length - 1];
+  const partes     = [];
+  partes.push(`En ${scopeLabel}, Mariela gana en ${ganados} de ${total} ${unidad} (${total ? Math.round((ganados / total) * 100) : 0}%).`);
+  if (mejor) partes.push(`Su bastión más fuerte es ${mejor.label}, con ${mejor.margin >= 0 ? '+' : ''}${mejor.margin.toFixed(1)} pts sobre Fuerza x México.`);
+  if (peor && peor.key !== mejor?.key) partes.push(peor.won
+    ? `${peor.label} es el ${unidadSing} más competido: lo gana por apenas ${peor.margin.toFixed(1)} pts, conviene reforzarlo.`
+    : `${peor.label} se pierde por ${Math.abs(peor.margin).toFixed(1)} pts — foco prioritario de movilización.`);
+  return partes.join(' ');
+};
+
+const PARTY_FILL = { MORENA: '#6B0B20', PRI: '#F04E5A', PAN: '#1460A8', PRD: '#E8B200', PT: '#F07030', PVEM: '#22C55E', MC: '#F59E0B' };
+
+const CANDIDATOS_2021 = {
+  MORENA: { nombre: 'Mariela Gutiérrez Escalante',    partido: 'MORENA · PT · NAEM', resultado: 'GANADORA' },
+  PRI:    { nombre: 'José Israel Ovando Becerra',     partido: 'PRI',                resultado: '2° lugar' },
+  PAN:    { nombre: 'Sergio Octavio Germán Olivares', partido: 'PAN',                resultado: '3° lugar' },
+  PT:     { nombre: 'Coalición PT · MORENA · NAEM',  partido: 'PT',                 resultado: '' },
+  MC:     { nombre: 'Fabián Alfredo Varela Vergara',  partido: 'MC',                 resultado: '' },
+  PVEM:   { nombre: 'Candidato PVEM',                 partido: 'PVEM',               resultado: '' },
+  PRD:    { nombre: 'Candidato PRD',                  partido: 'PRD',                resultado: '' },
+};
+const CANDIDATOS_2024 = {
+  ROSI:  { nombre: 'Rosa Yolanda Wong', partido: 'Rosa Yolanda Wong', resultado: 'GANADORA', fill: '#6B0B20', stroke: '#360008' },
+  AARON: { nombre: 'Aaron Urbina',      partido: 'Aaron Urbina',      resultado: '2° lugar', fill: '#1460A8', stroke: '#093E78' },
+  MC:    { nombre: 'Candidato MC',      partido: 'MC',                resultado: '',         fill: '#F59E0B', stroke: '#B45309' },
+  PT:    { nombre: 'Candidato PT',      partido: 'PT',                resultado: '',         fill: '#F07030', stroke: '#B84810' },
+  PVEM:  { nombre: 'Candidato PVEM',    partido: 'PVEM',              resultado: '',         fill: '#22C55E', stroke: '#15803D' },
+};
+const CANDIDATOS_SENADO = {
+  MARIELA: { nombre: 'Mariela Gutiérrez Escalante', partido: 'MORENA Coalición', resultado: 'GANADORA', fill: '#6B0B20', stroke: '#360008' },
+  FUERZA:  { nombre: 'Fuerza x México',             partido: 'PAN · PRI · PRD',  resultado: '2° lugar', fill: '#1460A8', stroke: '#093E78' },
+  MC:      { nombre: 'Candidato MC',                partido: 'MC',               resultado: '',         fill: '#F59E0B', stroke: '#B45309' },
+};
+const CANDIDATOS_DIP = {
+  MORENA: { nombre: 'Samuel Hernández Cruz',          partido: 'MORENA · PT · PVEM',       resultado: 'GANADOR', fill: '#6B0B20', stroke: '#360008' },
+  PRI:    { nombre: 'Lilia Urbina / Eduardo Bernal',  partido: 'PRI · PAN · PRD · NAEM',   resultado: '2° lugar', fill: '#1460A8', stroke: '#093E78' },
+  MC:     { nombre: 'Saúl Nayan / Noelia Hdz.',       partido: 'MC',                        resultado: '',         fill: '#F59E0B', stroke: '#B45309' },
+};
+const SECTION_ALIASES = {
+  7011: 4213, 7012: 4213, 7013: 4213, 7014: 4213, 7015: 4213, 7016: 4213, 7017: 4213,
+  7018: 4228, 7019: 4228, 7020: 4228, 7021: 4228, 7022: 4228, 7023: 4228, 7024: 4228,
+  6857: 4251, 6858: 4251, 6859: 4251, 6860: 4251, 6861: 4251,
+  6862: 4251, 6863: 4251, 6864: 4251, 6865: 4251, 6866: 4251, 6867: 4251,
+};
+const IEEM_2024_GRUPOS = {
+  6857: 4251, 6858: 4251, 6859: 4251, 6860: 4251, 6861: 4251,
+  6862: 4251, 6863: 4251, 6864: 4251, 6865: 4251, 6866: 4251, 6867: 4251,
+  7046: 4191, 7047: 4191, 7048: 4191, 7049: 4191, 7050: 4191, 7051: 4191, 7052: 4191, 7053: 4191,
+  7054: 4208, 7055: 4208, 7056: 4208, 7057: 4208, 7058: 4208,
+  7059: 4208, 7060: 4208, 7061: 4208, 7062: 4208, 7063: 4208,
+};
+
+const SectionTitle = ({ children, accent }) => (
+  <div className="flex items-center gap-1.5 mb-2">
+    <div className={`w-0.5 h-3.5 rounded-full flex-shrink-0 ${accent ?? 'bg-blue-500'}`} />
+    <p className="text-[9px] font-bold uppercase tracking-[0.14em] text-slate-400">{children}</p>
+  </div>
+);
 
 const BRAND = '#7B1528';
 
@@ -230,9 +299,8 @@ const SeccionRow = ({ seccion, sm, fracciones, onClick }) => {
 
 // ── Bottom Tab Bar ────────────────────────────────────────────────────────────
 const TABS = [
-  { key: 'resumen',     label: 'Listas Generales', Icon: IcoHome  },
-  { key: 'mapa',        label: 'Mapa',        Icon: IcoMap   },
-  { key: 'actividades', label: 'Actividades', Icon: IcoClip  },
+  { key: 'resumen', label: 'Listas Generales', Icon: IcoHome },
+  { key: 'mapa',    label: 'Mapa',             Icon: IcoMap  },
 ];
 
 // ── Main component ────────────────────────────────────────────────────────────
@@ -270,7 +338,7 @@ const Coordinador = () => {
   const [tabActividades, setTabActividades]     = useState('seccion');
   const [seccionMapa, setSeccionMapa]           = useState('');
   const [smFiltroLocal, setSmFiltroLocal]       = useState('');
-  const [leftPanelOpen, setLeftPanelOpen]       = useState(true);
+  const [leftPanelOpen, setLeftPanelOpen]       = useState(() => window.innerWidth >= 768);
   const [fraccionesDeSec, setFraccionesDeSec]   = useState([]);
   const [smsDeSec, setSmsDeSec]                 = useState([]);
   const [regCountSec, setRegCountSec]           = useState(null);
@@ -278,7 +346,12 @@ const Coordinador = () => {
   const [focusCoords, setFocusCoords]           = useState(null);
   const [electoralMode, setElectoralMode]       = useState(null);
 
-  const [mercadoRows, setMercadoRows] = useState([]);
+  const [mercadoRows, setMercadoRows]               = useState([]);
+  const [electoralData,         setElectoralData]         = useState({});
+  const [electoralDataIEEM,     setElectoralDataIEEM]     = useState({});
+  const [electoralData2024IEEM, setElectoralData2024IEEM] = useState({});
+  const [electoralDataSenado,   setElectoralDataSenado]   = useState({});
+  const [electoralDataDip2024,  setElectoralDataDip2024]  = useState({});
 
   // ── Fetch ──────────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -288,15 +361,15 @@ const Coordinador = () => {
       fetchMapaSector(),
       fetchCatalogoFracciones(),
       fetchActividades(),
-      fetchMercado(),
     ]).finally(() => setLoading(false));
   }, []);
 
-  const fetchMercado = async () => {
-    const { data } = await supabase
+  const fetchMercado = async (sectionNums) => {
+    if (!sectionNums?.length) return;
+    const { data } = await supabaseAdmin
       .from('mercado')
-      .select('seccion, entrega, mes, año, sector, coordinador, piezas, entregadas, estatus, nombre')
-      .eq('sector', user.poligono)
+      .select('seccion, entrega, mes, año, sector, piezas, sm_activas, entregadas, estatus, nombre')
+      .in('seccion', sectionNums)
       .order('año', { ascending: false })
       .order('mes', { ascending: false });
     setMercadoRows(data ?? []);
@@ -320,6 +393,7 @@ const Coordinador = () => {
     ]);
     setFraccionesGeo(fracData ?? []);
     setCiudadanosGeo(geoData ?? []);
+    fetchMercado(nums);
   };
 
   const fetchCatalogoFracciones = async () => {
@@ -458,26 +532,196 @@ const Coordinador = () => {
     for (const r of mercadoRows) {
       const sec = r.seccion;
       if (!sec) continue;
-      if (!bySec[sec]) bySec[sec] = { totalPiezas: 0, totalEntregadas: 0, estatusCounts: {} };
-      bySec[sec].totalPiezas     += Number(r.piezas     ?? 0);
+      if (!bySec[sec]) bySec[sec] = { total: 0, totalEntregadas: 0, totalPiezas: 0, estatusCounts: {} };
+      bySec[sec].total          += Number(r.piezas ?? 0) * Number(r.sm_activas ?? 1);
       bySec[sec].totalEntregadas += Number(r.entregadas ?? 0);
+      bySec[sec].totalPiezas     += Number(r.piezas ?? 0);
       const est = r.estatus ?? 'PENDIENTE';
       bySec[sec].estatusCounts[est] = (bySec[sec].estatusCounts[est] || 0) + 1;
     }
-    const sortedTotals = Object.values(bySec).map(v => v.totalPiezas).filter(v => v > 0).sort((a, b) => a - b);
-    const refMax = Math.max(sortedTotals[Math.max(Math.floor(sortedTotals.length * 0.75) - 1, 0)] ?? 1, 1);
+    const sortedTotals = Object.values(bySec).map(v => v.total).filter(v => v > 0).sort((a, b) => a - b);
+    const p75idx = Math.max(Math.floor(sortedTotals.length * 0.75) - 1, 0);
+    const refMax = Math.max(sortedTotals[p75idx] ?? sortedTotals[sortedTotals.length - 1] ?? 1, 1);
     const result = {};
     for (const [sec, v] of Object.entries(bySec)) {
       const estatus = Object.entries(v.estatusCounts).sort((a, b) => b[1] - a[1])[0]?.[0] ?? 'PENDIENTE';
       result[Number(sec)] = {
-        total:    v.totalEntregadas,
+        total:          v.total,
+        totalEntregadas: v.totalEntregadas,
+        totalPiezas:    v.totalPiezas,
         estatus,
-        pct:      v.totalPiezas ? Math.min((v.totalEntregadas / v.totalPiezas) * 100, 100) : 0,
+        pct:      Math.min((v.total / refMax) * 100, 100),
         maxRef:   refMax,
       };
     }
     return result;
   }, [mercadoRows]);
+
+  // ── Electoral data fetches ────────────────────────────────────────────────
+  useEffect(() => {
+    fetch('/electoral_2021.json').then(r => r.json()).then(rows => {
+      const m = {}; rows.forEach(row => { m[row.seccion] = row; }); setElectoralData(m);
+    }).catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    fetch('/electoral_2021_ieem.json').then(r => r.json()).then(rows => {
+      const m = {}; rows.forEach(row => { m[row.seccion] = row; }); setElectoralDataIEEM(m);
+    }).catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    fetch('/electoral_2024_ieem.json').then(r => r.json()).then(rows => {
+      const m = {};
+      rows.forEach(row => { m[row.seccion] = row; });
+      const NUM_KEYS = ['rosi','aaron','mc','pt','pvem','total_validos','rosi_vs_aaron'];
+      const subs4251 = Object.keys(IEEM_2024_GRUPOS).map(Number).filter(s => IEEM_2024_GRUPOS[s] === 4251);
+      const agg4251 = { seccion: 4251, ganador: 'ROSI' };
+      NUM_KEYS.forEach(k => { agg4251[k] = 0; });
+      subs4251.forEach(s => { if (m[s]) NUM_KEYS.forEach(k => { agg4251[k] += m[s][k] ?? 0; }); });
+      agg4251.ganador = agg4251.rosi >= agg4251.aaron ? 'ROSI' : 'AARON';
+      m[4251] = agg4251;
+      setElectoralData2024IEEM(m);
+    }).catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    fetch('/electoral_senado_2024.json').then(r => r.json()).then(rows => {
+      const m = {};
+      rows.forEach(row => { m[row.seccion] = row; });
+      const SEN_KEYS = ['morena_coalicion','fuerza_x_mexico','mg_vs_fuerza','senado_mc','votos_nulos','casillas','lista_nominal','total_votos'];
+      const subs4251 = Object.keys(IEEM_2024_GRUPOS).map(Number).filter(s => IEEM_2024_GRUPOS[s] === 4251);
+      const firstSub = m[subs4251[0]];
+      const agg4251s = { seccion: 4251, distrito_federal: firstSub?.distrito_federal ?? 5 };
+      SEN_KEYS.forEach(k => { agg4251s[k] = 0; });
+      subs4251.forEach(s => { if (m[s]) SEN_KEYS.forEach(k => { agg4251s[k] += m[s][k] ?? 0; }); });
+      agg4251s.ganador = agg4251s.morena_coalicion >= agg4251s.fuerza_x_mexico ? 'MARIELA' : 'FUERZA';
+      m[4251] = agg4251s;
+      setElectoralDataSenado(m);
+    }).catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    fetch('/dip_2024.json').then(r => r.json()).then(rows => {
+      const m = {};
+      rows.forEach(row => { m[row.seccion] = row; });
+      const DIP_KEYS = ['morena','pri','mc','total','nulos','lista_nominal'];
+      const subs4251 = [6857,6858,6859,6860,6861,6862,6863,6864,6865,6866,6867];
+      const agg4251 = { seccion: 4251, distrito: m[6857]?.distrito ?? 33 };
+      DIP_KEYS.forEach(k => { agg4251[k] = 0; });
+      subs4251.forEach(s => { if (m[s]) DIP_KEYS.forEach(k => { agg4251[k] += m[s][k] ?? 0; }); });
+      agg4251.ganador = agg4251.morena >= agg4251.pri && agg4251.morena >= agg4251.mc ? 'MORENA'
+                      : agg4251.pri >= agg4251.mc ? 'PRI' : 'MC';
+      m[4251] = agg4251;
+      setElectoralDataDip2024(m);
+    }).catch(() => {});
+  }, []);
+
+  // ── Estadísticas electorales — escopo sector SP ───────────────────────────
+  const electoralStats = useMemo(() => {
+    const isIEEM     = electoralMode === 'ayu_2021_ieem';
+    const is2024IEEM = electoralMode === 'ayu_2024_ieem';
+    const isSenado   = electoralMode === 'senado_2024';
+    const isDip2024  = electoralMode === 'dip_2024';
+    const isDip      = isDip2024;
+    const dataSource = isIEEM ? electoralDataIEEM
+                     : is2024IEEM ? electoralData2024IEEM
+                     : isSenado ? electoralDataSenado
+                     : isDip2024 ? electoralDataDip2024
+                     : electoralData;
+
+    if (!electoralMode || electoralMode === 'semaforo_cred' || electoralMode === 'semaforo_mercado') return null;
+    if (!Object.keys(dataSource).length) return null;
+
+    const groupLevel = seccionMapa ? null : 'seccion';
+
+    const totals = {};
+    let grandTotal = 0, secciones = 0;
+    const secGanadas = {};
+    const counted = new Set();
+    let morena_solo_total = 0, pt_solo_total = 0, naem_solo_total = 0;
+    let rosi_vs_aaron_total = 0, mg_vs_fuerza_total = 0, votos_nulos_total = 0;
+    const senadoBuckets = {};
+
+    const source = seccionMapa
+      ? seccionesSector.filter(s => s.seccion === Number(seccionMapa))
+      : seccionesSector;
+
+    for (const s of source) {
+      const canonical = ((is2024IEEM || isSenado || isDip2024) && IEEM_2024_GRUPOS[s.seccion])
+        ? IEEM_2024_GRUPOS[s.seccion]
+        : dataSource[s.seccion] !== undefined ? s.seccion : (SECTION_ALIASES[s.seccion] ?? s.seccion);
+      if (counted.has(canonical)) continue;
+      const d = dataSource[canonical];
+      if (!d) continue;
+      if (isDip2024 && d.distrito !== 33) continue;
+      counted.add(canonical);
+      secciones++;
+
+      if (is2024IEEM) {
+        const { ganador, rosi = 0, aaron = 0, mc = 0, pt = 0, pvem = 0, rosi_vs_aaron = 0 } = d;
+        secGanadas[ganador] = (secGanadas[ganador] || 0) + 1;
+        const votes = { ROSI: rosi, AARON: aaron };
+        if (mc > 0) votes.MC = mc; if (pt > 0) votes.PT = pt; if (pvem > 0) votes.PVEM = pvem;
+        for (const [p, v] of Object.entries(votes)) { if (v > 0) { totals[p] = (totals[p] || 0) + v; grandTotal += v; } }
+        rosi_vs_aaron_total += rosi_vs_aaron;
+      } else if (isSenado) {
+        const { ganador, morena_coalicion = 0, fuerza_x_mexico = 0, senado_mc = 0, mg_vs_fuerza = 0, votos_nulos = 0 } = d;
+        secGanadas[ganador] = (secGanadas[ganador] || 0) + 1;
+        const votes = { MARIELA: morena_coalicion, FUERZA: fuerza_x_mexico };
+        if (senado_mc > 0) votes.MC = senado_mc;
+        for (const [p, v] of Object.entries(votes)) { if (v > 0) { totals[p] = (totals[p] || 0) + v; grandTotal += v; } }
+        mg_vs_fuerza_total += mg_vs_fuerza;
+        votos_nulos_total  += votos_nulos;
+        if (groupLevel === 'seccion') {
+          const groupKey = s.seccion;
+          if (!senadoBuckets[groupKey]) senadoBuckets[groupKey] = { key: groupKey, secciones: 0, mariela: 0, fuerza: 0, mc: 0, total: 0, ganadas: 0 };
+          const bucket = senadoBuckets[groupKey];
+          bucket.secciones += 1; bucket.mariela += morena_coalicion; bucket.fuerza += fuerza_x_mexico;
+          bucket.mc += senado_mc > 0 ? senado_mc : 0;
+          bucket.total += morena_coalicion + fuerza_x_mexico + (senado_mc > 0 ? senado_mc : 0);
+          if (ganador === 'MARIELA') bucket.ganadas += 1;
+        }
+      } else if (isDip) {
+        const { ganador, morena = 0, pri = 0, mc = 0 } = d;
+        secGanadas[ganador] = (secGanadas[ganador] || 0) + 1;
+        const votes = {};
+        if (morena > 0) votes.MORENA = morena; if (pri > 0) votes.PRI = pri; if (mc > 0) votes.MC = mc;
+        for (const [p, v] of Object.entries(votes)) { if (v > 0) { totals[p] = (totals[p] || 0) + v; grandTotal += v; } }
+      } else {
+        const { ganador_partido, morena_coalicion = 0, morena = 0, pri = 0, pan = 0, pvem = 0, mc = 0, prd = 0, pt = 0, naem = 0 } = d;
+        secGanadas[ganador_partido] = (secGanadas[ganador_partido] || 0) + 1;
+        const morenaVotes = isIEEM ? morena_coalicion : morena;
+        const votes = { MORENA: morenaVotes, PRI: pri, PAN: pan, PVEM: pvem, MC: mc, PRD: prd };
+        if (!isIEEM && pt > 0) votes.PT = pt;
+        for (const [p, v] of Object.entries(votes)) { if (v > 0) { totals[p] = (totals[p] || 0) + v; grandTotal += v; } }
+        if (isIEEM) { morena_solo_total += morena; pt_solo_total += pt; naem_solo_total += naem; }
+      }
+    }
+
+    if (!secciones) return null;
+    const sorted       = Object.entries(totals).sort((a, b) => b[1] - a[1]);
+    const winner       = sorted[0]?.[0];
+    const marginVotos  = winner ? (totals[winner] - (sorted[1]?.[1] ?? 0)) : 0;
+    const marginPct    = grandTotal ? ((marginVotos / grandTotal) * 100).toFixed(1) : '0';
+
+    const senadoBreakdown = (isSenado && groupLevel === 'seccion')
+      ? Object.values(senadoBuckets).map(b => {
+          const marielaPct = b.total ? (b.mariela / b.total) * 100 : 0;
+          const fuerzaPct  = b.total ? (b.fuerza  / b.total) * 100 : 0;
+          return { key: b.key, label: `Sección ${b.key}`, secciones: b.secciones,
+                   total: b.total, mariela: b.mariela, fuerza: b.fuerza,
+                   marielaPct, fuerzaPct, margin: marielaPct - fuerzaPct, won: b.mariela > b.fuerza };
+        }).sort((a, b) => b.margin - a.margin)
+      : null;
+
+    return { totals, grandTotal, winner, secGanadas, secciones, sorted, marginVotos, marginPct,
+             isIEEM, is2024: false, is2024IEEM, isSenado, isDip, isDip2024,
+             morena_solo_total, pt_solo_total, naem_solo_total,
+             rosi_vs_aaron_total, mg_vs_fuerza_total, votos_nulos_total,
+             groupLevel, senadoBreakdown };
+  }, [electoralData, electoralDataIEEM, electoralData2024IEEM, electoralDataSenado,
+      electoralDataDip2024, electoralMode, seccionesSector, seccionMapa]);
 
   const manejarFiltro = async () => {
     setLoadingBusqueda(true);
@@ -525,7 +769,7 @@ const Coordinador = () => {
           onClick={() => navigate(`/coordinador/agregar/${user.usuario}`, { state: { user } })}
           className="flex items-center gap-1.5 text-xs font-bold px-3 py-2 rounded-xl text-white flex-shrink-0 transition-all active:scale-95 active:opacity-80 shadow-sm"
           style={{ background: `linear-gradient(135deg, ${BRAND} 0%, #A52040 100%)` }}>
-          <IcoPlus /> Agregar
+          <IcoPlus /> Alta de SM
         </button>
         {tab === 'mapa' && (
           <button
@@ -881,7 +1125,7 @@ const Coordinador = () => {
                 <div className="flex items-center justify-between mb-2">
                   <div>
                     <p className="text-[9px] font-black uppercase tracking-[0.18em] text-slate-400 leading-none">Sector {user.poligono}</p>
-                    <p className="text-xs font-bold text-slate-700 mt-0.5">{promotores.length} SM · {cobertura}% cobertura</p>
+                    <p className="text-xs font-bold text-slate-700 mt-0.5">{promotores.length} SM activas</p>
                   </div>
                   <button onClick={() => setLeftPanelOpen(false)}
                     className="w-7 h-7 rounded-lg flex items-center justify-center text-slate-400 hover:bg-slate-200 transition-colors active:scale-90">
@@ -1145,7 +1389,411 @@ const Coordinador = () => {
                   );
                 })()}
 
-                {electoralMode !== 'semaforo_cred' && !seccionMapa && (() => {
+                {/* ── Capa activa: Mercado Solidario ───────────────────────── */}
+                {electoralMode === 'semaforo_mercado' && (() => {
+                  const secKeys = Object.keys(mercadoBySec).map(Number).sort((a, b) => a - b);
+                  const totalPedido   = secKeys.reduce((s, k) => s + (mercadoBySec[k]?.total ?? 0), 0);
+                  const totalEntregado = secKeys.reduce((s, k) => s + (mercadoBySec[k]?.totalEntregadas ?? 0), 0);
+                  const totalPiezas   = secKeys.reduce((s, k) => s + (mercadoBySec[k]?.totalPiezas ?? 0), 0);
+                  const secFiltradas  = seccionMapa ? secKeys.filter(k => k === Number(seccionMapa)) : secKeys;
+
+                  if (!secKeys.length) return (
+                    <div className="rounded-xl border border-dashed border-slate-200 p-4 text-center">
+                      <p className="text-xs text-slate-400">Sin datos de Mercado Solidario para este sector.</p>
+                    </div>
+                  );
+
+                  return (
+                    <>
+                      {/* Cabecera */}
+                      <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5">
+                        <div className="flex items-start justify-between gap-2">
+                          <div>
+                            <p className="text-[9px] font-bold uppercase tracking-[0.14em] text-slate-400 leading-none mb-1">Mercado Solidario</p>
+                            <p className="text-xs font-bold text-slate-800 leading-snug">
+                              {seccionMapa ? `Sección ${seccionMapa}` : `Sector ${user.poligono}`}
+                            </p>
+                          </div>
+                          <span className="text-[9px] font-bold px-2 py-1 rounded-full text-white bg-emerald-600">
+                            {seccionMapa ? '1 sección' : `${secKeys.length} secciones`}
+                          </span>
+                        </div>
+                        {seccionMapa && (
+                          <button onClick={() => setSeccionMapa('')}
+                            className="mt-1.5 text-[9px] font-bold flex items-center gap-1 transition-colors"
+                            style={{ color: BRAND }}>
+                            ← Ver todo el sector
+                          </button>
+                        )}
+                      </div>
+
+                      {/* KPIs */}
+                      {!seccionMapa && (
+                        <div className="grid grid-cols-3 gap-1">
+                          {[
+                            { label: 'Pedido',     v: fmt(totalPedido),    bg: 'bg-blue-50',    txt: 'text-blue-700',   lbl: 'text-blue-500' },
+                            { label: 'Piezas',     v: fmt(totalPiezas),    bg: 'bg-slate-50 border border-slate-100', txt: 'text-slate-700', lbl: 'text-slate-400' },
+                            { label: 'Entregadas', v: fmt(totalEntregado), bg: 'bg-emerald-50',  txt: 'text-emerald-700', lbl: 'text-emerald-600' },
+                          ].map(({ label, v, bg, txt, lbl }) => (
+                            <div key={label} className={`${bg} rounded-xl p-2 text-center`}>
+                              <p className={`text-[8px] font-bold uppercase tracking-widest leading-none mb-1 ${lbl}`}>{label}</p>
+                              <p className={`text-sm font-black tabular-nums ${txt}`}>{v}</p>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+
+                      {/* Por sección */}
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between">
+                          <p className="text-[9px] font-bold uppercase tracking-widest text-slate-400">Por sección</p>
+                          <span className="text-[9px] text-slate-400">volumen · pedido</span>
+                        </div>
+                        {secFiltradas.map(sec => {
+                          const d = mercadoBySec[sec];
+                          if (!d) return null;
+                          const barColor = d.pct >= 90 ? '#16A34A' : d.pct >= 60 ? '#65A30D' : d.pct >= 30 ? '#CA8A04' : '#F59E0B';
+                          return (
+                            <button key={sec} className="w-full text-left"
+                              onClick={() => setSeccionMapa(seccionMapa === String(sec) ? '' : String(sec))}>
+                              <div className="flex items-center justify-between mb-0.5">
+                                <span className="text-[10px] font-semibold text-slate-700">Sección {sec}</span>
+                                <div className="flex items-center gap-1.5">
+                                  <span className="text-[9px] text-slate-400 tabular-nums">{fmt(d.totalEntregadas)}/{fmt(d.totalPiezas)} pzas</span>
+                                  <span className="text-[9px] font-bold" style={{ color: barColor }}>{d.pct.toFixed(0)}%</span>
+                                </div>
+                              </div>
+                              <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                                <div className="h-full rounded-full transition-all duration-500" style={{ width: `${d.pct}%`, backgroundColor: barColor }} />
+                              </div>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </>
+                  );
+                })()}
+
+                {/* ── Capa activa: Resultados electorales ─────────────────── */}
+                {electoralMode && electoralMode !== 'semaforo_cred' && electoralMode !== 'semaforo_mercado' && (() => {
+                  if (!electoralStats) return (
+                    <div className="space-y-2">
+                      <div className="rounded-xl border border-dashed border-slate-200 p-4 text-center">
+                        <p className="text-xs text-slate-400">Cargando datos electorales…</p>
+                      </div>
+                    </div>
+                  );
+
+                  const { totals, grandTotal, winner, secGanadas, secciones, sorted, marginVotos, marginPct,
+                          isIEEM, is2024, is2024IEEM, isSenado, isDip, isDip2024,
+                          morena_solo_total, pt_solo_total, naem_solo_total,
+                          rosi_vs_aaron_total, mg_vs_fuerza_total, votos_nulos_total,
+                          groupLevel, senadoBreakdown } = electoralStats;
+
+                  const scopeLabel    = seccionMapa ? `Sección ${seccionMapa}` : `Sector ${user.poligono}`;
+                  const marielaGanadas  = secGanadas['MARIELA'] || 0;
+                  const marielaPerdidas = Math.max(0, secciones - marielaGanadas);
+                  const senadoInsight   = isSenado ? buildSenadoInsight(senadoBreakdown, groupLevel, scopeLabel) : null;
+                  const drillInto = (unit) => { setSeccionMapa(String(unit.key)); };
+                  const is2024Any    = is2024 || is2024IEEM;
+                  const candTable    = isSenado ? CANDIDATOS_SENADO : isDip ? CANDIDATOS_DIP : is2024Any ? CANDIDATOS_2024 : CANDIDATOS_2021;
+                  const winnerCand   = candTable[winner];
+                  const winnerColor  = isSenado  ? (CANDIDATOS_SENADO[winner]?.fill ?? '#6B7280')
+                                     : isDip     ? (CANDIDATOS_DIP[winner]?.fill    ?? '#6B7280')
+                                     : is2024Any ? (CANDIDATOS_2024[winner]?.fill   ?? '#6B7280')
+                                     : (PARTY_FILL[winner] ?? '#6B7280');
+                  const totalSec = Object.values(secGanadas).reduce((s, n) => s + n, 0);
+
+                  return (
+                    <div className="space-y-2.5">
+
+                      {/* Cabecera del proceso */}
+                      <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5">
+                        <div className="flex items-start justify-between gap-2">
+                          <div>
+                            <p className="text-[9px] font-bold uppercase tracking-[0.14em] text-slate-400 leading-none mb-1">Proceso electoral</p>
+                            <p className="text-xs font-bold text-slate-800 leading-snug">
+                              {isDip2024  ? 'Diputación Local 2024 - Interno · Tecámac'
+                               : isSenado ? 'Senaduría 2024 · Tecámac'
+                               : is2024Any ? 'Ayuntamiento Tecámac · 2024'
+                               : 'Ayuntamiento Tecámac · 2021'}
+                            </p>
+                          </div>
+                          <span className={`text-[9px] font-bold px-2 py-1 rounded-full whitespace-nowrap flex-shrink-0 text-white ${
+                            isDip ? 'bg-slate-700' : is2024IEEM ? 'bg-emerald-700' : isSenado ? 'bg-rose-900' : isIEEM ? 'bg-emerald-700' : 'bg-slate-700'
+                          }`}>
+                            {isDip2024 ? 'Interno' : is2024IEEM ? 'IEEM oficial' : isSenado ? 'Senaduría 2024' : isIEEM ? 'IEEM oficial' : 'Datos internos'}
+                          </span>
+                        </div>
+                        <p className="text-[10px] text-slate-500 mt-1.5 flex items-center gap-1">
+                          <span className="w-1.5 h-1.5 rounded-full bg-blue-400 inline-block" />
+                          {scopeLabel} · {secciones} secciones
+                        </p>
+                        {seccionMapa && (
+                          <button onClick={() => setSeccionMapa('')}
+                            className="mt-1 text-[9px] font-bold transition-colors"
+                            style={{ color: BRAND }}>
+                            ← Ver todo el sector
+                          </button>
+                        )}
+                      </div>
+
+                      {/* Ganador */}
+                      <div className="rounded-xl p-3 border-2" style={{ backgroundColor: winnerColor + '15', borderColor: winnerColor + '50' }}>
+                        <div className="flex items-start gap-2.5">
+                          <div className="w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold text-white flex-shrink-0"
+                            style={{ backgroundColor: winnerColor }}>
+                            {winnerCand?.nombre?.split(' ').slice(0,2).map(w => w[0]).join('') ?? winner?.[0]}
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center gap-1.5 mb-0.5">
+                              <span className="text-[9px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded text-white" style={{ backgroundColor: winnerColor }}>
+                                🏆 {winnerCand?.resultado ?? 'GANADOR'}
+                              </span>
+                            </div>
+                            <p className="text-xs font-bold text-slate-900 leading-snug">{winnerCand?.nombre ?? winner}</p>
+                            <p className="text-[10px] text-slate-500 mt-0.5 leading-snug">{winnerCand?.partido ?? winner}</p>
+                          </div>
+                        </div>
+                        <div className="mt-2.5 pt-2 border-t border-slate-200 grid grid-cols-3 gap-2">
+                          <div className="text-center">
+                            <p className="text-[9px] font-bold uppercase tracking-widest text-slate-400 leading-none mb-0.5">Votos</p>
+                            <p className="text-base font-bold tabular-nums leading-none" style={{ color: winnerColor }}>{fmt(totals[winner])}</p>
+                          </div>
+                          <div className="text-center">
+                            <p className="text-[9px] font-bold uppercase tracking-widest text-slate-400 leading-none mb-0.5">Porcentaje</p>
+                            <p className="text-base font-bold tabular-nums leading-none" style={{ color: winnerColor }}>{pct(totals[winner], grandTotal)}</p>
+                          </div>
+                          <div className="text-center">
+                            <p className="text-[9px] font-bold uppercase tracking-widest text-slate-400 leading-none mb-0.5">Ventaja</p>
+                            <p className="text-base font-bold tabular-nums leading-none text-slate-700">+{marginPct}%</p>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Rosi vs Aaron (2024) */}
+                      {is2024Any && (
+                        <div className="bg-white border border-slate-100 rounded-xl p-3 shadow-sm">
+                          <SectionTitle>Rosa Yolanda Wong vs Aaron Urbina</SectionTitle>
+                          <div className="flex items-center gap-2 mb-2">
+                            <div className="flex-1">
+                              <p className="text-[9px] font-bold uppercase tracking-widest mb-0.5" style={{ color: CANDIDATOS_2024.ROSI.fill }}>Rosi Wong</p>
+                              <p className="text-base font-bold tabular-nums" style={{ color: CANDIDATOS_2024.ROSI.fill }}>{fmt(totals['ROSI'])}</p>
+                              <p className="text-[10px] text-slate-400">{pct(totals['ROSI'], grandTotal)}</p>
+                            </div>
+                            <div className="flex flex-col items-center gap-1 flex-shrink-0">
+                              <span className="text-sm font-black tabular-nums text-slate-700">{rosi_vs_aaron_total >= 0 ? '+' : ''}{fmt(rosi_vs_aaron_total)}</span>
+                              <span className="text-[9px] text-slate-400 uppercase tracking-wider">diferencia</span>
+                            </div>
+                            <div className="flex-1 text-right">
+                              <p className="text-[9px] font-bold uppercase tracking-widest mb-0.5" style={{ color: CANDIDATOS_2024.AARON.fill }}>Aaron Urbina</p>
+                              <p className="text-base font-bold tabular-nums" style={{ color: CANDIDATOS_2024.AARON.fill }}>{fmt(totals['AARON'])}</p>
+                              <p className="text-[10px] text-slate-400">{pct(totals['AARON'], grandTotal)}</p>
+                            </div>
+                          </div>
+                          <div className="h-2.5 bg-slate-100 rounded-full overflow-hidden flex">
+                            <div className="h-full rounded-l-full transition-all duration-700" style={{ width: pct(totals['ROSI'], grandTotal), backgroundColor: CANDIDATOS_2024.ROSI.fill }} />
+                            <div className="h-full rounded-r-full transition-all duration-700" style={{ width: pct(totals['AARON'], grandTotal), backgroundColor: CANDIDATOS_2024.AARON.fill }} />
+                          </div>
+                          <div className="flex justify-between mt-1">
+                            <span className="text-[9px]" style={{ color: CANDIDATOS_2024.ROSI.fill }}>{pct(totals['ROSI'], grandTotal)} Rosi</span>
+                            <span className="text-[9px]" style={{ color: CANDIDATOS_2024.AARON.fill }}>Aaron {pct(totals['AARON'], grandTotal)}</span>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* MG vs Fuerza (senado) */}
+                      {isSenado && (
+                        <div className="bg-white border border-slate-100 rounded-xl p-3 shadow-sm">
+                          <SectionTitle>Mariela Gutiérrez vs Fuerza x México</SectionTitle>
+                          <div className="flex items-center gap-2 mb-2">
+                            <div className="flex-1">
+                              <p className="text-[9px] font-bold uppercase tracking-widest mb-0.5" style={{ color: CANDIDATOS_SENADO.MARIELA.fill }}>Mariela G.</p>
+                              <p className="text-base font-bold tabular-nums" style={{ color: CANDIDATOS_SENADO.MARIELA.fill }}>{fmt(totals['MARIELA'])}</p>
+                              <p className="text-[10px] text-slate-400">{pct(totals['MARIELA'], grandTotal)}</p>
+                            </div>
+                            <div className="flex flex-col items-center gap-1 flex-shrink-0">
+                              <span className="text-sm font-black tabular-nums text-slate-700">{mg_vs_fuerza_total >= 0 ? '+' : ''}{fmt(mg_vs_fuerza_total)}</span>
+                              <span className="text-[9px] text-slate-400 uppercase tracking-wider">diferencia</span>
+                            </div>
+                            <div className="flex-1 text-right">
+                              <p className="text-[9px] font-bold uppercase tracking-widest mb-0.5" style={{ color: CANDIDATOS_SENADO.FUERZA.fill }}>Fuerza x Méx.</p>
+                              <p className="text-base font-bold tabular-nums" style={{ color: CANDIDATOS_SENADO.FUERZA.fill }}>{fmt(totals['FUERZA'])}</p>
+                              <p className="text-[10px] text-slate-400">{pct(totals['FUERZA'], grandTotal)}</p>
+                            </div>
+                          </div>
+                          <div className="h-2.5 bg-slate-100 rounded-full overflow-hidden flex">
+                            <div className="h-full rounded-l-full transition-all duration-700" style={{ width: pct(totals['MARIELA'], grandTotal), backgroundColor: CANDIDATOS_SENADO.MARIELA.fill }} />
+                            <div className="h-full rounded-r-full transition-all duration-700" style={{ width: pct(totals['FUERZA'], grandTotal), backgroundColor: CANDIDATOS_SENADO.FUERZA.fill }} />
+                          </div>
+                          <div className="flex justify-between mt-1">
+                            <span className="text-[9px]" style={{ color: CANDIDATOS_SENADO.MARIELA.fill }}>{pct(totals['MARIELA'], grandTotal)} Mariela</span>
+                            <span className="text-[9px]" style={{ color: CANDIDATOS_SENADO.FUERZA.fill }}>Fuerza {pct(totals['FUERZA'], grandTotal)}</span>
+                          </div>
+                          {votos_nulos_total > 0 && (
+                            <div className="mt-2 pt-2 border-t border-slate-100 flex justify-between items-center">
+                              <span className="text-[9px] text-slate-400 uppercase tracking-widest">Votos nulos</span>
+                              <span className="text-[11px] font-bold tabular-nums text-slate-500">{fmt(votos_nulos_total)}</span>
+                            </div>
+                          )}
+                        </div>
+                      )}
+
+                      {/* Secciones ganadas vs perdidas (senado) */}
+                      {isSenado && (
+                        <div className="bg-white border border-slate-100 rounded-xl p-3 shadow-sm">
+                          <SectionTitle accent="bg-rose-900">Secciones ganadas vs perdidas · Mariela</SectionTitle>
+                          <div className="grid grid-cols-2 gap-2 mb-2">
+                            <div className="rounded-lg bg-emerald-50 border border-emerald-100 p-2 text-center">
+                              <p className="text-[9px] font-bold uppercase tracking-widest text-emerald-500 leading-none mb-1">Ganadas</p>
+                              <p className="text-xl font-bold tabular-nums text-emerald-700">{marielaGanadas}</p>
+                              <p className="text-[9px] text-emerald-400 mt-0.5">{pct(marielaGanadas, secciones)}</p>
+                            </div>
+                            <div className="rounded-lg bg-rose-50 border border-rose-100 p-2 text-center">
+                              <p className="text-[9px] font-bold uppercase tracking-widest text-rose-500 leading-none mb-1">Perdidas</p>
+                              <p className="text-xl font-bold tabular-nums text-rose-700">{marielaPerdidas}</p>
+                              <p className="text-[9px] text-rose-400 mt-0.5">{pct(marielaPerdidas, secciones)}</p>
+                            </div>
+                          </div>
+                          <div className="h-2 bg-slate-100 rounded-full overflow-hidden flex">
+                            <div className="h-full bg-emerald-500 transition-all duration-700" style={{ width: pct(marielaGanadas, secciones) ?? '0%' }} />
+                            <div className="h-full bg-rose-400 transition-all duration-700" style={{ width: pct(marielaPerdidas, secciones) ?? '0%' }} />
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Análisis político dinámico (senado) */}
+                      {isSenado && senadoInsight && (
+                        <div className="rounded-xl border border-rose-100 bg-rose-50/60 px-3 py-2.5">
+                          <SectionTitle accent="bg-rose-900">Lectura política</SectionTitle>
+                          <p className="text-[10.5px] text-rose-900/80 leading-relaxed">{senadoInsight}</p>
+                        </div>
+                      )}
+
+                      {/* Desglose por sección (senado) */}
+                      {isSenado && senadoBreakdown && senadoBreakdown.length > 0 && (
+                        <div className="bg-white border border-slate-100 rounded-xl p-3 shadow-sm">
+                          <SectionTitle accent="bg-rose-900">Desglose por sección · Mariela vs Fuerza</SectionTitle>
+                          <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
+                            {senadoBreakdown.map(unit => (
+                              <button key={unit.key} onClick={() => drillInto(unit)} className="w-full text-left group">
+                                <div className="flex items-center justify-between mb-0.5">
+                                  <span className="text-[11px] font-bold text-slate-700 group-hover:text-rose-800 transition-colors flex items-center gap-1.5">
+                                    {unit.label}
+                                    <span className={`text-[8px] font-bold px-1.5 py-0.5 rounded-full ${unit.won ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700'}`}>
+                                      {unit.won ? 'GANA' : 'PIERDE'}
+                                    </span>
+                                  </span>
+                                  <span className="text-[10px] text-slate-400 tabular-nums">
+                                    {unit.margin >= 0 ? '+' : ''}{unit.margin.toFixed(1)} pts
+                                  </span>
+                                </div>
+                                <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden flex">
+                                  <div className="h-full bg-[#6B0B20] transition-all duration-500" style={{ width: `${unit.marielaPct}%` }} />
+                                  <div className="h-full bg-[#1460A8] transition-all duration-500" style={{ width: `${unit.fuerzaPct}%` }} />
+                                </div>
+                                <div className="flex justify-between mt-0.5">
+                                  <span className="text-[9px] text-slate-400">{unit.secciones} sec. · {fmt(unit.total)} votos</span>
+                                  <span className="text-[9px] text-slate-400">{unit.marielaPct.toFixed(0)}% / {unit.fuerzaPct.toFixed(0)}%</span>
+                                </div>
+                              </button>
+                            ))}
+                          </div>
+                          <p className="mt-2 pt-2 border-t border-slate-100 text-[9px] text-slate-400">
+                            Ordenado de mayor a menor ventaja de Mariela · toca una fila para ver su detalle.
+                          </p>
+                        </div>
+                      )}
+
+                      {/* Distribución de votos */}
+                      <div className="bg-white border border-slate-100 rounded-xl p-3 shadow-sm">
+                        <SectionTitle>Distribución de votos</SectionTitle>
+                        <div className="space-y-2">
+                          {sorted.filter(([, v]) => v > 0).map(([party, votes]) => {
+                            const cand = candTable[party];
+                            const fill = isSenado ? (CANDIDATOS_SENADO[party]?.fill ?? '#6B7280') : isDip ? (CANDIDATOS_DIP[party]?.fill ?? '#6B7280') : is2024Any ? (CANDIDATOS_2024[party]?.fill ?? '#6B7280') : (PARTY_FILL[party] ?? '#6B7280');
+                            return (
+                              <div key={party}>
+                                <div className="flex items-center justify-between mb-0.5">
+                                  <div className="flex items-center gap-1.5 min-w-0 flex-1">
+                                    <div className="w-2 h-2 rounded-sm flex-shrink-0" style={{ backgroundColor: fill }} />
+                                    <span className="text-[11px] font-bold text-slate-700 flex-shrink-0">{cand?.nombre ?? party}</span>
+                                  </div>
+                                  <div className="flex items-center gap-2 flex-shrink-0 ml-2">
+                                    <span className="text-[10px] text-slate-400 tabular-nums">{pct(votes, grandTotal)}</span>
+                                    <span className="text-[11px] font-bold tabular-nums text-slate-700 w-14 text-right">{fmt(votes)}</span>
+                                  </div>
+                                </div>
+                                <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                                  <div className="h-full rounded-full transition-all duration-700" style={{ width: pct(votes, grandTotal), backgroundColor: fill }} />
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                        <div className="mt-2 pt-2 border-t border-slate-100 flex justify-between items-center">
+                          <span className="text-[9px] text-slate-400 uppercase tracking-widest">Total votos</span>
+                          <span className="text-[11px] font-bold tabular-nums text-slate-700">{fmt(grandTotal)}</span>
+                        </div>
+                      </div>
+
+                      {/* Coalición MORENA (IEEM) */}
+                      {isIEEM && (
+                        <div className="bg-white border border-slate-100 rounded-xl p-3 shadow-sm">
+                          <SectionTitle>Coalición MORENA · PT · NAEM</SectionTitle>
+                          <div className="space-y-1.5">
+                            {[
+                              { label: 'MORENA', value: morena_solo_total, color: PARTY_FILL.MORENA },
+                              { label: 'PT',     value: pt_solo_total,     color: PARTY_FILL.PT },
+                              { label: 'NAEM',   value: naem_solo_total,   color: '#F97316' },
+                            ].filter(r => r.value > 0).map(r => (
+                              <div key={r.label}>
+                                <div className="flex items-center justify-between mb-0.5">
+                                  <div className="flex items-center gap-1.5">
+                                    <div className="w-2 h-2 rounded-sm flex-shrink-0" style={{ backgroundColor: r.color }} />
+                                    <span className="text-[11px] font-bold text-slate-700">{r.label}</span>
+                                  </div>
+                                  <div className="flex items-center gap-2">
+                                    <span className="text-[10px] text-slate-400 tabular-nums">{pct(r.value, totals['MORENA'])}</span>
+                                    <span className="text-[11px] font-bold tabular-nums text-slate-700 w-14 text-right">{fmt(r.value)}</span>
+                                  </div>
+                                </div>
+                                <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                                  <div className="h-full rounded-full transition-all duration-700" style={{ width: pct(r.value, totals['MORENA']), backgroundColor: r.color }} />
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Secciones ganadas (todas las elecciones) */}
+                      <div className="bg-white border border-slate-100 rounded-xl p-3 shadow-sm">
+                        <SectionTitle>Mapa político · Secciones ganadas</SectionTitle>
+                        <div className="space-y-1.5">
+                          {Object.entries(secGanadas).sort((a, b) => b[1] - a[1]).map(([party, count]) => {
+                            const fill  = isSenado ? (CANDIDATOS_SENADO[party]?.fill ?? '#6B7280') : isDip ? (CANDIDATOS_DIP[party]?.fill ?? '#6B7280') : is2024Any ? (CANDIDATOS_2024[party]?.fill ?? '#6B7280') : (PARTY_FILL[party] ?? '#6B7280');
+                            const label = isSenado ? (CANDIDATOS_SENADO[party]?.nombre ?? party) : isDip ? (CANDIDATOS_DIP[party]?.nombre ?? party) : is2024Any ? (CANDIDATOS_2024[party]?.nombre ?? party) : party;
+                            return (
+                              <div key={party} className="flex items-center gap-2">
+                                <div className="w-2 h-2 rounded-sm flex-shrink-0" style={{ backgroundColor: fill }} />
+                                <span className="text-[11px] font-semibold text-slate-600 flex-1 truncate">{label}</span>
+                                <div className="w-16 h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                                  <div className="h-full rounded-full" style={{ width: `${(count / totalSec) * 100}%`, backgroundColor: fill }} />
+                                </div>
+                                <span className="text-[11px] font-bold tabular-nums text-slate-700 w-6 text-right">{count}</span>
+                                <span className="text-[9px] text-slate-400 w-10 text-right">{pct(count, totalSec)}</span>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+
+                    </div>
+                  );
+                })()}
+
+                {!electoralMode && !seccionMapa && (() => {
                   const fmtN   = n => n != null ? Number(n).toLocaleString('es-MX') : '—';
                   const pctStr = (a, b) => b ? `${((a / b) * 100).toFixed(1)}%` : null;
 
@@ -1343,7 +1991,7 @@ const Coordinador = () => {
                   );
                 })()}
 
-                {electoralMode !== 'semaforo_cred' && seccionMapa && (() => {
+                {!electoralMode && seccionMapa && (() => {
                   const secSelData  = seccionesSector.find(s => s.seccion === Number(seccionMapa));
                   // detalleSec built from fresh Supabase fetch (same as TableroBoard)
                   const smPorUbt    = Object.fromEntries(smsDeSec.map(p => [p.ubt, p]));
@@ -1579,9 +2227,11 @@ const Coordinador = () => {
                   onClearFocus={() => setFocusCoords(null)}
                   controlsLeftOffset={leftPanelOpen ? 'min(85vw, 300px)' : 0}
                   afiliacionBySec={afiliacionBySec}
+                  hasMercado={mercadoRows.length > 0}
                   mercadoBySec={mercadoBySec}
                   electoralModeExternal={electoralMode}
                   onElectoralModeChange={setElectoralMode}
+                  readOnly
                 />
               )}
             </div>

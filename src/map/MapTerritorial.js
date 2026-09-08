@@ -883,7 +883,7 @@ const MapTerritorial = ({
   const [showCasillasPjem, setShowCasillasPjem] = useState(false);
   const [activeCasilla, setActiveCasilla] = useState(null);
   const [showCiudadanosLocal, setShowCiudadanos] = useState(true);
-  const [ctrlsOpen, setCtrlsOpen] = useState(true);
+  const [ctrlsOpen, setCtrlsOpen] = useState(() => window.innerWidth >= 768);
   // Las fracciones se muestran automáticamente cuando hay una sección seleccionada
   const showFracciones = selectedSeccion != null;
   // Colaboradores: controlado desde el padre si se pasa, si no usa estado interno
