@@ -251,6 +251,11 @@ export default function RegistroApoyos() {
   const [paso,  setPaso]  = useState("id");
   const [subId, setSubId] = useState("inicio");
 
+  // Recuperar comprobante
+  const [curpRecuperar,    setCurpRecuperar]    = useState("");
+  const [recuperando,      setRecuperando]      = useState(false);
+  const [datosRecuperados, setDatosRecuperados] = useState(null); // { ciudadano, entregas, comprobanteUrl, tieneImagen }
+
   // Identidad
   const [datosCurp,          setDatosCurp]          = useState(null);
   const [form,               setForm]               = useState({ nombre: "", a_paterno: "", a_materno: "" });
@@ -286,11 +291,13 @@ export default function RegistroApoyos() {
   const [descargando,       setDescargando]       = useState(false);
   const [error,             setError]             = useState("");
   const [folioId,           setFolioId]           = useState(null);
-  const [programasCargados, setProgramasCargados] = useState(false);
+  const [programasCargados,     setProgramasCargados]     = useState(false);
   const [estadoWhatsapp,        setEstadoWhatsapp]        = useState("idle"); // idle|enviando|ok|error
   const [comprobanteUrlStorage, setComprobanteUrlStorage] = useState(null);
+  const [descargandoRecuperado, setDescargandoRecuperado] = useState(false);
   const comprobanteRef        = useRef(null);
   const comprobanteEnviadoRef = useRef(false);
+  const comprobanteRecupRef   = useRef(null);
 
   // Cargar programas activos (supabaseAdmin bypasses RLS en programas_sociales)
   useEffect(() => {
@@ -520,12 +527,12 @@ export default function RegistroApoyos() {
   );
 
   const confirmarEncuesta = () => {
-    if (!comoSeEntero) {
-      setError("Indica cómo se enteró del programa.");
+    if (!smSel) {
+      setError("Selecciona la Seguidora de Manzana que atendió al beneficiario.");
       return;
     }
-    if (comoSeEntero === "SM_INVITO" && !smSel) {
-      setError("Selecciona la Seguidora de Manzana que le invitó.");
+    if (!comoSeEntero) {
+      setError("Indica cómo se enteró del programa.");
       return;
     }
     if (comoSeEntero === "OTRO" && !otroTexto.trim()) {
@@ -538,6 +545,62 @@ export default function RegistroApoyos() {
     }
     setError("");
     guardar();
+  };
+
+  // ── Recuperar comprobante por CURP ───────────────────────────────────────────
+  const recuperarComprobante = async () => {
+    const curp = curpRecuperar.trim().toUpperCase();
+    if (!CURP_REGEX.test(curp)) {
+      setError("La CURP no tiene el formato correcto. Verifícala e inténtalo de nuevo.");
+      return;
+    }
+    setError("");
+    setRecuperando(true);
+    setDatosRecuperados(null);
+    try {
+      const { data: ciudadano } = await supabaseAdmin
+        .from("ciudadania")
+        .select("id, nombre, a_paterno, a_materno, curp, telefono_1")
+        .eq("curp", curp)
+        .maybeSingle();
+
+      if (!ciudadano) {
+        setError("No encontramos ningún registro con esa CURP.");
+        return;
+      }
+
+      const { data: entregas } = await supabaseAdmin
+        .from("apoyo_entregas")
+        .select("id, cantidad, status, created_at, forma_pago, programas_sociales:programa_id(nombre)")
+        .eq("beneficiario_id", ciudadano.id)
+        .order("created_at", { ascending: false });
+
+      if (!entregas || entregas.length === 0) {
+        setError("Esa CURP no tiene solicitudes de apoyos registradas.");
+        return;
+      }
+
+      // Verificar si existe imagen en Storage
+      const filePath = `apoyo-${ciudadano.id}.png`;
+      const { data: archivos } = await supabaseAdmin.storage
+        .from("comprobantes_apoyos")
+        .list("", { search: `apoyo-${ciudadano.id}.png` });
+      const tieneImagen = (archivos ?? []).some((f) => f.name === filePath);
+      const { data: urlData } = supabaseAdmin.storage
+        .from("comprobantes_apoyos")
+        .getPublicUrl(filePath);
+
+      setDatosRecuperados({
+        ciudadano,
+        entregas,
+        comprobanteUrl: urlData.publicUrl,
+        tieneImagen,
+      });
+    } catch (e) {
+      setError("Error al buscar el registro. Intenta de nuevo.");
+    } finally {
+      setRecuperando(false);
+    }
   };
 
   // ── Guardar ───────────────────────────────────────────────────────────────────
@@ -689,6 +752,8 @@ export default function RegistroApoyos() {
     setEstadoWhatsapp("idle");
     setComprobanteUrlStorage(null);
     comprobanteEnviadoRef.current = false;
+    setCurpRecuperar("");
+    setDatosRecuperados(null);
   };
 
   // ── Descargar comprobante PDF ─────────────────────────────────────────────────
@@ -715,6 +780,30 @@ export default function RegistroApoyos() {
       console.error("Error generando PDF:", err);
     } finally {
       setDescargando(false);
+    }
+  };
+
+  // ── Descargar PDF del comprobante recuperado ─────────────────────────────────
+  const descargarPDFRecuperado = async () => {
+    if (!comprobanteRecupRef.current) return;
+    setDescargandoRecuperado(true);
+    try {
+      const canvas = await html2canvas(comprobanteRecupRef.current, {
+        scale: 2, useCORS: true, backgroundColor: "#ffffff", logging: false,
+      });
+      const imgData = canvas.toDataURL("image/jpeg", 0.95);
+      const pdf = new jsPDF({ orientation: "portrait", unit: "pt", format: "a4" });
+      const pageWidth = pdf.internal.pageSize.getWidth();
+      const margin = 24;
+      const imgWidth = pageWidth - margin * 2;
+      const imgHeight = (canvas.height * imgWidth) / canvas.width;
+      pdf.addImage(imgData, "JPEG", margin, margin, imgWidth, imgHeight);
+      const folio = String(datosRecuperados?.ciudadano?.id ?? "").padStart(6, "0");
+      pdf.save(`comprobante-apoyo-${folio}.pdf`);
+    } catch (err) {
+      console.error("Error generando PDF:", err);
+    } finally {
+      setDescargandoRecuperado(false);
     }
   };
 
@@ -794,9 +883,149 @@ export default function RegistroApoyos() {
                     <p className="text-xs text-slate-500 mt-0.5">Escribe el nombre y la CURP</p>
                   </div>
                 </button>
+
+                <button
+                  type="button"
+                  onClick={() => { setError(""); setDatosRecuperados(null); setCurpRecuperar(""); setSubId("recuperar"); }}
+                  className="w-full flex items-center gap-4 p-4 rounded-xl border-2 border-amber-100 bg-amber-50 hover:border-amber-300 hover:bg-amber-100 transition-all text-left"
+                >
+                  <div className="w-12 h-12 bg-amber-100 rounded-xl flex items-center justify-center flex-shrink-0">
+                    <svg className="w-6 h-6 text-amber-700" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
+                    </svg>
+                  </div>
+                  <div>
+                    <p className="text-sm font-bold text-amber-900">Recuperar mi comprobante</p>
+                    <p className="text-xs text-amber-700 mt-0.5">Ya me registré — quiero ver mi comprobante</p>
+                  </div>
+                </button>
               </div>
             </Card>
             {error && <ErrBox msg={error} />}
+          </div>
+        )}
+
+        {/* ════════ RECUPERAR COMPROBANTE ═══════════════════════════════════ */}
+        {paso === "id" && subId === "recuperar" && (
+          <div className="space-y-4">
+            <Card className="p-5 space-y-4">
+              <div>
+                <h2 className="text-base font-black text-slate-900 mb-1">Recuperar comprobante</h2>
+                <p className="text-xs text-slate-500">Ingresa tu CURP para buscar tu registro y descargar el comprobante.</p>
+              </div>
+              <CampoReq label="CURP">
+                <Inp
+                  placeholder="XXXX000000XXXXXX00"
+                  value={curpRecuperar}
+                  maxLength={18}
+                  onChange={(e) => { setCurpRecuperar(e.target.value.toUpperCase()); setDatosRecuperados(null); }}
+                  className="font-mono tracking-widest"
+                />
+              </CampoReq>
+              {error && <ErrBox msg={error} />}
+              <div className="flex gap-2 pt-1">
+                <Btn onClick={recuperarComprobante} disabled={recuperando}>
+                  {recuperando ? <><Spinner /> Buscando...</> : "Buscar registro →"}
+                </Btn>
+                <Btn v="ghost" onClick={() => { setError(""); setDatosRecuperados(null); setSubId("inicio"); }}>← Volver</Btn>
+              </div>
+            </Card>
+
+            {datosRecuperados && (() => {
+              const { ciudadano, entregas } = datosRecuperados;
+              const nombre  = `${ciudadano.nombre ?? ""} ${ciudadano.a_paterno ?? ""} ${ciudadano.a_materno ?? ""}`.trim();
+              const folio   = String(ciudadano.id).padStart(6, "0");
+              const qrValor = `APOYO-FOLIO:${folio}|NOMBRE:${nombre}|CURP:${ciudadano.curp ?? ""}`;
+              const badgeSt = (s) => ({
+                PENDIENTE: "bg-amber-100 text-amber-800",
+                ENTREGADO: "bg-emerald-100 text-emerald-800",
+                CANCELADO: "bg-red-100 text-red-700",
+              }[s] ?? "bg-slate-100 text-slate-500");
+              return (
+                <div className="space-y-3">
+                  {/* Comprobante renderizado inline */}
+                  <div ref={comprobanteRecupRef}>
+                    <Card className="overflow-hidden">
+                      <div className="bg-blue-800 px-4 py-3 text-white flex justify-between items-center">
+                        <div>
+                          <p className="text-[9px] font-bold uppercase tracking-widest text-blue-300">Comprobante de Registro</p>
+                          <p className="text-lg font-black tracking-tight">Folio #{folio}</p>
+                        </div>
+                        <svg className="w-8 h-8 text-blue-400 opacity-60" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h3.75M9 15h3.75M9 18h3.75m3 .75H18a2.25 2.25 0 002.25-2.25V6.108c0-1.135-.845-2.098-1.976-2.192a48.424 48.424 0 00-1.123-.08m-5.801 0c-.065.21-.1.433-.1.664 0 .414.336.75.75.75h4.5a.75.75 0 00.75-.75 2.25 2.25 0 00-.1-.664m-5.8 0A2.251 2.251 0 0113.5 2.25H15c1.012 0 1.867.668 2.15 1.586m-5.8 0c-.376.023-.75.05-1.124.08C9.095 4.01 8.25 4.973 8.25 6.108V8.25m0 0H4.875c-.621 0-1.125.504-1.125 1.125v11.25c0 .621.504 1.125 1.125 1.125h9.75c.621 0 1.125-.504 1.125-1.125V9.375c0-.621-.504-1.125-1.125-1.125H8.25z" />
+                        </svg>
+                      </div>
+
+                      <div className="p-4 space-y-4">
+                        <div className="flex gap-4 items-start">
+                          <div className="flex-shrink-0 p-2 bg-white border-2 border-slate-200 rounded-xl">
+                            <QRCodeSVG value={qrValor} size={100} level="M" />
+                          </div>
+                          <div className="flex-1 space-y-2 min-w-0">
+                            <div>
+                              <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Nombre</p>
+                              <p className="text-sm font-black text-slate-900 leading-tight">{nombre}</p>
+                            </div>
+                            {ciudadano.curp && (
+                              <div>
+                                <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">CURP</p>
+                                <p className="font-mono text-xs text-slate-600 break-all">{ciudadano.curp}</p>
+                              </div>
+                            )}
+                            {ciudadano.telefono_1 && (
+                              <div>
+                                <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Teléfono</p>
+                                <p className="text-sm font-semibold text-slate-700">{ciudadano.telefono_1}</p>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+
+                        <div>
+                          <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-2">Apoyos solicitados</p>
+                          <div className="space-y-1.5">
+                            {entregas.map((e) => (
+                              <div key={e.id} className="flex items-center justify-between gap-2">
+                                <span className="inline-flex items-center gap-1 bg-blue-100 text-blue-800 text-xs font-bold px-2.5 py-1 rounded-full">
+                                  ✓ {e.programas_sociales?.nombre ?? "—"}
+                                  {(e.cantidad ?? 1) > 1 && <span className="text-blue-500"> ×{e.cantidad}</span>}
+                                </span>
+                                <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded-full flex-shrink-0 ${badgeSt(e.status)}`}>
+                                  {e.status}
+                                </span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+
+                        <p className="text-[10px] text-slate-400 border-t border-slate-100 pt-3">
+                          Fecha de registro: {new Date(entregas[0]?.created_at).toLocaleDateString("es-MX", { day: "2-digit", month: "long", year: "numeric" })}
+                        </p>
+                      </div>
+                    </Card>
+                  </div>
+
+                  {/* Botón descargar PDF */}
+                  <button
+                    type="button"
+                    onClick={descargarPDFRecuperado}
+                    disabled={descargandoRecuperado}
+                    className="flex items-center justify-center gap-2.5 w-full bg-slate-700 hover:bg-slate-800 disabled:opacity-50 text-white font-bold text-sm py-3 px-4 rounded-xl transition-all active:scale-95 shadow-sm"
+                  >
+                    {descargandoRecuperado ? (
+                      <><Spinner /> Generando PDF...</>
+                    ) : (
+                      <>
+                        <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
+                        </svg>
+                        Descargar comprobante PDF
+                      </>
+                    )}
+                  </button>
+                </div>
+              );
+            })()}
           </div>
         )}
 
@@ -1205,6 +1434,26 @@ export default function RegistroApoyos() {
               </Card>
             )}
 
+            <Card className="p-5 space-y-3">
+              <div>
+                <h2 className="text-base font-black text-slate-900 mb-1">Seguidora de Manzana <span className="text-red-500">*</span></h2>
+                <p className="text-xs text-slate-500">Selecciona la SM que está atendiendo este registro.</p>
+              </div>
+              <AutocompleteSM
+                sms={sms}
+                valor={smQuery}
+                onChange={setSmQuery}
+                smSel={smSel}
+                onSelect={(sm) => { setSmSel(sm); setSmQuery(""); }}
+                onLimpiar={() => { setSmSel(null); setSmQuery(""); }}
+              />
+              {!smSel && (
+                <p className="text-xs text-slate-400 pl-1">
+                  Escribe el nombre o apellido de la SM para buscarla en la base activa.
+                </p>
+              )}
+            </Card>
+
             <Card className="p-5 space-y-4">
               <div>
                 <h2 className="text-base font-black text-slate-900 mb-1">¿Cómo se enteró del programa?</h2>
@@ -1227,7 +1476,7 @@ export default function RegistroApoyos() {
                       name="como_se_entero"
                       value={opt.v}
                       checked={comoSeEntero === opt.v}
-                      onChange={() => { setComoSeEntero(opt.v); setSmSel(null); setSmQuery(""); setOtroTexto(""); }}
+                      onChange={() => { setComoSeEntero(opt.v); setOtroTexto(""); }}
                       className="h-4 w-4 text-blue-600 border-slate-300 focus:ring-blue-500"
                     />
                     <span className="text-lg">{opt.emoji}</span>
@@ -1240,26 +1489,6 @@ export default function RegistroApoyos() {
                 <CampoReq label="¿Por qué medio?">
                   <Inp placeholder="Describe cómo se enteró..." value={otroTexto} onChange={(e) => setOtroTexto(e.target.value)} />
                 </CampoReq>
-              )}
-
-              {comoSeEntero === "SM_INVITO" && (
-                <div className="space-y-2">
-                  <CampoReq label="¿Cuál Seguidora de Manzana le invitó?">
-                    <AutocompleteSM
-                      sms={sms}
-                      valor={smQuery}
-                      onChange={setSmQuery}
-                      smSel={smSel}
-                      onSelect={(sm) => { setSmSel(sm); setSmQuery(""); }}
-                      onLimpiar={() => { setSmSel(null); setSmQuery(""); }}
-                    />
-                  </CampoReq>
-                  {!smSel && (
-                    <p className="text-xs text-slate-400 pl-1">
-                      Escribe el nombre o apellido de la SM para buscarla en la base activa.
-                    </p>
-                  )}
-                </div>
               )}
             </Card>
             {error && <ErrBox msg={error} />}
