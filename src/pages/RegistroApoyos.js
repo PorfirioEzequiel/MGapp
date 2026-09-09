@@ -287,7 +287,10 @@ export default function RegistroApoyos() {
   const [error,             setError]             = useState("");
   const [folioId,           setFolioId]           = useState(null);
   const [programasCargados, setProgramasCargados] = useState(false);
-  const comprobanteRef = useRef(null);
+  const [estadoWhatsapp,        setEstadoWhatsapp]        = useState("idle"); // idle|enviando|ok|error
+  const [comprobanteUrlStorage, setComprobanteUrlStorage] = useState(null);
+  const comprobanteRef        = useRef(null);
+  const comprobanteEnviadoRef = useRef(false);
 
   // Cargar programas activos (supabaseAdmin bypasses RLS en programas_sociales)
   useEffect(() => {
@@ -331,6 +334,48 @@ export default function RegistroApoyos() {
       setContacto((c) => ({ ...c, col_loc: list[0] ?? "" }));
     }
   }, [contacto.c_p]);
+
+  // Auto-envío de comprobante por WhatsApp al llegar al paso "listo"
+  useEffect(() => {
+    if (paso !== "listo" || !folioId || comprobanteEnviadoRef.current) return;
+    const telLimpio = contacto.telefono.replace(/\D/g, "");
+    if (telLimpio.length !== 10) return;
+    comprobanteEnviadoRef.current = true;
+    const enviar = async () => {
+      setEstadoWhatsapp("enviando");
+      try {
+        const canvas = await generarCanvasComprobante();
+        if (!canvas) throw new Error("Sin canvas");
+        const blob = await new Promise((r) => canvas.toBlob(r, "image/png"));
+        if (!blob) throw new Error("Sin blob");
+        const filePath = `apoyo-${folioId}.png`;
+        const { error: upErr } = await supabaseAdmin.storage
+          .from("comprobantes_apoyos")
+          .upload(filePath, blob, { upsert: true, contentType: "image/png" });
+        if (upErr) throw upErr;
+        const { data: urlData } = supabaseAdmin.storage
+          .from("comprobantes_apoyos")
+          .getPublicUrl(filePath);
+        setComprobanteUrlStorage(urlData.publicUrl);
+        const nombreBen = `${form.nombre} ${form.a_paterno} ${form.a_materno}`.trim();
+        const { error: fnErr } = await supabase.functions.invoke("enviar-comprobante-whatsapp", {
+          body: {
+            telefono: telLimpio,
+            folio:    String(folioId).padStart(6, "0"),
+            tutorNombre:    nombreBen,
+            comprobanteUrl: urlData.publicUrl,
+          },
+        });
+        if (fnErr) throw fnErr;
+        setEstadoWhatsapp("ok");
+      } catch (err) {
+        console.error("Error enviando comprobante:", err);
+        setEstadoWhatsapp("error");
+      }
+    };
+    enviar();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [paso, folioId]);
 
   // ── Identificación ────────────────────────────────────────────────────────────
   const handleQRScan = (rawText) => {
@@ -636,10 +681,14 @@ export default function RegistroApoyos() {
     setYaRegistrados(new Set());
     setComoSeEntero("");
     setOtroTexto("");
+    setFormaPago("");
     setSmQuery("");
     setSmSel(null);
     setError("");
     setFolioId(null);
+    setEstadoWhatsapp("idle");
+    setComprobanteUrlStorage(null);
+    comprobanteEnviadoRef.current = false;
   };
 
   // ── Descargar comprobante PDF ─────────────────────────────────────────────────
@@ -667,6 +716,15 @@ export default function RegistroApoyos() {
     } finally {
       setDescargando(false);
     }
+  };
+
+  // ── Generar canvas del comprobante visible ────────────────────────────────────
+  const generarCanvasComprobante = async () => {
+    if (!comprobanteRef.current) return null;
+    await new Promise((r) => setTimeout(r, 400));
+    return html2canvas(comprobanteRef.current, {
+      scale: 2, useCORS: true, logging: false, backgroundColor: "#ffffff",
+    });
   };
 
   // ── Render ─────────────────────────────────────────────────────────────────────
@@ -1229,20 +1287,6 @@ export default function RegistroApoyos() {
           const folio     = String(folioId ?? "").padStart(6, "0");
           const qrValor   = `APOYO-FOLIO:${folio}|NOMBRE:${nombreBen}|CURP:${datosCurp?.curp ?? ""}`;
 
-          const msgsApoyos = progsSel
-            .map((p) => `• ${p.nombre}${(cantidades[p.id] ?? 1) > 1 ? ` ×${cantidades[p.id]}` : ""}`)
-            .join("\n");
-
-          const msgWA = encodeURIComponent(
-            `✅ *Registro de Apoyos Sociales*\n\n` +
-            `*Folio:* #${folio}\n` +
-            `*Nombre:* ${nombreBen}\n\n` +
-            `*Apoyos solicitados:*\n${msgsApoyos}\n\n` +
-            `Guarda este mensaje como comprobante. Te avisaremos cuando tu apoyo esté listo para entrega.`
-          );
-          const telLimpio = contacto.telefono.replace(/\D/g, "");
-          const urlWA = `https://wa.me/52${telLimpio}?text=${msgWA}`;
-
           return (
             <div className="space-y-4">
               {/* Encabezado éxito */}
@@ -1329,20 +1373,38 @@ export default function RegistroApoyos() {
 
               {/* Acciones */}
               <div className="space-y-2">
-                {telLimpio.length === 10 && (
+                {/* Estado envío WhatsApp automático */}
+                {estadoWhatsapp === "enviando" && (
+                  <div className="flex items-center justify-center gap-2 text-xs text-slate-500 py-1">
+                    <Spinner /> Enviando comprobante por WhatsApp...
+                  </div>
+                )}
+                {estadoWhatsapp === "ok" && (
+                  <p className="text-xs text-emerald-600 font-semibold text-center py-1">
+                    ✔ Comprobante enviado por WhatsApp al {contacto.telefono}
+                  </p>
+                )}
+                {estadoWhatsapp === "error" && (
+                  <p className="text-xs text-red-500 font-semibold text-center py-1">
+                    No se pudo enviar por WhatsApp. Descarga el PDF abajo.
+                  </p>
+                )}
+
+                {/* Enlace permanente al comprobante guardado */}
+                {comprobanteUrlStorage && (
                   <a
-                    href={urlWA}
+                    href={comprobanteUrlStorage}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="flex items-center justify-center gap-2.5 w-full bg-[#25D366] hover:bg-[#1fba59] text-white font-bold text-sm py-3 px-4 rounded-xl transition-all active:scale-95 shadow-sm"
+                    className="flex items-center justify-center gap-2.5 w-full bg-blue-50 hover:bg-blue-100 border border-blue-200 text-blue-800 font-bold text-sm py-3 px-4 rounded-xl transition-all active:scale-95"
                   >
-                    <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor">
-                      <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z"/>
-                      <path d="M12 0C5.373 0 0 5.373 0 12c0 2.127.558 4.122 1.532 5.853L.057 23.857a.5.5 0 00.611.611l6.004-1.475A11.934 11.934 0 0012 24c6.627 0 12-5.373 12-12S18.627 0 12 0zm0 21.89a9.868 9.868 0 01-5.031-1.376l-.36-.214-3.733.917.951-3.634-.235-.374A9.866 9.866 0 012.11 12C2.11 6.533 6.533 2.11 12 2.11c5.467 0 9.89 4.423 9.89 9.89 0 5.467-4.423 9.89-9.89 9.89z"/>
+                    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M13.19 8.688a4.5 4.5 0 011.242 7.244l-4.5 4.5a4.5 4.5 0 01-6.364-6.364l1.757-1.757m13.35-.622l1.757-1.757a4.5 4.5 0 00-6.364-6.364l-4.5 4.5a4.5 4.5 0 001.242 7.244" />
                     </svg>
-                    Enviar comprobante por WhatsApp
+                    Ver comprobante guardado (enlace permanente)
                   </a>
                 )}
+
                 <button
                   type="button"
                   onClick={descargarPDF}
