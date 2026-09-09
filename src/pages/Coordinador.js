@@ -440,7 +440,15 @@ const Coordinador = () => {
 
   // Drive snap position from state for non-drag snaps (button/chip clicks)
   useEffect(() => {
-    if (!sheetRef.current || !isMobile || dragRef.current.active) return;
+    if (!sheetRef.current) return;
+    if (!isMobile) {
+      // Clear any leftover mobile transform so desktop flex layout is unaffected
+      sheetRef.current.style.transition = 'none';
+      sheetRef.current.style.transform  = '';
+      prevSnapRef.current = null;
+      return;
+    }
+    if (dragRef.current.active) return;
     const el = sheetRef.current;
     const h  = el.parentElement?.clientHeight ?? window.innerHeight;
     const snapY = getSnapPx(sheetSnap, h);
@@ -1210,7 +1218,7 @@ const Coordinador = () => {
           <div className={isMobile ? 'h-full relative overflow-hidden' : 'h-full flex'}>
 
             {/* Mapa */}
-            <div className={isMobile ? 'absolute inset-0' : 'flex-1 h-full'} style={{ touchAction: 'none', overscrollBehavior: 'none', ...(!isMobile ? { order: 2 } : {}) }}>
+            <div className={isMobile ? 'absolute inset-0' : 'flex-1 h-full'} style={{ touchAction: isMobile ? 'none' : 'auto', overscrollBehavior: 'none', ...(!isMobile ? { order: 2 } : {}) }}>
               {seccionesSector.length === 0 ? (
                 <div className="flex flex-col items-center justify-center h-full gap-3">
                   <div className="w-8 h-8 rounded-full border-2 border-slate-200 animate-spin" style={{ borderTopColor: BRAND }} />

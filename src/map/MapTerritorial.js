@@ -1768,14 +1768,10 @@ const MapTerritorial = ({
             zoomControl: false,
             rotateControl: false,
             clickableIcons: false,
-            gestureHandling,
+            gestureHandling: isMobileMap ? 'greedy' : gestureHandling,
             tilt: 0,
-            minZoom: 10,
+            minZoom: isMobileMap ? 11 : 9,
             maxZoom: 19,
-            restriction: {
-              latLngBounds: { north: 20.05, south: 19.55, east: -98.72, west: -99.20 },
-              strictBounds: false,
-            },
           }}
         >
           {/* ── Polígonos de secciones ──────────────────────────────── */}
