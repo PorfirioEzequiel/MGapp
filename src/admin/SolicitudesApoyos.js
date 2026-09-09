@@ -25,6 +25,7 @@ export default function SolicitudesApoyos() {
   const [busqueda,      setBusqueda]      = useState("");
   const [registros,     setRegistros]     = useState([]);
   const [cargando,      setCargando]      = useState(false);
+  const [smNombres,     setSmNombres]     = useState({});
 
   // Cargar programas para el filtro (supabaseAdmin bypasses RLS)
   useEffect(() => {
@@ -47,9 +48,10 @@ export default function SolicitudesApoyos() {
         status,
         periodo,
         created_at,
+        forma_pago,
         ciudadania:beneficiario_id (
           id, nombre, a_paterno, a_materno, curp, telefono_1,
-          seccion, ubt, movilizador
+          seccion, ubt, movilizador, poligono
         ),
         programas_sociales:programa_id (id, nombre)
       `)
@@ -60,7 +62,27 @@ export default function SolicitudesApoyos() {
     if (statusFiltro !== "todos") q = q.eq("status", statusFiltro);
 
     q.then(({ data, error }) => {
-      if (!error) setRegistros(data ?? []);
+      if (!error) {
+        const lista = data ?? [];
+        setRegistros(lista);
+        // Cargar nombres completos de las SM referenciadas
+        const usuarios = [...new Set(lista.map((r) => r.ciudadania?.movilizador).filter(Boolean))];
+        if (usuarios.length > 0) {
+          supabaseAdmin
+            .from("ciudadania")
+            .select("usuario, nombre, a_paterno, a_materno")
+            .in("usuario", usuarios)
+            .then(({ data: sms }) => {
+              const mapa = {};
+              (sms ?? []).forEach((sm) => {
+                mapa[sm.usuario] = `${sm.nombre ?? ""} ${sm.a_paterno ?? ""} ${sm.a_materno ?? ""}`.trim();
+              });
+              setSmNombres(mapa);
+            });
+        } else {
+          setSmNombres({});
+        }
+      }
       setCargando(false);
     });
   }, [progFiltro, statusFiltro]);
@@ -84,6 +106,34 @@ export default function SolicitudesApoyos() {
   // Totales por estatus para el encabezado
   const totPendiente = filtrados.filter((r) => r.status === "PENDIENTE").length;
   const totEntregado = filtrados.filter((r) => r.status === "ENTREGADO").length;
+
+  const descargarCSV = () => {
+    const cols = ["Nombre", "Teléfono", "Sector", "Sección", "Fracción", "SM", "Cantidad", "Apoyo", "Pago"];
+    const filas = filtrados.map((r) => {
+      const c = r.ciudadania;
+      const nombre = c ? `${c.nombre ?? ""} ${c.a_paterno ?? ""} ${c.a_materno ?? ""}`.trim() : "";
+      const smNombre = c?.movilizador ? (smNombres[c.movilizador] || c.movilizador) : "";
+      return [
+        nombre,
+        c?.telefono_1 ?? "",
+        c?.poligono ?? "",
+        c?.seccion ?? "",
+        c?.ubt ?? "",
+        smNombre,
+        r.cantidad ?? 1,
+        r.programas_sociales?.nombre ?? "",
+        r.forma_pago ?? "",
+      ].map((v) => `"${String(v).replace(/"/g, '""')}"`).join(",");
+    });
+    const csv = [cols.join(","), ...filas].join("\n");
+    const blob = new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `apoyos-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
 
   return (
     <div className="min-h-screen bg-slate-50">
@@ -150,6 +200,19 @@ export default function SolicitudesApoyos() {
               onChange={(e) => setBusqueda(e.target.value)}
               className="w-full px-3 py-2 rounded-xl border border-slate-200 text-sm text-slate-800 focus:outline-none focus:border-blue-400"
             />
+          </div>
+          <div className="self-end">
+            <button
+              type="button"
+              onClick={descargarCSV}
+              disabled={filtrados.length === 0}
+              className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 disabled:opacity-40 disabled:cursor-not-allowed text-white text-sm font-bold transition-all active:scale-95"
+            >
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
+              </svg>
+              Descargar CSV
+            </button>
           </div>
         </div>
 
