@@ -619,9 +619,10 @@ const Coordinador = () => {
   }), [promotores, evidencias, actSM]);
 
   const smFiltrados = useMemo(() => {
-    if (!smFiltroLocal.trim()) return promotores;
-    const q = smFiltroLocal.toLowerCase();
-    return promotores.filter(p => fullName(p).toLowerCase().includes(q) || String(p.seccion).includes(q) || String(p.ubt).toLowerCase().includes(q));
+    const base = smFiltroLocal.trim()
+      ? (() => { const q = smFiltroLocal.toLowerCase(); return promotores.filter(p => fullName(p).toLowerCase().includes(q) || String(p.seccion).includes(q) || String(p.ubt).toLowerCase().includes(q)); })()
+      : promotores;
+    return [...base].sort((a, b) => Number(a.seccion) - Number(b.seccion) || String(a.ubt).localeCompare(String(b.ubt), undefined, { numeric: true }));
   }, [promotores, smFiltroLocal]);
 
   // ── Capas del mapa ────────────────────────────────────────────────────────
@@ -895,6 +896,7 @@ const Coordinador = () => {
         {/* ── TAB: RESUMEN ─────────────────────────────────────────────────── */}
         {tab === 'resumen' && (
           <div className="h-full overflow-y-auto">
+          {isMobile ? (
             <div className="p-4 space-y-4" style={{ paddingBottom: 24 }}>
 
               {/* ── Credenciales delivery analysis ─────────────────────── */}
@@ -1070,26 +1072,32 @@ const Coordinador = () => {
                       value={smFiltroLocal}
                       onChange={e => setSmFiltroLocal(e.target.value)}
                       placeholder="Buscar por nombre, sección o UBT…"
-                      className="w-full border border-slate-200 rounded-xl pl-9 pr-3 py-2.5 text-sm text-slate-800 bg-slate-50 outline-none focus:border-slate-300 transition-colors"
+                      className="w-full border border-slate-200 rounded-xl pl-9 pr-3 py-2.5 text-slate-800 bg-slate-50 outline-none focus:border-slate-300 transition-colors"
+                      style={{ fontSize: 16 }}
                     />
                   </div>
                 </div>
 
                 {/* Lista de SM — tarjetas */}
-                <div className="p-3 space-y-2.5">
+                <div className="p-3 space-y-2.5" style={{ touchAction: 'pan-y' }}>
                   {smFiltrados.length === 0 ? (
                     <p className="text-sm text-slate-400 italic text-center py-8">
                       {smFiltroLocal ? 'Sin coincidencias.' : 'Sin SM registradas.'}
                     </p>
-                  ) : smFiltrados.slice(0, 30).map(r => (
+                  ) : smFiltrados.map(r => (
                     <div key={r.id}
                       className="bg-slate-50 rounded-2xl border border-slate-100 p-3 space-y-2.5"
                       style={{ WebkitTapHighlightColor: 'transparent' }}>
                       {/* Identidad */}
                       <div className="flex items-start gap-3">
-                        <div className="w-11 h-11 rounded-2xl flex items-center justify-center text-sm font-black text-white flex-shrink-0 shadow-sm"
+                        <div className="w-11 h-11 rounded-2xl flex-shrink-0 shadow-sm overflow-hidden relative flex items-center justify-center text-sm font-black text-white"
                           style={{ background: `linear-gradient(135deg, ${BRAND}CC 0%, #A52040BB 100%)` }}>
                           {r.nombre?.[0]}{r.a_paterno?.[0]}
+                          {r.url_foto_perfil && (
+                            <img src={r.url_foto_perfil} alt=""
+                              className="absolute inset-0 w-full h-full object-cover"
+                              onError={e => { e.currentTarget.style.display = 'none'; }} />
+                          )}
                         </div>
                         <div className="flex-1 min-w-0 pt-0.5">
                           <p className="text-sm font-bold text-slate-800 leading-snug">
@@ -1111,23 +1119,8 @@ const Coordinador = () => {
                       </div>
                     </div>
                   ))}
-                  {smFiltrados.length > 30 && (
-                    <p className="text-sm text-slate-400 text-center py-2">
-                      Mostrando 30 de {smFiltrados.length} — usa el buscador para filtrar.
-                    </p>
-                  )}
                 </div>
 
-                {/* Búsqueda avanzada */}
-                <div className="px-3 pb-3 pt-0">
-                  <button
-                    onClick={() => { setSeccionFiltro(''); setNombreFiltro(smFiltroLocal); manejarFiltro(); }}
-                    className="w-full flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-semibold text-white transition-opacity active:opacity-80"
-                    style={{ backgroundColor: BRAND + 'DD' }}>
-                    <IcoSearch />
-                    Búsqueda avanzada
-                  </button>
-                </div>
 
                 {/* Results from DB search */}
                 {resultados.length > 0 && (
@@ -1166,82 +1159,294 @@ const Coordinador = () => {
                 )}
               </div>
 
-              {/* ── Actividades de trabajo del sector ─────────────────────── */}
-              {actSM.length > 0 && (
-                <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
-                  <div className="px-4 py-3 border-b border-slate-100 flex items-center justify-between">
-                    <p className="text-xs font-bold text-slate-700">Actividades del sector</p>
-                    <span className="text-xs font-bold px-2.5 py-0.5 rounded-full bg-slate-100 text-slate-500">{actSM.length}</span>
-                  </div>
-
-                  {/* Resumen global por actividad */}
-                  <div className="p-4 space-y-3">
-                    {actSM.map(act => {
-                      const totalSMs  = promotores.length;
-                      const compTotal = reporteActSeccion.reduce((s, sec) => s + (sec.comprobados[act.id] || 0), 0);
-                      const pctAct    = totalSMs ? Math.round((compTotal / totalSMs) * 100) : 0;
-                      const barCol    = pctAct === 100 ? '#10B981' : pctAct >= 50 ? '#3B82F6' : pctAct > 0 ? '#F59E0B' : '#E2E8F0';
-                      return (
-                        <div key={act.id}>
-                          <div className="flex items-center justify-between mb-1.5">
-                            <p className="text-sm font-semibold text-slate-700 truncate flex-1 mr-3">{act.nombre}</p>
-                            <span className="text-sm font-bold tabular-nums flex-shrink-0"
-                              style={{ color: pctAct === 100 ? '#10B981' : pctAct > 0 ? '#3B82F6' : '#94A3B8' }}>
-                              {compTotal}/{totalSMs}
-                            </span>
-                          </div>
-                          <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
-                            <div className="h-full rounded-full transition-all duration-500"
-                              style={{ width: `${pctAct}%`, backgroundColor: barCol }} />
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-
-                  {/* Desglose por sección — tarjetas, sin tabla horizontal */}
-                  {reporteActSeccion.length > 0 && (
-                    <div className="border-t border-slate-100 divide-y divide-slate-50">
-                      {reporteActSeccion.map(s => (
-                        <div key={s.seccion} className="px-4 py-3">
-                          <div className="flex items-center justify-between mb-2">
-                            <span className="text-sm font-bold text-slate-700">Secc. {s.seccion}</span>
-                            <span className="text-xs text-slate-400">{s.total} SM</span>
-                          </div>
-                          <div className="flex flex-wrap gap-1.5">
-                            {actSM.map(a => {
-                              const comp = s.comprobados[a.id] || 0;
-                              const p    = s.total ? Math.round((comp / s.total) * 100) : 0;
-                              return (
-                                <span key={a.id} className={`text-xs font-semibold px-2 py-1 rounded-lg ${
-                                  p === 100
-                                    ? 'bg-emerald-50 text-emerald-700'
-                                    : p > 0
-                                      ? 'bg-blue-50 text-blue-600'
-                                      : 'bg-slate-100 text-slate-400'
-                                }`}>
-                                  {a.nombre.split(' ')[0]} {comp}/{s.total}
-                                </span>
-                              );
-                            })}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-
-                  <button
-                    onClick={() => setTab('actividades')}
-                    className="w-full py-3 text-sm font-bold border-t border-slate-100 transition-colors"
-                    style={{ color: BRAND }}
-                    onMouseEnter={e => e.currentTarget.style.backgroundColor = '#FDF6F7'}
-                    onMouseLeave={e => e.currentTarget.style.backgroundColor = ''}>
-                    Ver detalle completo →
-                  </button>
-                </div>
-              )}
 
             </div>
+            ) : (
+            /* ── DESKTOP ───────────────────────────────────────────────── */
+            <div className="p-6 flex gap-5 items-start" style={{ minHeight: '100%' }}>
+
+              {/* LEFT: KPIs sidebar */}
+              <div className="w-[340px] flex-shrink-0 space-y-4">
+
+                {/* Resumen del sector */}
+                {(() => {
+                  const totalFracciones = fraccionesGeo.length;
+                  const cobSector  = pctNum(promotores.length, totalFracciones);
+                  const sinCubrirF = totalFracciones - promotores.length;
+                  const semCol = c => c >= 90 ? '#16A34A' : c >= 75 ? '#65A30D' : c >= 50 ? '#CA8A04' : c >= 25 ? '#EA580C' : '#DC2626';
+                  const semLbl = c => c >= 90 ? 'Excelente' : c >= 75 ? 'Bien' : c >= 50 ? 'Regular' : c >= 25 ? 'Bajo' : 'Crítico';
+                  const cobColor = totalFracciones > 0 ? semCol(cobSector) : '#9CA3AF';
+                  return (
+                    <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
+                      <div className="px-4 pt-4 pb-3 border-b border-slate-100">
+                        <div className="flex items-center justify-between gap-2 mb-1.5">
+                          <div>
+                            <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400 leading-none mb-1">Resumen del sector</p>
+                            <p className="text-sm font-bold text-slate-800">Cobertura de SM</p>
+                          </div>
+                          <span className="text-xs font-bold px-2.5 py-1 rounded-full whitespace-nowrap flex-shrink-0 text-white"
+                            style={{ backgroundColor: cobColor }}>{totalFracciones > 0 ? semLbl(cobSector) : 'Cargando…'}</span>
+                        </div>
+                        <p className="text-xs text-slate-500 flex items-center gap-1.5">
+                          <span className="w-2 h-2 rounded-full inline-block flex-shrink-0" style={{ backgroundColor: cobColor }} />
+                          Sector {user.poligono}
+                        </p>
+                      </div>
+                      <div className="p-4 space-y-3">
+                        <div className="grid grid-cols-2 gap-2">
+                          <div className="rounded-xl p-3 text-center border" style={{ backgroundColor: BRAND + '10', borderColor: BRAND + '25' }}>
+                            <p className="text-[10px] font-bold uppercase tracking-widest leading-none mb-1.5" style={{ color: BRAND }}>SM Activas</p>
+                            <p className="text-xl font-black tabular-nums" style={{ color: BRAND }}>{fmt(promotores.length)}</p>
+                          </div>
+                          <div className="bg-blue-50 rounded-xl p-3 text-center border border-blue-100">
+                            <p className="text-[10px] font-bold uppercase tracking-widest text-blue-500 leading-none mb-1.5">Fracciones</p>
+                            <p className="text-xl font-black tabular-nums text-blue-700">{totalFracciones || '—'}</p>
+                          </div>
+                          <div className={`rounded-xl p-3 text-center border ${sinCubrirF > 0 ? 'bg-rose-50 border-rose-100' : 'bg-slate-50 border-slate-100'}`}>
+                            <p className={`text-[10px] font-bold uppercase tracking-widest leading-none mb-1.5 ${sinCubrirF > 0 ? 'text-rose-500' : 'text-slate-400'}`}>Sin cubrir</p>
+                            <p className={`text-xl font-black tabular-nums ${sinCubrirF > 0 ? 'text-rose-600' : 'text-slate-500'}`}>{totalFracciones > 0 ? fmt(sinCubrirF) : '—'}</p>
+                          </div>
+                          <div className="rounded-xl p-3 text-center border" style={{ backgroundColor: cobColor + '12', borderColor: cobColor + '30' }}>
+                            <p className="text-[10px] font-bold uppercase tracking-widest leading-none mb-1.5" style={{ color: cobColor }}>Cobertura</p>
+                            <p className="text-xl font-black tabular-nums" style={{ color: cobColor }}>{totalFracciones > 0 ? cobSector + '%' : '—'}</p>
+                          </div>
+                        </div>
+                        {totalFracciones > 0 && (
+                          <div>
+                            <div className="h-2.5 rounded-full overflow-hidden bg-slate-100" />
+                            <div className="h-2.5 rounded-full overflow-hidden -mt-2.5">
+                              <div className="h-full rounded-full transition-all duration-700"
+                                style={{ width: `${Math.min(cobSector, 100)}%`, backgroundColor: cobColor }} />
+                            </div>
+                            <p className="text-xs text-slate-400 text-center mt-1.5">
+                              {fmt(promotores.length)} SM de {fmt(totalFracciones)} fracciones cubiertas
+                            </p>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })()}
+
+                {/* Credenciales */}
+                {(() => {
+                  const afRows = AFILIACION.filter(r => Number(r.sp) === Number(user.poligono));
+                  if (!afRows.length) return null;
+                  const totEntregadas  = afRows.reduce((s, r) => s + (r.entregadas_sp || 0), 0);
+                  const totComprobadas = afRows.reduce((s, r) => s + (r.comprobadas   || 0), 0);
+                  const totAfiliados   = afRows.reduce((s, r) => s + (r.afiliados     || 0), 0);
+                  const pct    = totEntregadas > 0 ? (totComprobadas / totEntregadas) * 100 : 0;
+                  const noData = totEntregadas === 0;
+                  const semColor = p => p >= 90 ? '#16A34A' : p >= 75 ? '#65A30D' : p >= 50 ? '#CA8A04' : p >= 25 ? '#EA580C' : '#DC2626';
+                  const semLabel = (p, nd) => nd ? 'Sin entregas' : p >= 90 ? 'Excelente' : p >= 75 ? 'Bien' : p >= 50 ? 'Regular' : p >= 25 ? 'Bajo' : 'Crítico';
+                  const barColor = noData ? '#9CA3AF' : semColor(pct);
+                  return (
+                    <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
+                      <div className="px-4 pt-4 pb-3 border-b border-slate-100">
+                        <div className="flex items-center justify-between gap-2 mb-1.5">
+                          <div>
+                            <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400 leading-none mb-1">Entrega de credenciales</p>
+                            <p className="text-sm font-bold text-slate-800">Entregadas SP vs Comprobadas</p>
+                          </div>
+                          <span className="text-xs font-bold px-2.5 py-1 rounded-full whitespace-nowrap flex-shrink-0 text-white"
+                            style={{ backgroundColor: barColor }}>{semLabel(pct, noData)}</span>
+                        </div>
+                        <p className="text-xs text-slate-500 flex items-center gap-1.5">
+                          <span className="w-2 h-2 rounded-full inline-block flex-shrink-0" style={{ backgroundColor: barColor }} />
+                          Sector {user.poligono} · {afRows.length} secciones
+                        </p>
+                      </div>
+                      <div className="p-4 space-y-3">
+                        <div className="grid grid-cols-2 gap-2">
+                          <div className="bg-slate-50 rounded-xl p-3 text-center border border-slate-100">
+                            <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 leading-none mb-1.5">Afiliados</p>
+                            <p className="text-xl font-black tabular-nums text-slate-700">{fmt(totAfiliados)}</p>
+                          </div>
+                          <div className="bg-amber-50 rounded-xl p-3 text-center border border-amber-100">
+                            <p className="text-[10px] font-bold uppercase tracking-widest text-amber-500 leading-none mb-1.5">Entregadas al SP</p>
+                            <p className="text-xl font-black tabular-nums text-amber-700">{fmt(totEntregadas)}</p>
+                          </div>
+                          <div className="bg-emerald-50 rounded-xl p-3 text-center border border-emerald-100">
+                            <p className="text-[10px] font-bold uppercase tracking-widest text-emerald-600 leading-none mb-1.5">Comprobadas</p>
+                            <p className="text-xl font-black tabular-nums text-emerald-700">{fmt(totComprobadas)}</p>
+                          </div>
+                          <div className="rounded-xl p-3 text-center border" style={{ backgroundColor: barColor + '12', borderColor: barColor + '30' }}>
+                            <p className="text-[10px] font-bold uppercase tracking-widest leading-none mb-1.5" style={{ color: barColor }}>% Avance</p>
+                            <p className="text-xl font-black tabular-nums" style={{ color: barColor }}>{noData ? '—' : pct.toFixed(1) + '%'}</p>
+                          </div>
+                        </div>
+                        {!noData && (
+                          <div>
+                            <div className="h-2.5 rounded-full overflow-hidden bg-slate-100" />
+                            <div className="h-2.5 rounded-full overflow-hidden -mt-2.5">
+                              <div className="h-full rounded-full transition-all duration-700" style={{ width: `${Math.min(pct, 100)}%`, backgroundColor: barColor }} />
+                            </div>
+                            <p className="text-xs text-slate-400 text-center mt-1.5">
+                              {fmt(totComprobadas)} comprobadas de {fmt(totEntregadas)} entregadas al SP
+                            </p>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })()}
+
+                {/* Mercado Solidario */}
+                {mercadoRows.length > 0 && (() => {
+                  const secKeys = Object.keys(mercadoBySec).map(Number).sort((a, b) => a - b);
+                  const totalPiezas      = secKeys.reduce((s, k) => s + (mercadoBySec[k]?.totalPiezas     ?? 0), 0);
+                  const totalEntregadas  = secKeys.reduce((s, k) => s + (mercadoBySec[k]?.totalEntregadas ?? 0), 0);
+                  const seccionesActivas = secKeys.filter(k => (mercadoBySec[k]?.totalEntregadas ?? 0) > 0).length;
+                  const topSecKey = secKeys.length > 0
+                    ? secKeys.reduce((best, k) => (mercadoBySec[k]?.totalEntregadas ?? 0) > (mercadoBySec[best]?.totalEntregadas ?? 0) ? k : best, secKeys[0])
+                    : null;
+                  const topSecEnt = topSecKey ? (mercadoBySec[topSecKey]?.totalEntregadas ?? 0) : 0;
+                  return (
+                    <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
+                      <div className="px-4 pt-4 pb-3 border-b border-slate-100">
+                        <div className="flex items-center justify-between gap-2 mb-1.5">
+                          <div>
+                            <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400 leading-none mb-1">Mercado Solidario</p>
+                            <p className="text-sm font-bold text-slate-800">Distribución de piezas</p>
+                          </div>
+                          <span className="text-xs font-bold px-2.5 py-1 rounded-full text-white flex-shrink-0" style={{ backgroundColor: BRAND }}>{seccionesActivas} activas</span>
+                        </div>
+                        <p className="text-xs text-slate-500">Sector {user.poligono} · {secKeys.length} secciones en total</p>
+                      </div>
+                      <div className="p-4">
+                        <div className="grid grid-cols-2 gap-2">
+                          <div className="bg-slate-50 rounded-xl p-3 text-center border border-slate-100">
+                            <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 leading-none mb-1.5">Total Piezas</p>
+                            <p className="text-xl font-black tabular-nums text-slate-700">{fmt(totalPiezas)}</p>
+                          </div>
+                          <div className="bg-amber-50 rounded-xl p-3 text-center border border-amber-100">
+                            <p className="text-[10px] font-bold uppercase tracking-widest text-amber-500 leading-none mb-1.5">Entregadas</p>
+                            <p className="text-xl font-black tabular-nums text-amber-700">{fmt(totalEntregadas)}</p>
+                          </div>
+                          <div className="bg-blue-50 rounded-xl p-3 text-center border border-blue-100">
+                            <p className="text-[10px] font-bold uppercase tracking-widest text-blue-500 leading-none mb-1.5">Secciones</p>
+                            <p className="text-xl font-black tabular-nums text-blue-700">{seccionesActivas}</p>
+                          </div>
+                          <div className="bg-emerald-50 rounded-xl p-3 border border-emerald-100">
+                            <p className="text-[10px] font-bold uppercase tracking-widest text-emerald-600 leading-none mb-2">Sección con más entregas</p>
+                            <p className="text-2xl font-black tabular-nums text-emerald-700 leading-none">{topSecKey ?? '—'}</p>
+                            <p className="text-[10px] font-bold uppercase tracking-widest text-emerald-600 leading-none mt-2.5 mb-1">Cantidad</p>
+                            <p className="text-2xl font-black tabular-nums text-emerald-700 leading-none">{topSecKey ? fmt(topSecEnt) : '—'}</p>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })()}
+
+                {/* Apoyos */}
+                <button
+                  onClick={() => navigate(`/apoyos/${user.usuario}`, { state: { user } })}
+                  className="w-full flex items-center gap-3 px-4 py-3.5 rounded-2xl text-white transition-opacity hover:opacity-90 shadow-sm"
+                  style={{ backgroundColor: '#059669' }}>
+                  <IcoGift />
+                  <span className="text-sm font-semibold flex-1 text-left">Apoyos y Programas Sociales</span>
+                  <IcoChevron />
+                </button>
+              </div>
+
+              {/* RIGHT: SM grid + Activities */}
+              <div className="flex-1 min-w-0 space-y-5">
+
+                {/* SM section */}
+                <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
+                  <div className="px-5 py-4 border-b border-slate-100 flex items-center gap-4">
+                    <div className="flex-1">
+                      <p className="text-xs font-bold uppercase tracking-widest text-slate-500">SM del sector</p>
+                      <p className="text-sm text-slate-400 mt-0.5">{promotores.length} activas · {sinCubrir} sin cubrir</p>
+                    </div>
+                    <div className="relative w-64">
+                      <div className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none"><IcoSearch /></div>
+                      <input value={smFiltroLocal} onChange={e => setSmFiltroLocal(e.target.value)}
+                        placeholder="Buscar por nombre, sección o UBT…"
+                        className="w-full border border-slate-200 rounded-xl pl-9 pr-3 py-2 text-sm text-slate-800 bg-slate-50 outline-none focus:border-slate-300 transition-colors" />
+                    </div>
+                    <span className="text-sm font-black px-3 py-1 rounded-full text-white flex-shrink-0"
+                      style={{ backgroundColor: BRAND }}>{smFiltrados.length}</span>
+                  </div>
+
+                  <div className="p-4 grid grid-cols-2 xl:grid-cols-3 gap-3">
+                    {smFiltrados.length === 0 ? (
+                      <p className="col-span-full text-sm text-slate-400 italic text-center py-12">
+                        {smFiltroLocal ? 'Sin coincidencias.' : 'Sin SM registradas.'}
+                      </p>
+                    ) : smFiltrados.map(r => (
+                      <div key={r.id} className="bg-slate-50 rounded-2xl border border-slate-100 p-3.5 flex flex-col gap-3">
+                        <div className="flex items-center gap-3">
+                          <div className="w-12 h-12 rounded-2xl flex-shrink-0 overflow-hidden relative flex items-center justify-center text-sm font-black text-white"
+                            style={{ background: `linear-gradient(135deg, ${BRAND}CC 0%, #A52040BB 100%)` }}>
+                            {r.nombre?.[0]}{r.a_paterno?.[0]}
+                            {r.url_foto_perfil && (
+                              <img src={r.url_foto_perfil} alt="" className="absolute inset-0 w-full h-full object-cover"
+                                onError={e => { e.currentTarget.style.display = 'none'; }} />
+                            )}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-bold text-slate-800 leading-snug">
+                              {[r.nombre, r.a_paterno, r.a_materno].filter(Boolean).join(' ')}
+                            </p>
+                            <div className="flex items-center gap-1.5 mt-1 flex-wrap">
+                              <span className="text-xs font-semibold px-2 py-0.5 rounded-md bg-white border border-slate-200 text-slate-600">Secc. {r.seccion}</span>
+                              {r.ubt && <span className="text-xs text-slate-400 font-mono">{r.ubt}</span>}
+                            </div>
+                          </div>
+                        </div>
+                        <div className="flex gap-2 mt-auto">
+                          <ToggleStatusButtonCP registroId={r.id} initialStatus={r.status} />
+                          <button onClick={() => navigate(`/ciudadano/${r.id}`)}
+                            className="flex-shrink-0 text-sm font-semibold px-4 py-2 rounded-xl border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 transition-colors cursor-pointer">
+                            Editar
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  {resultados.length > 0 && (
+                    <div className="border-t border-slate-100">
+                      <div className="px-5 py-2.5 bg-slate-50 flex items-center justify-between">
+                        <p className="text-xs font-bold text-slate-600">Resultado BD</p>
+                        <span className="text-xs font-bold px-2.5 py-0.5 rounded-full bg-slate-200 text-slate-600">{resultados.length}</span>
+                      </div>
+                      <div className="p-4 grid grid-cols-2 xl:grid-cols-3 gap-3">
+                        {resultados.map(r => (
+                          <div key={r.id} className="bg-slate-50 rounded-2xl border border-slate-100 p-3.5 flex flex-col gap-3">
+                            <div className="flex items-center gap-3">
+                              <div className="w-12 h-12 rounded-2xl flex-shrink-0 flex items-center justify-center text-sm font-black text-white"
+                                style={{ backgroundColor: '#64748B' }}>
+                                {r.nombre?.[0]}{r.a_paterno?.[0]}
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <p className="text-sm font-bold text-slate-800 leading-snug">
+                                  {[r.nombre, r.a_paterno, r.a_materno].filter(Boolean).join(' ')}
+                                </p>
+                                <div className="flex items-center gap-1.5 mt-1">
+                                  <span className="text-xs font-semibold px-2 py-0.5 rounded-md bg-white border border-slate-200 text-slate-600">Secc. {r.seccion}</span>
+                                  {r.ubt && <span className="text-xs text-slate-400 font-mono">{r.ubt}</span>}
+                                </div>
+                              </div>
+                            </div>
+                            <button onClick={() => navigate(`/ciudadano/${r.id}`)}
+                              className="w-full text-sm font-semibold py-2 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 transition-colors cursor-pointer"
+                              style={{ color: BRAND }}>
+                              Editar
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+
+              </div>
+            </div>
+          )}
           </div>
         )}
 
