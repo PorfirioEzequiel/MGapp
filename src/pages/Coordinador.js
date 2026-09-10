@@ -899,6 +899,66 @@ const Coordinador = () => {
           {isMobile ? (
             <div className="p-4 space-y-4" style={{ paddingBottom: 24 }}>
 
+              {/* ── Resumen del sector ─────────────────────────────────── */}
+              {(() => {
+                const totalFracciones = fraccionesGeo.length;
+                const cobSector  = pctNum(promotores.length, totalFracciones);
+                const sinCubrirF = totalFracciones - promotores.length;
+                const semCol = c => c >= 90 ? '#16A34A' : c >= 75 ? '#65A30D' : c >= 50 ? '#CA8A04' : c >= 25 ? '#EA580C' : '#DC2626';
+                const semLbl = c => c >= 90 ? 'Excelente' : c >= 75 ? 'Bien' : c >= 50 ? 'Regular' : c >= 25 ? 'Bajo' : 'Crítico';
+                const cobColor = totalFracciones > 0 ? semCol(cobSector) : '#9CA3AF';
+                return (
+                  <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
+                    <div className="px-4 pt-4 pb-3 border-b border-slate-100">
+                      <div className="flex items-center justify-between gap-2 mb-1.5">
+                        <div>
+                          <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400 leading-none mb-1">Resumen del sector</p>
+                          <p className="text-sm font-bold text-slate-800">Cobertura de SM</p>
+                        </div>
+                        <span className="text-xs font-bold px-2.5 py-1 rounded-full whitespace-nowrap flex-shrink-0 text-white"
+                          style={{ backgroundColor: cobColor }}>{totalFracciones > 0 ? semLbl(cobSector) : 'Cargando…'}</span>
+                      </div>
+                      <p className="text-xs text-slate-500 flex items-center gap-1.5">
+                        <span className="w-2 h-2 rounded-full inline-block flex-shrink-0" style={{ backgroundColor: cobColor }} />
+                        Sector {user.poligono}
+                      </p>
+                    </div>
+                    <div className="p-4 space-y-3">
+                      <div className="grid grid-cols-2 gap-2">
+                        <div className="rounded-xl p-3 text-center border" style={{ backgroundColor: BRAND + '10', borderColor: BRAND + '25' }}>
+                          <p className="text-[10px] font-bold uppercase tracking-widest leading-none mb-1.5" style={{ color: BRAND }}>SM Activas</p>
+                          <p className="text-xl font-black tabular-nums" style={{ color: BRAND }}>{fmt(promotores.length)}</p>
+                        </div>
+                        <div className="bg-blue-50 rounded-xl p-3 text-center border border-blue-100">
+                          <p className="text-[10px] font-bold uppercase tracking-widest text-blue-500 leading-none mb-1.5">Fracciones</p>
+                          <p className="text-xl font-black tabular-nums text-blue-700">{totalFracciones || '—'}</p>
+                        </div>
+                        <div className={`rounded-xl p-3 text-center border ${sinCubrirF > 0 ? 'bg-rose-50 border-rose-100' : 'bg-slate-50 border-slate-100'}`}>
+                          <p className={`text-[10px] font-bold uppercase tracking-widest leading-none mb-1.5 ${sinCubrirF > 0 ? 'text-rose-500' : 'text-slate-400'}`}>Sin cubrir</p>
+                          <p className={`text-xl font-black tabular-nums ${sinCubrirF > 0 ? 'text-rose-600' : 'text-slate-500'}`}>{totalFracciones > 0 ? fmt(sinCubrirF) : '—'}</p>
+                        </div>
+                        <div className="rounded-xl p-3 text-center border" style={{ backgroundColor: cobColor + '12', borderColor: cobColor + '30' }}>
+                          <p className="text-[10px] font-bold uppercase tracking-widest leading-none mb-1.5" style={{ color: cobColor }}>Cobertura</p>
+                          <p className="text-xl font-black tabular-nums" style={{ color: cobColor }}>{totalFracciones > 0 ? cobSector + '%' : '—'}</p>
+                        </div>
+                      </div>
+                      {totalFracciones > 0 && (
+                        <div>
+                          <div className="h-2.5 rounded-full overflow-hidden bg-slate-100" />
+                          <div className="h-2.5 rounded-full overflow-hidden -mt-2.5">
+                            <div className="h-full rounded-full transition-all duration-700"
+                              style={{ width: `${Math.min(cobSector, 100)}%`, backgroundColor: cobColor }} />
+                          </div>
+                          <p className="text-xs text-slate-400 text-center mt-1.5">
+                            {fmt(promotores.length)} SM de {fmt(totalFracciones)} fracciones cubiertas
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                );
+              })()}
+
               {/* ── Credenciales delivery analysis ─────────────────────── */}
               {(() => {
                 const afRows = AFILIACION.filter(r => Number(r.sp) === Number(user.poligono));
