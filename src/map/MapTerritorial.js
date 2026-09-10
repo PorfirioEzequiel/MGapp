@@ -4,6 +4,9 @@ import { GoogleMap, useJsApiLoader, Polygon, Marker, InfoWindow, OverlayView, Au
 import { GOOGLE_MAPS_API_KEY as GOOGLE_API_KEY, GOOGLE_MAPS_LIBRARIES as GOOGLE_LIBRARIES } from '../utils/googleMapsConfig';
 const DEFAULT_CENTER = { lat: 19.66, lng: -98.99 };
 
+const OVERLAY_PAN_FIX_ID    = 'mt-overlay-pan-fix';
+const OVERLAY_PAN_FIX_CLASS = 'mt-overlay-no-ptr';
+
 // ── Punto dentro de polígono (ray casting) ───────────────────────────────────
 const pointInPolygon = (point, ring) => {
   let inside = false;
@@ -825,15 +828,17 @@ const MapTerritorial = ({
   onElectoralModeChange = null,
   readOnly = false,
   initialStyle = 'claro',
-  gestureHandling = 'cooperative',
+  gestureHandling = 'greedy',
   // Capa de colaboradores controlada desde el padre (opcional)
   layerCiudadanos = null,
   // Desplazamiento horizontal del panel de controles (para evitar solapamiento con paneles externos)
   controlsLeftOffset = 0,
 }) => {
-  const mapRef        = useRef(null);
-  const containerRef  = useRef(null);
-  const zoomTimerRef  = useRef(null);
+  const mapRef           = useRef(null);
+  const containerRef     = useRef(null);
+  const zoomTimerRef     = useRef(null);
+  const panFixOverlayRef = useRef(null);
+  const hoveredRef       = useRef(null);
 
   const [activeMarker,    setActiveMarker]    = useState(null);
   const [sectorColorMap,  setSectorColorMap]  = useState({});
@@ -919,6 +924,9 @@ const MapTerritorial = ({
     const onResize = () => setIsMobileMap(window.innerWidth < 768);
     window.addEventListener('resize', onResize);
     return () => window.removeEventListener('resize', onResize);
+  }, []);
+  useEffect(() => {
+    return () => { panFixOverlayRef.current?.cleanup?.(); };
   }, []);
   useEffect(() => {
     fetch('/tecamac_casillas_pjem.json')
@@ -1137,6 +1145,7 @@ const MapTerritorial = ({
   // Centrar en la sección seleccionada (o en todo el sector si es null)
   useEffect(() => {
     setActiveMarker(null);
+    hoveredRef.current = null;
     setHovered(null);
     if (!mapRef.current || !window.google || !secciones.length) return;
     const bounds = new window.google.maps.LatLngBounds();
@@ -1168,6 +1177,46 @@ const MapTerritorial = ({
   const onLoad = useCallback((map) => {
     mapRef.current = map;
     setCurrentZoom(map.getZoom());
+
+    // Desktop pan fix: SVG polygon fills (clickable:false) intercept mousedown and block
+    // Google Maps' native drag handler. We intercept mousedown at capture phase on SVG
+    // targets only, then translate mouse drag into map.panBy() calls — same mechanism
+    // Google Maps uses internally for touch pan on mobile.
+    // Click events on SVG still bubble normally so section selection (handleMapClick) works.
+    if (window.innerWidth >= 768) {
+      const mapDiv = map.getDiv();
+      if (mapDiv) {
+        let lastX = 0, lastY = 0, dragging = false;
+
+        const onDown = (e) => {
+          if (e.button !== 0 || !(e.target instanceof SVGElement)) return;
+          dragging = true;
+          lastX = e.clientX;
+          lastY = e.clientY;
+        };
+        const onMove = (e) => {
+          if (!dragging) return;
+          map.panBy(-(e.clientX - lastX), -(e.clientY - lastY));
+          lastX = e.clientX;
+          lastY = e.clientY;
+        };
+        const onUp = () => { dragging = false; };
+
+        const doc = mapDiv.ownerDocument;
+        mapDiv.addEventListener('mousedown', onDown, { capture: true });
+        doc.addEventListener('mousemove', onMove);
+        doc.addEventListener('mouseup', onUp);
+
+        panFixOverlayRef.current = {
+          cleanup: () => {
+            mapDiv.removeEventListener('mousedown', onDown, { capture: true });
+            doc.removeEventListener('mousemove', onMove);
+            doc.removeEventListener('mouseup', onUp);
+          },
+        };
+      }
+    }
+
     // Fit bounds inmediato al montar (los datos ya pueden estar cargados)
     const allSecs = seccionesRef.current;
     if (!allSecs.length || !window.google) return;
@@ -1407,14 +1456,21 @@ const MapTerritorial = ({
     return () => document.getElementById('map-print-style')?.remove();
   }, []);
 
-  // Clic en el mapa: coloca o mueve el marcador editable y, si cae dentro de
-  // una fracción, la reporta para que el formulario reasigne esa fracción.
   const handleMapClick = useCallback((e) => {
-    if (!onEditableLocationChange) return;
     const lat = e.latLng.lat();
     const lng = e.latLng.lng();
-    onEditableLocationChange(lat, lng, findFraccionAt(lat, lng));
-  }, [onEditableLocationChange, findFraccionAt]);
+    if (onEditableLocationChange) {
+      onEditableLocationChange(lat, lng, findFraccionAt(lat, lng));
+      return;
+    }
+    if (!onSelectSeccion) return;
+    const point = { lat, lng };
+    const clicked = secciones.find(sec => {
+      const paths = seccionPaths.get(sec.id ?? sec.seccion) ?? [];
+      return paths.some(ring => pointInPolygon(point, ring));
+    });
+    if (clicked) onSelectSeccion(clicked);
+  }, [onEditableLocationChange, findFraccionAt, onSelectSeccion, secciones, seccionPaths]);
 
   const handleEditableMarkerDragEnd = useCallback((e) => {
     if (!onEditableLocationChange) return;
@@ -1441,31 +1497,51 @@ const MapTerritorial = ({
 
   // Seguimiento de mouse sobre el contenedor del mapa
   const handleContainerMouseMove = useCallback((e) => {
-    if (!containerRef.current) return;
+    if (!containerRef.current || !hoveredRef.current) return;
     const rect = containerRef.current.getBoundingClientRect();
     setTooltipPos({ x: e.clientX - rect.left, y: e.clientY - rect.top });
   }, []);
 
-  // Handlers de polígono
-  const onPolyMouseOver = useCallback((sec) => {
-    const smsInSec = ciudadanos.filter(c =>
-      c.puesto?.toUpperCase() === 'SM' &&
-      Number(c.seccion) === Number(sec.seccion)
-    );
-    setHovered({ data: sec, tipo: 'seccion', sms: smsInSec });
-  }, [ciudadanos]);
-
-  const onPolyMouseMove = useCallback((e) => {
-    if (!containerRef.current) return;
-    const rect = containerRef.current.getBoundingClientRect();
-    setTooltipPos({ x: e.domEvent.clientX - rect.left, y: e.domEvent.clientY - rect.top });
-  }, []);
-
-  const onPolyMouseOut = useCallback(() => setHovered(null), []);
-
-  const onFracMouseOver = useCallback((c) => {
-    setHovered({ data: c, tipo: 'fraccion' });
-  }, []);
+  const handleMapMouseMove = useCallback((e) => {
+    if (isMobileMap || !e.latLng) return;
+    const lat = e.latLng.lat();
+    const lng = e.latLng.lng();
+    const point = { lat, lng };
+    // Fracciones tienen prioridad visual (se renderizan encima de secciones)
+    if (selectedSeccion != null) {
+      const hitFrac = fraccionesGeo
+        .filter(f => String(f.seccion) === String(selectedSeccion))
+        .find(f => {
+          const paths = fraccionPathMap.get(f.fraccion) ?? [];
+          return paths.some(ring => pointInPolygon(point, ring));
+        });
+      if (hitFrac) {
+        if (hoveredRef.current?.tipo !== 'fraccion' || hoveredRef.current?.data?.fraccion !== hitFrac.fraccion) {
+          const next = { data: hitFrac, tipo: 'fraccion' };
+          hoveredRef.current = next;
+          setHovered(next);
+        }
+        return;
+      }
+    }
+    const found = secciones.find(sec => {
+      const paths = seccionPaths.get(sec.id ?? sec.seccion) ?? [];
+      return paths.some(ring => pointInPolygon(point, ring));
+    });
+    if (found) {
+      const smsInSec = ciudadanos.filter(c =>
+        c.puesto?.toUpperCase() === 'SM' && Number(c.seccion) === Number(found.seccion)
+      );
+      if (hoveredRef.current?.tipo !== 'seccion' || hoveredRef.current?.data?.seccion !== found.seccion) {
+        const next = { data: found, tipo: 'seccion', sms: smsInSec };
+        hoveredRef.current = next;
+        setHovered(next);
+      }
+    } else if (hoveredRef.current !== null) {
+      hoveredRef.current = null;
+      setHovered(null);
+    }
+  }, [isMobileMap, selectedSeccion, fraccionesGeo, fraccionPathMap, secciones, seccionPaths, ciudadanos]);
 
   const markerIcon = useCallback((puesto) => {
     if (!window.google) return undefined;
@@ -1508,14 +1584,15 @@ const MapTerritorial = ({
     <div className="mp-root flex flex-col h-full">
       <PrintHeader ctx={printContext} />
 
-      <div className="flex flex-col flex-1 overflow-hidden rounded-xl shadow-lg border border-gray-200">
+      <div className="flex flex-col flex-1 rounded-xl shadow-lg border border-gray-200">
 
       {/* ── Área del mapa ───────────────────────────────────────────────── */}
       <div
         ref={containerRef}
-        className="relative flex-1 min-h-[400px]"
+        className="relative flex-1 min-h-[400px] overflow-hidden"
+        style={{ touchAction: isMobileMap ? 'none' : 'auto' }}
         onMouseMove={isMobileMap ? undefined : handleContainerMouseMove}
-        onMouseLeave={isMobileMap ? undefined : () => setHovered(null)}
+        onMouseLeave={isMobileMap ? undefined : () => { hoveredRef.current = null; setHovered(null); }}
       >
         {/* Panel de control flotante */}
         <div
@@ -1759,6 +1836,7 @@ const MapTerritorial = ({
           onLoad={onLoad}
           onZoomChanged={onZoomChanged}
           onClick={handleMapClick}
+          onMouseMove={isMobileMap ? undefined : handleMapMouseMove}
           options={{
             mapTypeId: styleDef.mapTypeId,
             styles: styleDef.styles,
@@ -1856,10 +1934,6 @@ const MapTerritorial = ({
                     <Polygon
                       key={`sec-${sec.id}-${ri}`}
                       paths={ring}
-                      onMouseOver={isBg || isMobileMap ? undefined : () => onPolyMouseOver(sec)}
-                      onMouseMove={isBg || isMobileMap ? undefined : onPolyMouseMove}
-                      onMouseOut={isBg || isMobileMap ? undefined : onPolyMouseOut}
-                      onClick={isBg ? undefined : () => onSelectSeccion?.(sec)}
                       options={{
                         fillColor:    isSelected && !electoralMode ? '#FBBF24' : color.fill,
                         strokeColor:  isSelected && !electoralMode ? '#B45309' : isHovered ? '#1e1e1e' : showFadedBorder ? color.fill : color.stroke,
@@ -1867,7 +1941,7 @@ const MapTerritorial = ({
                         strokeWeight: isBg ? 3 : isSelected ? 3 : isHovered ? 2.5 : isDipNeutral ? 0.8 : showFadedBorder ? 1 : 1.5,
                         strokeOpacity: showFadedBorder ? 0.15 : isDipNeutral ? 0.35 : 0.85,
                         zIndex:       isBg ? 1 : isSelected ? 20 : isHovered ? 10 : isDipNeutral ? 1 : showFadedBorder ? 5 : 2,
-                        clickable:    !isBg,
+                        clickable:    false,
                       }}
                     />
                   ))}
@@ -2078,9 +2152,6 @@ const MapTerritorial = ({
                   <Polygon
                     key={`frac-${f.fraccion}-${ri}`}
                     paths={ring}
-                    onMouseOver={isMobileMap ? undefined : () => onFracMouseOver(f)}
-                    onMouseMove={isMobileMap ? undefined : onPolyMouseMove}
-                    onMouseOut={isMobileMap ? undefined : onPolyMouseOut}
                     options={{
                       fillColor:    isAssigned ? '#DC2626' : fill,
                       strokeColor:  isAssigned ? '#7F1D1D' : isFocused ? '#92400E' : isHovered ? '#111827' : stroke,
@@ -2088,6 +2159,7 @@ const MapTerritorial = ({
                       strokeWeight: isAssigned ? 4    : isFocused ? 3.5  : isHovered ? 3    : 2.2,
                       strokeOpacity: 1,
                       zIndex:       isAssigned ? 35   : isFocused ? 30   : isHovered ? 25   : 12,
+                      clickable:    false,
                     }}
                   />
                 ))}
@@ -2110,7 +2182,7 @@ const MapTerritorial = ({
               <OverlayView
                 key={`lbl-frac-${f.fraccion}`}
                 position={center}
-                mapPaneName="overlayMouseTarget"
+                mapPaneName="floatPane"
               >
                 <div style={{ position: 'absolute', transform: 'translate(-50%,-50%)', pointerEvents: 'none', userSelect: 'none', textAlign: 'center' }}>
                   <div style={{

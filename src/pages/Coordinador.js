@@ -323,7 +323,7 @@ const Coordinador = () => {
   }, [user, usuario, navigate]);
 
   // ── State ──────────────────────────────────────────────────────────────────
-  const [tab, setTab]                           = useState('mapa');
+  const [tab, setTab]                           = useState('resumen');
   const [loading, setLoading]                   = useState(true);
   const [promotores, setPromotores]             = useState([]);
   const [seccionesSector, setSeccionesSector]   = useState([]);
@@ -928,83 +928,112 @@ const Coordinador = () => {
                   <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
                     {/* Header */}
                     <div className="px-4 pt-4 pb-3 border-b border-slate-100">
-                      <div className="flex items-start justify-between gap-2 mb-1">
+                      <div className="flex items-center justify-between gap-2 mb-1.5">
                         <div>
-                          <p className="text-[9px] font-black uppercase tracking-[0.18em] text-slate-400 leading-none mb-1">Entrega de credenciales</p>
-                          <p className="text-xs font-bold text-slate-800">Entregadas SP vs Comprobadas</p>
+                          <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400 leading-none mb-1">Entrega de credenciales</p>
+                          <p className="text-sm font-bold text-slate-800">Entregadas SP vs Comprobadas</p>
                         </div>
-                        <span className="text-[9px] font-bold px-2 py-1 rounded-full whitespace-nowrap flex-shrink-0 text-white"
+                        <span className="text-xs font-bold px-2.5 py-1 rounded-full whitespace-nowrap flex-shrink-0 text-white"
                           style={{ backgroundColor: barColor }}>{statusLabel}</span>
                       </div>
-                      <p className="text-[10px] text-slate-500 flex items-center gap-1">
-                        <span className="w-1.5 h-1.5 rounded-full inline-block" style={{ backgroundColor: barColor }} />
+                      <p className="text-xs text-slate-500 flex items-center gap-1.5">
+                        <span className="w-2 h-2 rounded-full inline-block flex-shrink-0" style={{ backgroundColor: barColor }} />
                         Sector {user.poligono} · {afRows.length} secciones
                       </p>
                     </div>
 
                     <div className="p-4 space-y-3">
-                      {/* KPIs */}
-                      <div className="grid grid-cols-3 gap-1.5">
-                        <div className="bg-slate-50 rounded-xl p-2.5 text-center border border-slate-100">
-                          <p className="text-[9px] font-bold uppercase tracking-widest text-slate-400 leading-none mb-1">Afiliados</p>
-                          <p className="text-base font-black tabular-nums text-slate-700">{fmt(totAfiliados)}</p>
+                      {/* KPIs 2×2 */}
+                      <div className="grid grid-cols-2 gap-2">
+                        <div className="bg-slate-50 rounded-xl p-3 text-center border border-slate-100">
+                          <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 leading-none mb-1.5">Afiliados</p>
+                          <p className="text-xl font-black tabular-nums text-slate-700">{fmt(totAfiliados)}</p>
                         </div>
-                        <div className="bg-amber-50 rounded-xl p-2.5 text-center">
-                          <p className="text-[9px] font-bold uppercase tracking-widest text-amber-500 leading-none mb-1">Entregadas SP</p>
-                          <p className="text-base font-black tabular-nums text-amber-700">{fmt(totEntregadas)}</p>
+                        <div className="bg-amber-50 rounded-xl p-3 text-center border border-amber-100">
+                          <p className="text-[10px] font-bold uppercase tracking-widest text-amber-500 leading-none mb-1.5">Entregadas al SP</p>
+                          <p className="text-xl font-black tabular-nums text-amber-700">{fmt(totEntregadas)}</p>
                         </div>
-                        <div className="bg-emerald-50 rounded-xl p-2.5 text-center">
-                          <p className="text-[9px] font-bold uppercase tracking-widest text-emerald-600 leading-none mb-1">Comprobadas</p>
-                          <p className="text-base font-black tabular-nums text-emerald-700">{fmt(totComprobadas)}</p>
+                        <div className="bg-emerald-50 rounded-xl p-3 text-center border border-emerald-100">
+                          <p className="text-[10px] font-bold uppercase tracking-widest text-emerald-600 leading-none mb-1.5">Comprobadas</p>
+                          <p className="text-xl font-black tabular-nums text-emerald-700">{fmt(totComprobadas)}</p>
+                        </div>
+                        <div className="rounded-xl p-3 text-center border" style={{ backgroundColor: barColor + '12', borderColor: barColor + '30' }}>
+                          <p className="text-[10px] font-bold uppercase tracking-widest leading-none mb-1.5" style={{ color: barColor }}>% Avance</p>
+                          <p className="text-xl font-black tabular-nums" style={{ color: barColor }}>
+                            {noData ? '—' : pct.toFixed(1) + '%'}
+                          </p>
                         </div>
                       </div>
 
-                      {/* Progress bar */}
+                      {/* Barra de progreso */}
                       {!noData && (
                         <div>
-                          <div className="h-2.5 rounded-full overflow-hidden"
-                            style={{ background: 'linear-gradient(90deg,#DC2626 0%,#CA8A04 40%,#65A30D 75%,#16A34A 100%)', opacity: 0.15 }} />
+                          <div className="h-2.5 rounded-full overflow-hidden bg-slate-100" />
                           <div className="h-2.5 rounded-full overflow-hidden -mt-2.5">
                             <div className="h-full rounded-full transition-all duration-700"
                               style={{ width: `${Math.min(pct, 100)}%`, backgroundColor: barColor }} />
                           </div>
-                          <div className="flex justify-between mt-1">
-                            <span className="text-[9px] text-slate-300">0%</span>
-                            <span className="text-[9px] font-bold" style={{ color: barColor }}>{pct.toFixed(1)}% comprobado</span>
-                            <span className="text-[9px] text-slate-300">100%</span>
-                          </div>
+                          <p className="text-xs text-slate-400 text-center mt-1.5">
+                            {fmt(totComprobadas)} comprobadas de {fmt(totEntregadas)} entregadas al SP
+                          </p>
                         </div>
                       )}
+                    </div>
+                  </div>
+                );
+              })()}
 
-                      {/* Breakdown por sección · peor primero */}
-                      {breakdown.length > 0 && (
+              {/* ── Mercado Solidario ──────────────────────────────────────── */}
+              {mercadoRows.length > 0 && (() => {
+                const secKeys = Object.keys(mercadoBySec).map(Number).sort((a, b) => a - b);
+                const totalPiezas      = secKeys.reduce((s, k) => s + (mercadoBySec[k]?.totalPiezas     ?? 0), 0);
+                const totalEntregadas  = secKeys.reduce((s, k) => s + (mercadoBySec[k]?.totalEntregadas ?? 0), 0);
+                const seccionesActivas = secKeys.filter(k => (mercadoBySec[k]?.totalEntregadas ?? 0) > 0).length;
+
+                const topSecKey = secKeys.length > 0
+                  ? secKeys.reduce((best, k) =>
+                      (mercadoBySec[k]?.totalEntregadas ?? 0) > (mercadoBySec[best]?.totalEntregadas ?? 0) ? k : best,
+                      secKeys[0])
+                  : null;
+                const topSecEntregadas = topSecKey ? (mercadoBySec[topSecKey]?.totalEntregadas ?? 0) : 0;
+
+                return (
+                  <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
+                    <div className="px-4 pt-4 pb-3 border-b border-slate-100">
+                      <div className="flex items-center justify-between gap-2 mb-1.5">
                         <div>
-                          <div className="flex items-center justify-between mb-2">
-                            <p className="text-[9px] font-bold uppercase tracking-widest text-slate-400">Por sección</p>
-                            <span className="text-[9px] text-slate-400">peor → mejor</span>
-                          </div>
-                          <div className="space-y-1.5">
-                            {breakdown.map(row => {
-                              const rowColor = semaforoColor(row.pct);
-                              return (
-                                <div key={row.key}>
-                                  <div className="flex items-center justify-between mb-0.5">
-                                    <span className="text-[10px] font-semibold text-slate-700">{row.label}</span>
-                                    <div className="flex items-center gap-1.5">
-                                      <span className="text-[9px] text-slate-400 tabular-nums">{fmt(row.comprobadas)}/{fmt(row.entregadas_sp)}</span>
-                                      <span className="text-[9px] font-bold tabular-nums min-w-[2rem] text-right" style={{ color: rowColor }}>{row.pct.toFixed(0)}%</span>
-                                    </div>
-                                  </div>
-                                  <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden">
-                                    <div className="h-full rounded-full transition-all duration-500"
-                                      style={{ width: `${Math.min(row.pct, 100)}%`, backgroundColor: rowColor }} />
-                                  </div>
-                                </div>
-                              );
-                            })}
-                          </div>
+                          <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400 leading-none mb-1">Mercado Solidario</p>
+                          <p className="text-sm font-bold text-slate-800">Distribución de piezas</p>
                         </div>
-                      )}
+                        <span className="text-xs font-bold px-2.5 py-1 rounded-full whitespace-nowrap flex-shrink-0 text-white"
+                          style={{ backgroundColor: BRAND }}>{seccionesActivas} activas</span>
+                      </div>
+                      <p className="text-xs text-slate-500">
+                        Sector {user.poligono} · {secKeys.length} secciones en total
+                      </p>
+                    </div>
+
+                    <div className="p-4">
+                      <div className="grid grid-cols-2 gap-2">
+                        <div className="bg-slate-50 rounded-xl p-3 text-center border border-slate-100">
+                          <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 leading-none mb-1.5">Total Piezas</p>
+                          <p className="text-xl font-black tabular-nums text-slate-700">{fmt(totalPiezas)}</p>
+                        </div>
+                        <div className="bg-amber-50 rounded-xl p-3 text-center border border-amber-100">
+                          <p className="text-[10px] font-bold uppercase tracking-widest text-amber-500 leading-none mb-1.5">Entregadas</p>
+                          <p className="text-xl font-black tabular-nums text-amber-700">{fmt(totalEntregadas)}</p>
+                        </div>
+                        <div className="bg-blue-50 rounded-xl p-3 text-center border border-blue-100">
+                          <p className="text-[10px] font-bold uppercase tracking-widest text-blue-500 leading-none mb-1.5">Secciones</p>
+                          <p className="text-xl font-black tabular-nums text-blue-700">{seccionesActivas}</p>
+                        </div>
+                        <div className="bg-emerald-50 rounded-xl p-3 border border-emerald-100">
+                          <p className="text-[10px] font-bold uppercase tracking-widest text-emerald-600 leading-none mb-2">Sección con más entregas</p>
+                          <p className="text-2xl font-black tabular-nums text-emerald-700 leading-none">{topSecKey ?? '—'}</p>
+                          <p className="text-[10px] font-bold uppercase tracking-widest text-emerald-600 leading-none mt-2.5 mb-1">Cantidad</p>
+                          <p className="text-2xl font-black tabular-nums text-emerald-700 leading-none">{topSecKey ? fmt(topSecEntregadas) : '—'}</p>
+                        </div>
+                      </div>
                     </div>
                   </div>
                 );
@@ -1024,10 +1053,10 @@ const Coordinador = () => {
               <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
                 <div className="px-4 py-3 border-b border-slate-100 flex items-center gap-3">
                   <div className="flex-1">
-                    <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500">SM del sector</p>
-                    <p className="text-xs text-slate-400 mt-0.5">{promotores.length} activas · {sinCubrir} sin cubrir</p>
+                    <p className="text-xs font-bold uppercase tracking-widest text-slate-500">SM del sector</p>
+                    <p className="text-sm text-slate-400 mt-0.5">{promotores.length} activas · {sinCubrir} sin cubrir</p>
                   </div>
-                  <span className="text-sm font-black px-2.5 py-0.5 rounded-full text-white flex-shrink-0"
+                  <span className="text-sm font-black px-3 py-1 rounded-full text-white flex-shrink-0"
                     style={{ backgroundColor: BRAND }}>{promotores.length}</span>
                 </div>
 
@@ -1046,79 +1075,89 @@ const Coordinador = () => {
                   </div>
                 </div>
 
-                {/* Lista de SM */}
-                <div className="divide-y divide-slate-50/80">
+                {/* Lista de SM — tarjetas */}
+                <div className="p-3 space-y-2.5">
                   {smFiltrados.length === 0 ? (
                     <p className="text-sm text-slate-400 italic text-center py-8">
                       {smFiltroLocal ? 'Sin coincidencias.' : 'Sin SM registradas.'}
                     </p>
                   ) : smFiltrados.slice(0, 30).map(r => (
-                    <div key={r.id} className="px-4 py-2.5 flex items-center gap-3 transition-colors"
+                    <div key={r.id}
+                      className="bg-slate-50 rounded-2xl border border-slate-100 p-3 space-y-2.5"
                       style={{ WebkitTapHighlightColor: 'transparent' }}>
-                      <div className="w-10 h-10 rounded-2xl flex items-center justify-center text-xs font-black text-white flex-shrink-0 shadow-sm"
-                        style={{ background: `linear-gradient(135deg, ${BRAND}BB 0%, #A52040AA 100%)` }}>
-                        {r.nombre?.[0]}{r.a_paterno?.[0]}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-bold text-slate-800 truncate leading-tight">{r.nombre} {r.a_paterno}</p>
-                        <div className="flex items-center gap-2 mt-0.5">
-                          <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-md bg-slate-100 text-slate-500">S.{r.seccion}</span>
-                          <span className="text-[10px] text-slate-400 font-mono">{r.ubt}</span>
+                      {/* Identidad */}
+                      <div className="flex items-start gap-3">
+                        <div className="w-11 h-11 rounded-2xl flex items-center justify-center text-sm font-black text-white flex-shrink-0 shadow-sm"
+                          style={{ background: `linear-gradient(135deg, ${BRAND}CC 0%, #A52040BB 100%)` }}>
+                          {r.nombre?.[0]}{r.a_paterno?.[0]}
+                        </div>
+                        <div className="flex-1 min-w-0 pt-0.5">
+                          <p className="text-sm font-bold text-slate-800 leading-snug">
+                            {[r.nombre, r.a_paterno, r.a_materno].filter(Boolean).join(' ')}
+                          </p>
+                          <div className="flex items-center gap-2 mt-1">
+                            <span className="text-xs font-semibold px-2 py-0.5 rounded-md bg-white border border-slate-200 text-slate-600">Secc. {r.seccion}</span>
+                            {r.ubt && <span className="text-xs text-slate-400 font-mono">{r.ubt}</span>}
+                          </div>
                         </div>
                       </div>
-                      <div className="flex items-center gap-1.5 flex-shrink-0">
+                      {/* Acciones */}
+                      <div className="flex gap-2">
                         <ToggleStatusButtonCP registroId={r.id} initialStatus={r.status} />
                         <button onClick={() => navigate(`/ciudadano/${r.id}`)}
-                          className="text-[11px] font-bold px-2.5 py-1.5 rounded-xl text-white transition-all active:scale-95"
-                          style={{ backgroundColor: BRAND }}>
-                          Ver
+                          className="flex-shrink-0 text-sm font-semibold px-4 py-2.5 rounded-xl border border-slate-200 bg-white text-slate-700 transition-all active:scale-95">
+                          Editar
                         </button>
                       </div>
                     </div>
                   ))}
                   {smFiltrados.length > 30 && (
-                    <p className="text-xs text-slate-400 text-center py-3">
-                      Mostrando 30 de {smFiltrados.length}. Usa el buscador para filtrar.
+                    <p className="text-sm text-slate-400 text-center py-2">
+                      Mostrando 30 de {smFiltrados.length} — usa el buscador para filtrar.
                     </p>
                   )}
                 </div>
 
                 {/* Búsqueda avanzada */}
-                <div className="px-4 pb-3 pt-1">
+                <div className="px-3 pb-3 pt-0">
                   <button
                     onClick={() => { setSeccionFiltro(''); setNombreFiltro(smFiltroLocal); manejarFiltro(); }}
-                    className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-semibold text-white transition-opacity active:opacity-80"
+                    className="w-full flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-semibold text-white transition-opacity active:opacity-80"
                     style={{ backgroundColor: BRAND + 'DD' }}>
                     <IcoSearch />
-                    Búsqueda avanzada en base de datos
+                    Búsqueda avanzada
                   </button>
                 </div>
 
                 {/* Results from DB search */}
                 {resultados.length > 0 && (
                   <div className="border-t border-slate-100">
-                    <div className="px-4 py-2 bg-slate-50 flex items-center justify-between">
+                    <div className="px-4 py-2.5 bg-slate-50 flex items-center justify-between">
                       <p className="text-xs font-bold text-slate-600">Resultado BD</p>
-                      <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-slate-200 text-slate-600">{resultados.length}</span>
+                      <span className="text-xs font-bold px-2.5 py-0.5 rounded-full bg-slate-200 text-slate-600">{resultados.length}</span>
                     </div>
-                    <div className="divide-y divide-slate-50/80">
+                    <div className="p-3 space-y-2.5">
                       {resultados.map(r => (
-                        <div key={r.id} className="px-4 py-2.5 flex items-center gap-3">
-                          <div className="w-10 h-10 rounded-2xl flex items-center justify-center text-xs font-black text-white flex-shrink-0"
-                            style={{ backgroundColor: '#64748B' }}>
-                            {r.nombre?.[0]}{r.a_paterno?.[0]}
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <p className="text-sm font-bold text-slate-800 truncate leading-tight">{r.nombre} {r.a_paterno}</p>
-                            <div className="flex items-center gap-2 mt-0.5">
-                              <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-md bg-slate-100 text-slate-500">S.{r.seccion}</span>
-                              <span className="text-[10px] text-slate-400 font-mono">{r.ubt}</span>
+                        <div key={r.id} className="bg-slate-50 rounded-2xl border border-slate-100 p-3 space-y-2.5">
+                          <div className="flex items-start gap-3">
+                            <div className="w-11 h-11 rounded-2xl flex items-center justify-center text-sm font-black text-white flex-shrink-0"
+                              style={{ backgroundColor: '#64748B' }}>
+                              {r.nombre?.[0]}{r.a_paterno?.[0]}
+                            </div>
+                            <div className="flex-1 min-w-0 pt-0.5">
+                              <p className="text-sm font-bold text-slate-800 leading-snug">
+                                {[r.nombre, r.a_paterno, r.a_materno].filter(Boolean).join(' ')}
+                              </p>
+                              <div className="flex items-center gap-2 mt-1">
+                                <span className="text-xs font-semibold px-2 py-0.5 rounded-md bg-white border border-slate-200 text-slate-600">Secc. {r.seccion}</span>
+                                {r.ubt && <span className="text-xs text-slate-400 font-mono">{r.ubt}</span>}
+                              </div>
                             </div>
                           </div>
                           <button onClick={() => navigate(`/ciudadano/${r.id}`)}
-                            className="text-[11px] font-bold px-2.5 py-1.5 rounded-xl text-white transition-all active:scale-95"
-                            style={{ backgroundColor: BRAND }}>
-                            Ver
+                            className="w-full text-sm font-semibold py-2.5 rounded-xl border border-slate-200 bg-white text-slate-700 transition-all active:scale-95"
+                            style={{ color: BRAND }}>
+                            Editar
                           </button>
                         </div>
                       ))}
@@ -1131,12 +1170,12 @@ const Coordinador = () => {
               {actSM.length > 0 && (
                 <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
                   <div className="px-4 py-3 border-b border-slate-100 flex items-center justify-between">
-                    <p className="text-[9px] font-black uppercase tracking-[0.18em] text-slate-400">Actividades de trabajo del sector</p>
-                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-500">{actSM.length} activ.</span>
+                    <p className="text-xs font-bold text-slate-700">Actividades del sector</p>
+                    <span className="text-xs font-bold px-2.5 py-0.5 rounded-full bg-slate-100 text-slate-500">{actSM.length}</span>
                   </div>
 
-                  {/* Activity pills — one per activity with global completion rate */}
-                  <div className="p-3 space-y-2.5">
+                  {/* Resumen global por actividad */}
+                  <div className="p-4 space-y-3">
                     {actSM.map(act => {
                       const totalSMs  = promotores.length;
                       const compTotal = reporteActSeccion.reduce((s, sec) => s + (sec.comprobados[act.id] || 0), 0);
@@ -1144,14 +1183,14 @@ const Coordinador = () => {
                       const barCol    = pctAct === 100 ? '#10B981' : pctAct >= 50 ? '#3B82F6' : pctAct > 0 ? '#F59E0B' : '#E2E8F0';
                       return (
                         <div key={act.id}>
-                          <div className="flex items-center justify-between mb-1">
-                            <p className="text-[11px] font-semibold text-slate-700 truncate flex-1 mr-2">{act.nombre}</p>
-                            <span className="text-[11px] font-bold tabular-nums flex-shrink-0"
+                          <div className="flex items-center justify-between mb-1.5">
+                            <p className="text-sm font-semibold text-slate-700 truncate flex-1 mr-3">{act.nombre}</p>
+                            <span className="text-sm font-bold tabular-nums flex-shrink-0"
                               style={{ color: pctAct === 100 ? '#10B981' : pctAct > 0 ? '#3B82F6' : '#94A3B8' }}>
                               {compTotal}/{totalSMs}
                             </span>
                           </div>
-                          <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                          <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
                             <div className="h-full rounded-full transition-all duration-500"
                               style={{ width: `${pctAct}%`, backgroundColor: barCol }} />
                           </div>
@@ -1160,47 +1199,40 @@ const Coordinador = () => {
                     })}
                   </div>
 
-                  {/* Per-section breakdown */}
+                  {/* Desglose por sección — tarjetas, sin tabla horizontal */}
                   {reporteActSeccion.length > 0 && (
-                    <div className="border-t border-slate-100 overflow-x-auto">
-                      <table className="w-full">
-                        <thead>
-                          <tr className="bg-slate-50 border-b border-slate-100">
-                            <th className="text-left px-3 py-2 text-[9px] font-bold uppercase tracking-widest text-slate-400 whitespace-nowrap">Sección</th>
-                            <th className="text-center px-2 py-2 text-[9px] font-bold uppercase tracking-widest text-slate-400">SM</th>
-                            {actSM.map(a => (
-                              <th key={a.id} className="text-center px-2 py-2 text-[9px] font-bold uppercase tracking-widest text-slate-400 whitespace-nowrap" title={a.nombre}>
-                                {a.nombre.length > 10 ? a.nombre.slice(0, 10) + '…' : a.nombre}
-                              </th>
-                            ))}
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-slate-50">
-                          {reporteActSeccion.map(s => (
-                            <tr key={s.seccion} className="hover:bg-slate-50 transition-colors">
-                              <td className="px-3 py-2 text-xs font-bold text-slate-700 whitespace-nowrap">Secc. {s.seccion}</td>
-                              <td className="px-2 py-2 text-xs text-center text-slate-500">{s.total}</td>
-                              {actSM.map(a => {
-                                const comp = s.comprobados[a.id] || 0;
-                                const p    = s.total ? Math.round((comp / s.total) * 100) : 0;
-                                return (
-                                  <td key={a.id} className="px-2 py-2 text-center">
-                                    <span className={`text-xs font-bold ${p === 100 ? 'text-emerald-600' : p > 0 ? 'text-blue-500' : 'text-slate-300'}`}>
-                                      {comp}/{s.total}
-                                    </span>
-                                  </td>
-                                );
-                              })}
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
+                    <div className="border-t border-slate-100 divide-y divide-slate-50">
+                      {reporteActSeccion.map(s => (
+                        <div key={s.seccion} className="px-4 py-3">
+                          <div className="flex items-center justify-between mb-2">
+                            <span className="text-sm font-bold text-slate-700">Secc. {s.seccion}</span>
+                            <span className="text-xs text-slate-400">{s.total} SM</span>
+                          </div>
+                          <div className="flex flex-wrap gap-1.5">
+                            {actSM.map(a => {
+                              const comp = s.comprobados[a.id] || 0;
+                              const p    = s.total ? Math.round((comp / s.total) * 100) : 0;
+                              return (
+                                <span key={a.id} className={`text-xs font-semibold px-2 py-1 rounded-lg ${
+                                  p === 100
+                                    ? 'bg-emerald-50 text-emerald-700'
+                                    : p > 0
+                                      ? 'bg-blue-50 text-blue-600'
+                                      : 'bg-slate-100 text-slate-400'
+                                }`}>
+                                  {a.nombre.split(' ')[0]} {comp}/{s.total}
+                                </span>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      ))}
                     </div>
                   )}
 
                   <button
                     onClick={() => setTab('actividades')}
-                    className="w-full py-2.5 text-xs font-bold border-t border-slate-100 transition-colors"
+                    className="w-full py-3 text-sm font-bold border-t border-slate-100 transition-colors"
                     style={{ color: BRAND }}
                     onMouseEnter={e => e.currentTarget.style.backgroundColor = '#FDF6F7'}
                     onMouseLeave={e => e.currentTarget.style.backgroundColor = ''}>
@@ -1218,7 +1250,7 @@ const Coordinador = () => {
           <div className={isMobile ? 'h-full relative overflow-hidden' : 'h-full flex'}>
 
             {/* Mapa */}
-            <div className={isMobile ? 'absolute inset-0' : 'flex-1 h-full'} style={{ touchAction: isMobile ? 'none' : 'auto', overscrollBehavior: 'none', ...(!isMobile ? { order: 2 } : {}) }}>
+            <div className={isMobile ? 'absolute inset-0' : 'flex-1 h-full'} style={{ touchAction: 'none', overscrollBehavior: 'none', ...(!isMobile ? { order: 2 } : {}) }}>
               {seccionesSector.length === 0 ? (
                 <div className="flex flex-col items-center justify-center h-full gap-3">
                   <div className="w-8 h-8 rounded-full border-2 border-slate-200 animate-spin" style={{ borderTopColor: BRAND }} />

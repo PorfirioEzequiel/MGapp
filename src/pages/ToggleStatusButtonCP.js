@@ -97,14 +97,15 @@ const ToggleStatusButtonCP = ({ registroId, initialStatus }) => {
   return (
     <>
       <button
-        className={`text-white my-2 font-medium rounded-full text-sm px-5 py-2.5 text-center me-2 mb-2 focus:outline-none focus:ring-4
-        ${status === 'ACTIVO'
-          ? 'bg-pink-700 hover:bg-pink-800 focus:ring-pink-300 dark:bg-pink-600 dark:hover:bg-pink-700 dark:focus:ring-pink-900'
-          : 'bg-gray-700 hover:bg-gray-800 focus:ring-gray-300 dark:bg-gray-600 dark:hover:bg-gray-700 dark:focus:ring-gray-900'}`}
+        className={`flex-1 text-sm font-semibold py-2.5 rounded-xl focus:outline-none transition-all active:scale-95 ${
+          status === 'ACTIVO'
+            ? 'bg-rose-600 text-white active:bg-rose-700'
+            : 'bg-slate-100 text-slate-600 active:bg-slate-200'
+        }`}
         onClick={toggleStatus}
         disabled={loading}
       >
-        {loading ? 'Cargando...' : status === 'ACTIVO' ? 'SOLICITAR BAJA' : 'CANCELAR SOLICITUD'}
+        {loading ? 'Guardando…' : status === 'ACTIVO' ? 'Solicitar Baja' : 'Cancelar Solicitud'}
       </button>
 
       {/* Modal */}
