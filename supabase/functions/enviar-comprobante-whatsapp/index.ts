@@ -20,7 +20,7 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const { telefono, folio, tutorNombre, fechaCita, horaCita, comprobanteUrl, ubicacionUrl } = await req.json();
+    const { telefono, folio, tutorNombre, fechaCita, horaCita, comprobanteUrl, ubicacionUrl, caption: captionOverride } = await req.json();
 
     if (!telefono || !comprobanteUrl) {
       return new Response(JSON.stringify({ error: "Faltan telefono o comprobanteUrl" }), {
@@ -42,12 +42,13 @@ Deno.serve(async (req) => {
 
     const telefonoLimpio = String(telefono).replace(/\D/g, "");
     const to = `${countryCode}${telefonoLimpio}`;
-    const caption =
+    const caption = captionOverride ?? (
       `Hola ${tutorNombre ?? ""}, este es tu comprobante de cita para el Certificado Médico.\n\n` +
       `📅 Fecha: ${fechaCita} a las ${horaCita} hrs\n` +
       (ubicacionUrl ? `📍 Ubicación: ${ubicacionUrl}\n` : "") +
       (folio ? `\nFolio: ${folio}\n` : "") +
-      `\nPresenta este comprobante el día de tu cita.`;
+      `\nPresenta este comprobante el día de tu cita.`
+    );
 
     const resp = await fetch(`https://api.ultramsg.com/${instanceId}/messages/image`, {
       method: "POST",

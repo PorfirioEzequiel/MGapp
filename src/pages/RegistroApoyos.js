@@ -365,12 +365,19 @@ export default function RegistroApoyos() {
           .getPublicUrl(filePath);
         setComprobanteUrlStorage(urlData.publicUrl);
         const nombreBen = `${form.nombre} ${form.a_paterno} ${form.a_materno}`.trim();
+        const folioFmt = String(folioId).padStart(6, "0");
+        const programasSel = programas.filter((p) => seleccionados.has(p.id)).map((p) => p.nombre).join(", ");
+        const captionApoyos =
+          `Hola ${nombreBen}, te enviamos tu comprobante de registro de *${programasSel || "Apoyo Social"}*.\n\n` +
+          `Folio: #${folioFmt}\n\n` +
+          `⚠️ Este mensaje no se contesta, es informativo de su registro.`;
         const { error: fnErr } = await supabase.functions.invoke("enviar-comprobante-whatsapp", {
           body: {
-            telefono: telLimpio,
-            folio:    String(folioId).padStart(6, "0"),
+            telefono:       telLimpio,
+            folio:          folioFmt,
             tutorNombre:    nombreBen,
             comprobanteUrl: urlData.publicUrl,
+            caption:        captionApoyos,
           },
         });
         if (fnErr) throw fnErr;
