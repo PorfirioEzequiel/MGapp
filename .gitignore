@@ -24,3 +24,7 @@ yarn-error.log*
 
 # Supabase CLI local cache (contiene URL de conexión a la BD)
 supabase/.temp
+
+# Variables de entorno con credenciales
+backend/.env
+.env

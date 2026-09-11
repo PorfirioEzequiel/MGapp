@@ -359,6 +359,7 @@ const Coordinador = () => {
   const [electoralData2024IEEM, setElectoralData2024IEEM] = useState({});
   const [electoralDataSenado,   setElectoralDataSenado]   = useState({});
   const [electoralDataDip2024,  setElectoralDataDip2024]  = useState({});
+  const [comprobadasMongo,      setComprobadasMongo]      = useState({});
 
   const getSnapPx = (snap, h) => {
     if (snap === 'full') return Math.round(h * 0.03);
@@ -468,6 +469,17 @@ const Coordinador = () => {
       fetchCatalogoFracciones(),
       fetchActividades(),
     ]).finally(() => setLoading(false));
+  }, []);
+
+  useEffect(() => {
+    fetch('http://localhost:3001/api/comprobadas')
+      .then(r => r.json())
+      .then(rows => {
+        const map = {};
+        for (const row of rows) { if (row.seccion != null) map[row.seccion] = row.comprobadas; }
+        setComprobadasMongo(map);
+      })
+      .catch(() => {});
   }, []);
 
   const fetchMercado = async (sectionNums) => {
@@ -629,9 +641,14 @@ const Coordinador = () => {
   const afiliacionBySec = useMemo(() => {
     const m = {};
     AFILIACION.filter(r => Number(r.sp) === Number(user.poligono))
-              .forEach(r => { m[r.seccion] = r; });
+              .forEach(r => {
+                m[r.seccion] = {
+                  ...r,
+                  comprobadas: comprobadasMongo[r.seccion] ?? r.comprobadas,
+                };
+              });
     return m;
-  }, [user.poligono]);
+  }, [user.poligono, comprobadasMongo]);
 
   const mercadoBySec = useMemo(() => {
     if (!mercadoRows.length) return {};
@@ -965,7 +982,7 @@ const Coordinador = () => {
                 if (!afRows.length) return null;
 
                 const totEntregadas  = afRows.reduce((s, r) => s + (r.entregadas_sp || 0), 0);
-                const totComprobadas = afRows.reduce((s, r) => s + (r.comprobadas   || 0), 0);
+                const totComprobadas = afRows.reduce((s, r) => s + ((comprobadasMongo[r.seccion] ?? r.comprobadas) || 0), 0);
                 const totAfiliados   = afRows.reduce((s, r) => s + (r.afiliados     || 0), 0);
                 const pct    = totEntregadas > 0 ? (totComprobadas / totEntregadas) * 100 : 0;
                 const noData = totEntregadas === 0;
@@ -981,8 +998,8 @@ const Coordinador = () => {
                     label: `Sec. ${r.seccion}`,
                     key:   r.seccion,
                     entregadas_sp: r.entregadas_sp,
-                    comprobadas:   r.comprobadas,
-                    pct: (r.comprobadas / r.entregadas_sp) * 100,
+                    comprobadas:   comprobadasMongo[r.seccion] ?? r.comprobadas,
+                    pct: ((comprobadasMongo[r.seccion] ?? r.comprobadas) / r.entregadas_sp) * 100,
                   }))
                   .sort((a, b) => a.pct - b.pct);
 
@@ -1293,7 +1310,7 @@ const Coordinador = () => {
                   const afRows = AFILIACION.filter(r => Number(r.sp) === Number(user.poligono));
                   if (!afRows.length) return null;
                   const totEntregadas  = afRows.reduce((s, r) => s + (r.entregadas_sp || 0), 0);
-                  const totComprobadas = afRows.reduce((s, r) => s + (r.comprobadas   || 0), 0);
+                  const totComprobadas = afRows.reduce((s, r) => s + ((comprobadasMongo[r.seccion] ?? r.comprobadas) || 0), 0);
                   const totAfiliados   = afRows.reduce((s, r) => s + (r.afiliados     || 0), 0);
                   const pct    = totEntregadas > 0 ? (totComprobadas / totEntregadas) * 100 : 0;
                   const noData = totEntregadas === 0;
@@ -1752,7 +1769,8 @@ const Coordinador = () => {
                       </div>
                     );
 
-                    const pct    = r.entregadas_sp > 0 ? (r.comprobadas / r.entregadas_sp) * 100 : 0;
+                    const comprobadas = comprobadasMongo[r.seccion] ?? r.comprobadas;
+                    const pct    = r.entregadas_sp > 0 ? (comprobadas / r.entregadas_sp) * 100 : 0;
                     const noData = (r.entregadas_sp || 0) === 0;
                     const barColor    = noData ? '#9CA3AF' : semColor(pct);
                     const statusLabel = semLabel(pct, noData);
@@ -1781,7 +1799,7 @@ const Coordinador = () => {
                           {[
                             { label: 'Afiliados',      v: r.afiliados,            bg: 'bg-slate-50 border border-slate-100', txt: 'text-slate-700',   lbl: 'text-slate-400' },
                             { label: 'Entregadas SP',  v: r.entregadas_sp,        bg: 'bg-amber-50',                         txt: 'text-amber-700',   lbl: 'text-amber-500' },
-                            { label: 'Comprobadas',    v: r.comprobadas,          bg: 'bg-emerald-50',                       txt: 'text-emerald-700', lbl: 'text-emerald-600' },
+                            { label: 'Comprobadas',    v: comprobadas,            bg: 'bg-emerald-50',                       txt: 'text-emerald-700', lbl: 'text-emerald-600' },
                             { label: 'En stock',       v: r.en_stock,             bg: 'bg-blue-50',                          txt: 'text-blue-700',    lbl: 'text-blue-500' },
                             { label: 'Sin entregar',   v: r.sin_entregar,         bg: 'bg-red-50',                           txt: 'text-red-700',     lbl: 'text-red-400' },
                             { label: 'Sin datos',      v: r.sin_datos,            bg: 'bg-slate-50 border border-slate-100', txt: 'text-slate-500',   lbl: 'text-slate-400' },
@@ -1817,7 +1835,7 @@ const Coordinador = () => {
                   // ── Vista sector completo ───────────────────────────────
                   const afRows         = AFILIACION.filter(r => Number(r.sp) === Number(user.poligono));
                   const totEntregadas  = afRows.reduce((s, r) => s + (r.entregadas_sp || 0), 0);
-                  const totComprobadas = afRows.reduce((s, r) => s + (r.comprobadas   || 0), 0);
+                  const totComprobadas = afRows.reduce((s, r) => s + ((comprobadasMongo[r.seccion] ?? r.comprobadas) || 0), 0);
                   const totAfiliados   = afRows.reduce((s, r) => s + (r.afiliados     || 0), 0);
                   const pct    = totEntregadas > 0 ? (totComprobadas / totEntregadas) * 100 : 0;
                   const noData = totEntregadas === 0;
@@ -1830,8 +1848,8 @@ const Coordinador = () => {
                       key:           r.seccion,
                       label:         `Sec. ${r.seccion}`,
                       entregadas_sp: r.entregadas_sp,
-                      comprobadas:   r.comprobadas,
-                      pct:           (r.comprobadas / r.entregadas_sp) * 100,
+                      comprobadas:   comprobadasMongo[r.seccion] ?? r.comprobadas,
+                      pct:           ((comprobadasMongo[r.seccion] ?? r.comprobadas) / r.entregadas_sp) * 100,
                     }))
                     .sort((a, b) => a.pct - b.pct);
 
