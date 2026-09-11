@@ -2154,10 +2154,10 @@ const MapTerritorial = ({
                     paths={ring}
                     options={{
                       fillColor:    isAssigned ? '#DC2626' : fill,
-                      strokeColor:  isAssigned ? '#7F1D1D' : isFocused ? '#92400E' : isHovered ? '#111827' : stroke,
+                      strokeColor:  isAssigned ? '#7F1D1D' : isFocused ? '#92400E' : isHovered ? '#111827' : '#000000',
                       fillOpacity:  isAssigned ? 0.55 : isFocused ? 0.65 : isHovered ? 0.70 : 0.48,
-                      strokeWeight: isAssigned ? 4    : isFocused ? 3.5  : isHovered ? 3    : 2.2,
-                      strokeOpacity: 1,
+                      strokeWeight: isAssigned ? 4    : isFocused ? 3.5  : isHovered ? 3    : 1,
+                      strokeOpacity: isAssigned || isFocused || isHovered ? 1 : 0.3,
                       zIndex:       isAssigned ? 35   : isFocused ? 30   : isHovered ? 25   : 12,
                       clickable:    false,
                     }}
