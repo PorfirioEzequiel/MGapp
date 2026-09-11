@@ -1161,12 +1161,19 @@ const MapTerritorial = ({
     );
   }, [selectedSeccion]);
 
-  // Pan + zoom al enfocar una SM
+  // Scope preciso a la fracción: fitBounds en el polígono, fallback panTo+zoom
   useEffect(() => {
     if (!focusCoords || !mapRef.current || !window.google) return;
-    mapRef.current.panTo({ lat: focusCoords.lat, lng: focusCoords.lng });
-    mapRef.current.setZoom(17);
-  }, [focusCoords]);
+    const rings = focusCoords.ubt ? (fraccionPathMap.get(focusCoords.ubt) ?? []) : [];
+    if (rings.length) {
+      const bounds = new window.google.maps.LatLngBounds();
+      rings.flat().forEach(p => bounds.extend(p));
+      mapRef.current.fitBounds(bounds, { top: 80, bottom: 80, left: 80, right: 80 });
+    } else {
+      mapRef.current.panTo({ lat: focusCoords.lat, lng: focusCoords.lng });
+      mapRef.current.setZoom(17);
+    }
+  }, [focusCoords, fraccionPathMap]);
 
   // Pan al marcador editable cuando se coloca o se actualiza (p.ej. escribiendo lat/lng a mano)
   useEffect(() => {
