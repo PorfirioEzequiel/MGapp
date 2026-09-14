@@ -25,6 +25,7 @@ const Actividades = () => {
   const [loadingActs, setLoadingActs] = useState(true);
   const [saving, setSaving] = useState(false);
   const [actividadSeleccionada, setActividadSeleccionada] = useState('');
+  const [copiadoId, setCopiadoId] = useState(null);
 
   // Form para nueva actividad
   const [form, setForm] = useState({
@@ -73,6 +74,13 @@ const Actividades = () => {
     setForm({ nombre: '', indicacion: '', puesto: 'SM', fecha_limite: '' });
     fetchActividades();
     setTab('lista');
+  };
+
+  const handleCopiarLink = (id) => {
+    const url = `${window.location.origin}/evidencia-actividad/${id}`;
+    navigator.clipboard.writeText(url);
+    setCopiadoId(id);
+    setTimeout(() => setCopiadoId(null), 2000);
   };
 
   const handleEliminar = async (id) => {
@@ -177,10 +185,22 @@ const Actividades = () => {
                       </p>
                     </div>
                   </div>
-                  <button onClick={() => handleEliminar(act.id)}
-                    className="text-slate-300 hover:text-red-500 transition-colors flex-shrink-0 text-xs font-semibold px-2 py-1 rounded hover:bg-red-50">
-                    Eliminar
-                  </button>
+                  <div className="flex flex-col items-end gap-1.5 flex-shrink-0">
+                    <button
+                      onClick={() => handleCopiarLink(act.id)}
+                      className={`text-xs font-semibold px-3 py-1.5 rounded-lg transition-colors ${
+                        copiadoId === act.id
+                          ? 'bg-emerald-100 text-emerald-600'
+                          : 'bg-blue-50 text-blue-600 hover:bg-blue-100'
+                      }`}
+                    >
+                      {copiadoId === act.id ? '✓ Copiado' : '🔗 Copiar enlace'}
+                    </button>
+                    <button onClick={() => handleEliminar(act.id)}
+                      className="text-slate-300 hover:text-red-500 transition-colors text-xs font-semibold px-2 py-1 rounded hover:bg-red-50">
+                      Eliminar
+                    </button>
+                  </div>
                 </div>
               </div>
             ))}

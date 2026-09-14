@@ -38,6 +38,7 @@ import EditorFracciones from './admin/EditorFracciones';
 import ImportarMercadoCSV from './admin/ImportarMercadoCSV';
 import Mensajeria from './admin/Mensajeria';
 import MoviladoresGestion from './admin/MoviladoresGestion';
+import SubirEvidenciaActividad from './pages/SubirEvidenciaActividad';
 
 // Componente para proteger rutas privadas
 const PrivateRoute = ({ children }) => {
@@ -53,6 +54,9 @@ function App() {
 
         {/* Visor territorial — cargo consultor, solo lectura */}
         <Route path="/visor" element={<PrivateRoute><VisorConsultor /></PrivateRoute>} />
+
+        {/* Registro público de evidencias de actividades: sin login a propósito */}
+        <Route path="/evidencia-actividad/:actividadId" element={<SubirEvidenciaActividad />} />
 
         {/* Registro público de apoyos sociales: sin login a propósito */}
         <Route path="/registro-apoyos" element={<RegistroApoyos />} />
