@@ -710,20 +710,29 @@ export default function RegistroApoyos() {
       const programasSel = programas.filter((p) => seleccionados.has(p.id));
       for (const prog of programasSel) {
         const esCalentadorProg = prog.nombre.toLowerCase().includes("calentador");
-        const { error: ue } = await supabaseAdmin
+        const periodoP = getPeriodo(prog.frecuencia);
+
+        const { data: apoyoExistente } = await supabaseAdmin
           .from("apoyo_entregas")
-          .upsert(
-            {
+          .select("id")
+          .eq("beneficiario_id", beneficiarioId)
+          .eq("programa_id", prog.id)
+          .eq("periodo", periodoP)
+          .maybeSingle();
+
+        if (!apoyoExistente) {
+          const { error: ue } = await supabaseAdmin
+            .from("apoyo_entregas")
+            .insert({
               beneficiario_id: beneficiarioId,
               programa_id:     prog.id,
-              periodo:         getPeriodo(prog.frecuencia),
+              periodo:         periodoP,
               status:          "PENDIENTE",
               cantidad:        cantidades[prog.id] ?? 1,
               ...(esCalentadorProg && formaPago ? { forma_pago: formaPago } : {}),
-            },
-            { onConflict: "beneficiario_id,programa_id,periodo", ignoreDuplicates: true }
-          );
-        if (ue) throw ue;
+            });
+          if (ue) throw ue;
+        }
       }
 
       setFolioId(beneficiarioId);
