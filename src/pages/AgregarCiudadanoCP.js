@@ -521,7 +521,7 @@
 //     </div>
 //   );
 // }
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import supabase, { supabaseStorage } from "../supabase/client";
 import MapTerritorial from "../map/MapTerritorial";
@@ -699,6 +699,32 @@ export default function AgregarCiudadanoCP() {
     });
   }, [step, secciones]);
 
+  // Lista única de fracciones (para el dropdown) — derivada de fraccionesAlta
+  const fraccionOptions = useMemo(() => {
+    const seen = new Set();
+    return fraccionesAlta
+      .filter(f => f.fraccion != null && !seen.has(f.fraccion) && seen.add(f.fraccion))
+      .sort((a, b) => String(a.fraccion).localeCompare(String(b.fraccion), undefined, { numeric: true }));
+  }, [fraccionesAlta]);
+
+  // Seleccionar fracción desde el dropdown — también deriva sección y metadatos
+  function handleFraccionChange(fraccion) {
+    const fracData = fraccionesAlta.find(f => String(f.fraccion) === String(fraccion));
+    const cat = fracData ? ubtCatMap[fracData.seccion] : null;
+    setNuevoCiudadano(p => ({
+      ...p,
+      ubt: fraccion,
+      ...(fracData?.seccion != null ? {
+        seccion: String(fracData.seccion),
+        poligono: cat?.sector ?? p.poligono,
+        municipio: cat?.municipio ?? p.municipio,
+        nombre_municipio: cat?.nombre_municipio ?? p.nombre_municipio,
+        dtto_fed: cat?.dtto_fed ?? p.dtto_fed,
+        dtto_loc: cat?.dtto_loc ?? p.dtto_loc,
+      } : {}),
+    }));
+  }
+
   // ================= UBICACIÓN =================
   const handleObtenerUbicacion = () => {
     if (!navigator.geolocation) {
@@ -847,19 +873,24 @@ const handleSubmit = async (e) => {
 
           {/* =================== DATOS =================== */}
 
-          {/* Fracción — se asigna haciendo clic en el mapa */}
-          {nuevoCiudadano.ubt ? (
-            <div className="text-sm bg-blue-50 border border-blue-200 rounded-lg px-3 py-2">
-              Fracción asignada: <strong>{nuevoCiudadano.ubt}</strong>
-              {nuevoCiudadano.seccion && (
-                <span className="text-gray-500 ml-2">(Sección {nuevoCiudadano.seccion})</span>
-              )}
-            </div>
-          ) : (
-            <p className="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
-              Haz clic en el mapa para asignar la fracción de la SM.
-            </p>
-          )}
+          {/* Fracción — seleccionar del dropdown; el mapa es solo guía visual */}
+          <label>
+            Fracción:
+            <select
+              value={nuevoCiudadano.ubt}
+              onChange={(e) => handleFraccionChange(e.target.value)}
+              className="border p-2 w-full"
+              required
+              disabled={!fraccionOptions.length}
+            >
+              <option value="">{fraccionOptions.length ? "Seleccionar fracción" : "Cargando..."}</option>
+              {fraccionOptions.map(f => (
+                <option key={f.fraccion} value={f.fraccion}>
+                  {f.fraccion} — Sec. {f.seccion}
+                </option>
+              ))}
+            </select>
+          </label>
 
           {/* Puesto fijo: SM (a la espera de nuevos puestos) */}
          <div>
@@ -904,26 +935,9 @@ const handleSubmit = async (e) => {
                    ? { lat: Number(nuevoCiudadano.latitud), lng: Number(nuevoCiudadano.longitud) }
                    : null
                }
-               onEditableLocationChange={(lat, lng, fraccion) => {
-                 const fracData = fraccion != null
-                   ? fraccionesAlta.find(f => String(f.fraccion) === String(fraccion))
-                   : null;
-                 const cat = fracData ? ubtCatMap[fracData.seccion] : null;
-                 setNuevoCiudadano((p) => ({
-                   ...p,
-                   latitud: lat,
-                   longitud: lng,
-                   ...(fraccion != null ? { ubt: fraccion } : {}),
-                   ...(fracData?.seccion != null ? {
-                     seccion: String(fracData.seccion),
-                     poligono: cat?.sector ?? p.poligono,
-                     municipio: cat?.municipio ?? p.municipio,
-                     nombre_municipio: cat?.nombre_municipio ?? p.nombre_municipio,
-                     dtto_fed: cat?.dtto_fed ?? p.dtto_fed,
-                     dtto_loc: cat?.dtto_loc ?? p.dtto_loc,
-                   } : {}),
-                 }));
-               }}
+               onEditableLocationChange={(lat, lng) =>
+                 setNuevoCiudadano((p) => ({ ...p, latitud: lat, longitud: lng }))
+               }
              />
            </div>
          </div>
