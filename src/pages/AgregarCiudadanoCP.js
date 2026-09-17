@@ -534,10 +534,10 @@ export default function AgregarCiudadanoCP() {
   // ================= ESTADOS PRINCIPALES =================
   const [step, setStep] = useState(1); // ✅ Paso 1: Validar CURP | Paso 2: Datos + Fotos
   const [loading, setLoading] = useState(false);
-  const [ubts, setUbts] = useState([]);
   const [secciones, setSecciones] = useState([]);
-  const [seccionGeoAlta, setSeccionGeoAlta] = useState(null);
+  const [seccionesGeo, setSeccionesGeo] = useState([]);
   const [fraccionesAlta, setFraccionesAlta] = useState([]);
+  const [ubtCatMap, setUbtCatMap] = useState({});
   const [nuevoCiudadano, setNuevoCiudadano] = useState({
     curp: "",
     nombre: "",
@@ -670,7 +670,7 @@ export default function AgregarCiudadanoCP() {
 };
 
 
-  // ================= CARGAR SECCIONES (solo las del sector del SP) =================
+  // ================= CARGAR SECCIONES (sector del coordinador) =================
   useEffect(() => {
     if (step !== 2) return;
     const pol = user?.poligono;
@@ -683,79 +683,21 @@ export default function AgregarCiudadanoCP() {
       });
   }, [step, user]);
 
-  // ✅ Al seleccionar sección, buscar UBT y datos del polígono
-  // const handleSeccionChange = async (sec) => {
-  //   setNuevoCiudadano((p) => ({ ...p, seccion: sec }));
-  //   const { data, error } = await supabase
-  //     .from("ubt_catalogo")
-  //     .select("*")
-  //     .eq("seccion", sec);
-  //   if (!error && data?.length) {
-  //     const info = data[0];
-  //     setUbts(data.map((d) => d.ubt));
-  //     setNuevoCiudadano((prev) => ({
-  //       ...prev,
-  //       poligono: info.poligono,
-  //       municipio: info.nombre_municipio,
-  //       dtto_fed: info.dtto_fed,
-  //       dtto_loc: info.dtto_loc,
-  //     }));
-  //   }
-  // };
-// ✅ Al seleccionar sección, buscar UBT y datos del polígono
-const handleSeccionChange = async (sec) => {
-  setNuevoCiudadano((p) => ({ ...p, seccion: sec }));
-
-  const { data, error } = await supabase
-    .from("ubt_catalogo")
-    .select("*")
-    .eq("seccion", sec);
-
-  if (!error && data?.length) {
-    const info = data[0];
-    const listaUbts = data.map((d) => d.fraccion);
-    setUbts(listaUbts);
-
-    // ✅ Mantener UBT previa si sigue siendo válida
-    setNuevoCiudadano((prev) => ({
-      ...prev,
-      poligono: info.sector,
-      municipio: info.municipio,
-      nombre_municipio: info.nombre_municipio,
-      dtto_fed: info.dtto_fed,
-      dtto_loc: info.dtto_loc,
-      ubt: listaUbts.includes(prev.ubt) ? prev.ubt : "", // evita perder selección
-    }));
-  }
-};
-
-
-// ✅ Cuando se carga un ciudadano existente, llenar automáticamente las UBT según su sección
-useEffect(() => {
-  if (step === 2 && nuevoCiudadano.seccion) {
-    handleSeccionChange(nuevoCiudadano.seccion);
-  }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-}, [step, nuevoCiudadano.seccion]);
-
-  // Polígono de la sección elegida y sus fracciones, para marcar la ubicación en el mapa
+  // ================= CARGAR GEOMETRÍAS + CATÁLOGO PARA TODO EL SECTOR =================
   useEffect(() => {
-    if (!nuevoCiudadano.seccion) {
-      setSeccionGeoAlta(null);
-      setFraccionesAlta([]);
-      return;
-    }
-    const fetchMapaAlta = async () => {
-      const seccionNum = Number(nuevoCiudadano.seccion);
-      const [secRes, fracRes] = await Promise.all([
-        supabase.from("secciones").select("*").eq("seccion", seccionNum).maybeSingle(),
-        supabase.from("fracciones").select("fraccion, seccion, geometry").eq("seccion", seccionNum),
-      ]);
-      setSeccionGeoAlta(secRes.data ?? null);
+    if (step !== 2 || !secciones.length) return;
+    Promise.all([
+      supabase.from("secciones").select("*").in("seccion", secciones),
+      supabase.from("fracciones").select("fraccion, seccion, geometry").in("seccion", secciones),
+      supabase.from("ubt_catalogo").select("seccion, dtto_fed, dtto_loc, municipio, nombre_municipio, sector").in("seccion", secciones),
+    ]).then(([secRes, fracRes, catRes]) => {
+      setSeccionesGeo(secRes.data ?? []);
       setFraccionesAlta(fracRes.data ?? []);
-    };
-    fetchMapaAlta();
-  }, [nuevoCiudadano.seccion]);
+      const m = {};
+      (catRes.data ?? []).forEach(row => { if (!m[row.seccion]) m[row.seccion] = row; });
+      setUbtCatMap(m);
+    });
+  }, [step, secciones]);
 
   // ================= UBICACIÓN =================
   const handleObtenerUbicacion = () => {
@@ -905,44 +847,18 @@ const handleSubmit = async (e) => {
 
           {/* =================== DATOS =================== */}
 
-          <label>
-            Sección:
-            <select
-              key={nuevoCiudadano.seccion} // Forzar re-render al cambiar sección
-              value={nuevoCiudadano.seccion}
-              onChange={(e) => handleSeccionChange(e.target.value)}
-              className="border p-2 w-full"
-              required
-            >
-              <option value="">Seleccionar</option>
-              {secciones.map((sec) => (
-                <option key={sec} value={sec}>
-                  {sec}
-                </option>
-              ))}
-            </select>
-          </label>
-
-          {ubts.length > 0 && (
-            <label>
-              Fracción:
-              <select
-                key={nuevoCiudadano.ubt} // Forzar re-render al cambiar sección
-                value={nuevoCiudadano.ubt}
-                onChange={(e) =>
-                  setNuevoCiudadano((p) => ({ ...p, ubt: e.target.value }))
-                }
-                className="border p-2 w-full"
-                required
-              >
-                <option value="">Seleccionar</option>
-                {ubts.map((u) => (
-                  <option key={u} value={u}>
-                    {u}
-                  </option>
-                ))}
-              </select>
-            </label>
+          {/* Fracción — se asigna haciendo clic en el mapa */}
+          {nuevoCiudadano.ubt ? (
+            <div className="text-sm bg-blue-50 border border-blue-200 rounded-lg px-3 py-2">
+              Fracción asignada: <strong>{nuevoCiudadano.ubt}</strong>
+              {nuevoCiudadano.seccion && (
+                <span className="text-gray-500 ml-2">(Sección {nuevoCiudadano.seccion})</span>
+              )}
+            </div>
+          ) : (
+            <p className="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+              Haz clic en el mapa para asignar la fracción de la SM.
+            </p>
           )}
 
           {/* Puesto fijo: SM (a la espera de nuevos puestos) */}
@@ -977,25 +893,37 @@ const handleSubmit = async (e) => {
          <label>Colonia: <input type="text" value={nuevoCiudadano.col_loc} onChange={(e) => setNuevoCiudadano({ ...nuevoCiudadano, col_loc: e.target.value})} className="border p-2 w-full" required/></label>
 
          <div>
-           <p className="text-sm font-medium mb-1">Ubicación (haz clic en el mapa o arrastra el marcador para ajustarla):</p>
+           <p className="text-sm font-medium mb-1">Ubicación (haz clic en el mapa para posicionar a la SM y asignar su fracción):</p>
            <div style={{ height: "420px" }} className="rounded-lg overflow-hidden border">
              <MapTerritorial
-               secciones={seccionGeoAlta ? [seccionGeoAlta] : []}
+               secciones={seccionesGeo}
                fraccionesGeo={fraccionesAlta}
-               selectedSeccion={seccionGeoAlta?.seccion}
+               showFraccionesAlways={true}
                editableLocation={
                  nuevoCiudadano.latitud && nuevoCiudadano.longitud
                    ? { lat: Number(nuevoCiudadano.latitud), lng: Number(nuevoCiudadano.longitud) }
                    : null
                }
-               onEditableLocationChange={(lat, lng, fraccion) =>
+               onEditableLocationChange={(lat, lng, fraccion) => {
+                 const fracData = fraccion != null
+                   ? fraccionesAlta.find(f => String(f.fraccion) === String(fraccion))
+                   : null;
+                 const cat = fracData ? ubtCatMap[fracData.seccion] : null;
                  setNuevoCiudadano((p) => ({
                    ...p,
                    latitud: lat,
                    longitud: lng,
                    ...(fraccion != null ? { ubt: fraccion } : {}),
-                 }))
-               }
+                   ...(fracData?.seccion != null ? {
+                     seccion: String(fracData.seccion),
+                     poligono: cat?.sector ?? p.poligono,
+                     municipio: cat?.municipio ?? p.municipio,
+                     nombre_municipio: cat?.nombre_municipio ?? p.nombre_municipio,
+                     dtto_fed: cat?.dtto_fed ?? p.dtto_fed,
+                     dtto_loc: cat?.dtto_loc ?? p.dtto_loc,
+                   } : {}),
+                 }));
+               }}
              />
            </div>
          </div>

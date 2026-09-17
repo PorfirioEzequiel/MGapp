@@ -824,6 +824,7 @@ const MapTerritorial = ({
   printContext = null,
   editableLocation = null,
   onEditableLocationChange = null,
+  showFraccionesAlways = false,
   electoralModeExternal = null,
   onElectoralModeChange = null,
   readOnly = false,
@@ -910,8 +911,8 @@ const MapTerritorial = ({
   const [activeCasilla, setActiveCasilla] = useState(null);
   const [showCiudadanosLocal, setShowCiudadanos] = useState(true);
   const [ctrlsOpen, setCtrlsOpen] = useState(() => window.innerWidth >= 768);
-  // Las fracciones se muestran automáticamente cuando hay una sección seleccionada
-  const showFracciones = selectedSeccion != null;
+  // Las fracciones se muestran cuando hay sección seleccionada, o siempre si showFraccionesAlways
+  const showFracciones = showFraccionesAlways ? fraccionesGeo.length > 0 : selectedSeccion != null;
   // Colaboradores: controlado desde el padre si se pasa, si no usa estado interno
   const showCiudadanos = layerCiudadanos !== null ? layerCiudadanos : showCiudadanosLocal;
 
@@ -2145,7 +2146,7 @@ const MapTerritorial = ({
 
           {/* ── Polígonos de fracciones (desde tabla fracciones) ───── */}
           {showFracciones && fraccionesGeo
-            .filter(f => String(f.seccion) === String(selectedSeccion))
+            .filter(f => !selectedSeccion || String(f.seccion) === String(selectedSeccion))
             .map((f) => {
             const paths = fraccionPathMap.get(f.fraccion) ?? [];
             if (!paths.length) return null;
@@ -2176,7 +2177,7 @@ const MapTerritorial = ({
 
           {/* ── Etiquetas de fracción ───────────────────────────────── */}
           {showFracciones && fraccionesGeo
-            .filter(f => String(f.seccion) === String(selectedSeccion))
+            .filter(f => !selectedSeccion || String(f.seccion) === String(selectedSeccion))
             .map((f) => {
             const paths = fraccionPathMap.get(f.fraccion) ?? [];
             if (!paths.length) return null;
