@@ -523,7 +523,7 @@
 // }
 import { useEffect, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import supabase from "../supabase/client";
+import supabase, { supabaseStorage } from "../supabase/client";
 import MapTerritorial from "../map/MapTerritorial";
 
 export default function AgregarCiudadanoCP() {
@@ -780,15 +780,17 @@ useEffect(() => {
     const file = event.target.files[0];
     if (!file) return;
     const curp = nuevoCiudadano.curp.trim().toUpperCase();
+    if (!curp) return alert("Ingresa el CURP antes de subir fotos.");
     const filePath = `ciudadanos/${fieldName}-${curp}`;
-    const { error } = await supabase.storage
+    const { error } = await supabaseStorage.storage
       .from("fotos_estructura")
       .upload(filePath, file, { upsert: true });
-    if (error) return alert("Error subiendo imagen.");
-    const { data: urlData } = supabase.storage
+    if (error) return alert("Error subiendo imagen: " + error.message);
+    const { data: urlData } = supabaseStorage.storage
       .from("fotos_estructura")
       .getPublicUrl(filePath);
-    setNuevoCiudadano((p) => ({ ...p, [fieldName]: urlData.publicUrl }));
+    const urlFinal = `${urlData.publicUrl}?t=${Date.now()}`;
+    setNuevoCiudadano((p) => ({ ...p, [fieldName]: urlFinal }));
   }
 
   // ================= GUARDAR REGISTRO =================
