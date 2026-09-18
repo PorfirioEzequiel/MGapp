@@ -521,7 +521,7 @@
 //     </div>
 //   );
 // }
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import supabase, { supabaseStorage } from "../supabase/client";
 import MapTerritorial from "../map/MapTerritorial";
@@ -535,9 +535,9 @@ export default function AgregarCiudadanoCP() {
   const [step, setStep] = useState(1); // ✅ Paso 1: Validar CURP | Paso 2: Datos + Fotos
   const [loading, setLoading] = useState(false);
   const [secciones, setSecciones] = useState([]);
-  const [seccionesGeo, setSeccionesGeo] = useState([]);
+  const [ubts, setUbts] = useState([]);
+  const [seccionGeoAlta, setSeccionGeoAlta] = useState(null);
   const [fraccionesAlta, setFraccionesAlta] = useState([]);
-  const [ubtCatMap, setUbtCatMap] = useState({});
   const [nuevoCiudadano, setNuevoCiudadano] = useState({
     curp: "",
     nombre: "",
@@ -683,47 +683,44 @@ export default function AgregarCiudadanoCP() {
       });
   }, [step, user]);
 
-  // ================= CARGAR GEOMETRÍAS + CATÁLOGO PARA TODO EL SECTOR =================
+  // ================= CAMBIO DE SECCIÓN =================
+  const handleSeccionChange = async (sec) => {
+    setNuevoCiudadano((p) => ({ ...p, seccion: sec }));
+    const { data, error } = await supabase.from("ubt_catalogo").select("*").eq("seccion", sec);
+    if (!error && data?.length) {
+      const info = data[0];
+      const listaUbts = data.map((d) => d.fraccion);
+      setUbts(listaUbts);
+      setNuevoCiudadano((prev) => ({
+        ...prev,
+        poligono: info.sector,
+        municipio: info.municipio,
+        nombre_municipio: info.nombre_municipio,
+        dtto_fed: info.dtto_fed,
+        dtto_loc: info.dtto_loc,
+        ubt: listaUbts.includes(prev.ubt) ? prev.ubt : "",
+      }));
+    }
+  };
+
   useEffect(() => {
-    if (step !== 2 || !secciones.length) return;
+    if (step !== 2 || !nuevoCiudadano.seccion) return;
+    handleSeccionChange(nuevoCiudadano.seccion);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [step, nuevoCiudadano.seccion]);
+
+  // ================= GEOMETRÍA DE LA SECCIÓN SELECCIONADA =================
+  useEffect(() => {
+    if (!nuevoCiudadano.seccion) { setSeccionGeoAlta(null); setFraccionesAlta([]); return; }
+    const seccionNum = Number(nuevoCiudadano.seccion);
     Promise.all([
-      supabase.from("secciones").select("*").in("seccion", secciones),
-      supabase.from("fracciones").select("fraccion, seccion, geometry").in("seccion", secciones),
-      supabase.from("ubt_catalogo").select("seccion, dtto_fed, dtto_loc, municipio, nombre_municipio, sector").in("seccion", secciones),
-    ]).then(([secRes, fracRes, catRes]) => {
-      setSeccionesGeo(secRes.data ?? []);
+      supabase.from("secciones").select("*").eq("seccion", seccionNum).maybeSingle(),
+      supabase.from("fracciones").select("fraccion, seccion, geometry").eq("seccion", seccionNum),
+    ]).then(([secRes, fracRes]) => {
+      setSeccionGeoAlta(secRes.data ?? null);
       setFraccionesAlta(fracRes.data ?? []);
-      const m = {};
-      (catRes.data ?? []).forEach(row => { if (!m[row.seccion]) m[row.seccion] = row; });
-      setUbtCatMap(m);
     });
-  }, [step, secciones]);
-
-  // Lista única de fracciones (para el dropdown) — derivada de fraccionesAlta
-  const fraccionOptions = useMemo(() => {
-    const seen = new Set();
-    return fraccionesAlta
-      .filter(f => f.fraccion != null && !seen.has(f.fraccion) && seen.add(f.fraccion))
-      .sort((a, b) => String(a.fraccion).localeCompare(String(b.fraccion), undefined, { numeric: true }));
-  }, [fraccionesAlta]);
-
-  // Seleccionar fracción desde el dropdown — también deriva sección y metadatos
-  function handleFraccionChange(fraccion) {
-    const fracData = fraccionesAlta.find(f => String(f.fraccion) === String(fraccion));
-    const cat = fracData ? ubtCatMap[fracData.seccion] : null;
-    setNuevoCiudadano(p => ({
-      ...p,
-      ubt: fraccion,
-      ...(fracData?.seccion != null ? {
-        seccion: String(fracData.seccion),
-        poligono: cat?.sector ?? p.poligono,
-        municipio: cat?.municipio ?? p.municipio,
-        nombre_municipio: cat?.nombre_municipio ?? p.nombre_municipio,
-        dtto_fed: cat?.dtto_fed ?? p.dtto_fed,
-        dtto_loc: cat?.dtto_loc ?? p.dtto_loc,
-      } : {}),
-    }));
-  }
+  }, [nuevoCiudadano.seccion]);
 
   // ================= UBICACIÓN =================
   const handleObtenerUbicacion = () => {
@@ -873,24 +870,21 @@ const handleSubmit = async (e) => {
 
           {/* =================== DATOS =================== */}
 
-          {/* Fracción — seleccionar del dropdown; el mapa es solo guía visual */}
-          <label>
-            Fracción:
-            <select
-              value={nuevoCiudadano.ubt}
-              onChange={(e) => handleFraccionChange(e.target.value)}
-              className="border p-2 w-full"
-              required
-              disabled={!fraccionOptions.length}
-            >
-              <option value="">{fraccionOptions.length ? "Seleccionar fracción" : "Cargando..."}</option>
-              {fraccionOptions.map(f => (
-                <option key={f.fraccion} value={f.fraccion}>
-                  {f.fraccion} — Sec. {f.seccion}
-                </option>
-              ))}
+          <label>Sección:
+            <select value={nuevoCiudadano.seccion} onChange={(e) => handleSeccionChange(e.target.value)} className="border p-2 w-full" required>
+              <option value="">Seleccionar</option>
+              {secciones.map((sec) => <option key={sec} value={sec}>{sec}</option>)}
             </select>
           </label>
+
+          {ubts.length > 0 && (
+            <label>Fracción:
+              <select value={nuevoCiudadano.ubt} onChange={(e) => setNuevoCiudadano((p) => ({ ...p, ubt: e.target.value }))} className="border p-2 w-full" required>
+                <option value="">Seleccionar</option>
+                {ubts.map((u) => <option key={u} value={u}>{u}</option>)}
+              </select>
+            </label>
+          )}
 
           {/* Puesto fijo: SM (a la espera de nuevos puestos) */}
          <div>
@@ -924,12 +918,12 @@ const handleSubmit = async (e) => {
          <label>Colonia: <input type="text" value={nuevoCiudadano.col_loc} onChange={(e) => setNuevoCiudadano({ ...nuevoCiudadano, col_loc: e.target.value})} className="border p-2 w-full" required/></label>
 
          <div>
-           <p className="text-sm font-medium mb-1">Ubicación (haz clic en el mapa para posicionar a la SM y asignar su fracción):</p>
+           <p className="text-sm font-medium mb-1">Ubicación (haz clic en el mapa para posicionar a la SM):</p>
            <div style={{ height: "420px" }} className="rounded-lg overflow-hidden border">
              <MapTerritorial
-               secciones={seccionesGeo}
+               secciones={seccionGeoAlta ? [seccionGeoAlta] : []}
                fraccionesGeo={fraccionesAlta}
-               showFraccionesAlways={true}
+               selectedSeccion={seccionGeoAlta?.seccion}
                editableLocation={
                  nuevoCiudadano.latitud && nuevoCiudadano.longitud
                    ? { lat: Number(nuevoCiudadano.latitud), lng: Number(nuevoCiudadano.longitud) }
@@ -941,8 +935,6 @@ const handleSubmit = async (e) => {
              />
            </div>
          </div>
-         <label>Latitud: <input type="number" step="any" value={nuevoCiudadano.latitud ?? ""} onChange={(e) => setNuevoCiudadano({ ...nuevoCiudadano, latitud: e.target.value === "" ? null : e.target.value })} className="border p-2 w-full"/></label>
-         <label>Longitud: <input type="number" step="any" value={nuevoCiudadano.longitud ?? ""} onChange={(e) => setNuevoCiudadano({ ...nuevoCiudadano, longitud: e.target.value === "" ? null : e.target.value })} className="border p-2 w-full"/></label>
          <div className="flex items-end">
            <button type="button" onClick={handleObtenerUbicacion} className="bg-slate-600 hover:bg-slate-700 text-white px-4 py-2 rounded text-sm">
              📍 Usar mi ubicación actual
