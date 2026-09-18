@@ -898,8 +898,8 @@ const MapTerritorial = ({
     return hit ? hit.fraccion : null;
   }, [fraccionRings]);
 
-  // Fracción que contiene actualmente al marcador editable (para resaltarla)
-  const assignedFraccion = editableLocation
+  // En modo edición de posición el mapa es guía visual; no resaltar fracción por pin
+  const assignedFraccion = (!onEditableLocationChange && editableLocation)
     ? findFraccionAt(editableLocation.lat, editableLocation.lng)
     : null;
 
@@ -1468,7 +1468,7 @@ const MapTerritorial = ({
     const lat = e.latLng.lat();
     const lng = e.latLng.lng();
     if (onEditableLocationChange) {
-      onEditableLocationChange(lat, lng, findFraccionAt(lat, lng));
+      onEditableLocationChange(lat, lng);
       return;
     }
     if (!onSelectSeccion) return;
@@ -1484,8 +1484,8 @@ const MapTerritorial = ({
     if (!onEditableLocationChange) return;
     const lat = e.latLng.lat();
     const lng = e.latLng.lng();
-    onEditableLocationChange(lat, lng, findFraccionAt(lat, lng));
-  }, [onEditableLocationChange, findFraccionAt]);
+    onEditableLocationChange(lat, lng);
+  }, [onEditableLocationChange]);
 
   // ── Buscador de calle (Google Places Autocomplete) ──────────────────────
   const autocompleteRef = useRef(null);
@@ -1500,8 +1500,8 @@ const MapTerritorial = ({
       mapRef.current.panTo({ lat, lng });
       mapRef.current.setZoom(18);
     }
-    onEditableLocationChange?.(lat, lng, findFraccionAt(lat, lng));
-  }, [onEditableLocationChange, findFraccionAt]);
+    onEditableLocationChange?.(lat, lng);
+  }, [onEditableLocationChange]);
 
   // Seguimiento de mouse sobre el contenedor del mapa
   const handleContainerMouseMove = useCallback((e) => {

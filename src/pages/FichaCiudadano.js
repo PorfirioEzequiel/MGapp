@@ -525,11 +525,8 @@ const FichaCiudadano = () => {
                       ? { lat: Number(ciudadano.latitud), lng: Number(ciudadano.longitud) }
                       : null
                   }
-                  onEditableLocationChange={(lat, lng, fraccion) =>
-                    setCiudadano(prev => ({
-                      ...prev, latitud: lat, longitud: lng,
-                      ...(fraccion != null ? { ubt: fraccion } : {}),
-                    }))
+                  onEditableLocationChange={(lat, lng) =>
+                    setCiudadano(prev => ({ ...prev, latitud: lat, longitud: lng }))
                   }
                 />
               </div>
