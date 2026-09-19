@@ -797,7 +797,7 @@ const handleSubmit = async (e) => {
     // Eliminar campo id para evitar conflictos
     const { id, ...dataSinId } = dataToSave;
 
-    const { error } = await supabase
+    const { error } = await supabaseStorage
       .from("ciudadania")
       .upsert([dataSinId], { onConflict: "curp" });
 

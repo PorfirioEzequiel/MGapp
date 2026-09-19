@@ -16,16 +16,24 @@ const badgeStatus = (s) => {
   return m[s] ?? "bg-slate-100 text-slate-600";
 };
 
+const OPCIONES_PAGO = [
+  { v: "CONTADO", label: "Contado" },
+  { v: "1_MES",   label: "1 mes"   },
+  { v: "2_MESES", label: "2 meses" },
+];
+
 export default function SolicitudesApoyos() {
   const navigate = useNavigate();
 
   const [programas,     setProgramas]     = useState([]);
   const [progFiltro,    setProgFiltro]    = useState("todos");
   const [statusFiltro,  setStatusFiltro]  = useState("todos");
+  const [sinPagoFiltro, setSinPagoFiltro] = useState(false);
   const [busqueda,      setBusqueda]      = useState("");
   const [registros,     setRegistros]     = useState([]);
   const [cargando,      setCargando]      = useState(false);
   const [smNombres,     setSmNombres]     = useState({});
+  const [guardandoPago, setGuardandoPago] = useState(null);
 
   // Cargar programas para el filtro (supabaseAdmin bypasses RLS)
   useEffect(() => {
@@ -87,9 +95,24 @@ export default function SolicitudesApoyos() {
     });
   }, [progFiltro, statusFiltro]);
 
+  const actualizarFormaPago = async (id, valor) => {
+    setGuardandoPago(id);
+    const { error } = await supabaseAdmin
+      .from("apoyo_entregas")
+      .update({ forma_pago: valor })
+      .eq("id", id);
+    if (!error) {
+      setRegistros((prev) =>
+        prev.map((r) => (r.id === id ? { ...r, forma_pago: valor } : r))
+      );
+    }
+    setGuardandoPago(null);
+  };
+
   // Filtro de búsqueda en cliente
   const busqLower = busqueda.toLowerCase().trim();
   const filtrados = registros.filter((r) => {
+    if (sinPagoFiltro && r.forma_pago) return false;
     if (!busqLower) return true;
     const c = r.ciudadania;
     if (!c) return false;
@@ -106,6 +129,9 @@ export default function SolicitudesApoyos() {
   // Totales por estatus para el encabezado
   const totPendiente = filtrados.filter((r) => r.status === "PENDIENTE").length;
   const totEntregado = filtrados.filter((r) => r.status === "ENTREGADO").length;
+  const totSinPago   = registros.filter(
+    (r) => r.programas_sociales?.nombre?.toLowerCase().includes("calentador") && !r.forma_pago
+  ).length;
 
   const descargarCSV = () => {
     const cols = ["Nombre", "Teléfono", "Sector", "Sección", "Fracción", "SM", "Cantidad", "Apoyo", "Pago"];
@@ -201,7 +227,33 @@ export default function SolicitudesApoyos() {
               className="w-full px-3 py-2 rounded-xl border border-slate-200 text-sm text-slate-800 focus:outline-none focus:border-blue-400"
             />
           </div>
-          <div className="self-end">
+          <div className="self-end flex gap-2 flex-wrap">
+            <button
+              type="button"
+              onClick={() => {
+                setSinPagoFiltro((v) => !v);
+                if (!sinPagoFiltro) {
+                  const calentadorId = programas.find((p) =>
+                    p.nombre.toLowerCase().includes("calentador")
+                  )?.id;
+                  if (calentadorId) setProgFiltro(String(calentadorId));
+                } else {
+                  setProgFiltro("todos");
+                }
+              }}
+              className={`inline-flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold transition-all active:scale-95 ${
+                sinPagoFiltro
+                  ? "bg-red-600 text-white hover:bg-red-700"
+                  : "bg-red-50 text-red-700 border border-red-200 hover:bg-red-100"
+              }`}
+            >
+              {sinPagoFiltro ? "✕ " : ""}Sin forma de pago
+              {totSinPago > 0 && (
+                <span className={`text-[10px] font-black px-1.5 py-0.5 rounded-full ${sinPagoFiltro ? "bg-white text-red-600" : "bg-red-600 text-white"}`}>
+                  {totSinPago}
+                </span>
+              )}
+            </button>
             <button
               type="button"
               onClick={descargarCSV}
@@ -217,11 +269,12 @@ export default function SolicitudesApoyos() {
         </div>
 
         {/* KPIs */}
-        <div className="grid grid-cols-3 gap-3">
+        <div className="grid grid-cols-4 gap-3">
           {[
-            { label: "Total",       val: filtrados.length,   color: "bg-white border-slate-200 text-slate-800" },
-            { label: "Pendientes",  val: totPendiente,       color: "bg-amber-50 border-amber-200 text-amber-800" },
-            { label: "Entregados",  val: totEntregado,       color: "bg-emerald-50 border-emerald-200 text-emerald-800" },
+            { label: "Total",          val: filtrados.length, color: "bg-white border-slate-200 text-slate-800" },
+            { label: "Pendientes",     val: totPendiente,     color: "bg-amber-50 border-amber-200 text-amber-800" },
+            { label: "Entregados",     val: totEntregado,     color: "bg-emerald-50 border-emerald-200 text-emerald-800" },
+            { label: "Sin forma pago", val: totSinPago,       color: totSinPago > 0 ? "bg-red-50 border-red-200 text-red-700" : "bg-white border-slate-200 text-slate-400" },
           ].map((k) => (
             <div key={k.label} className={`rounded-2xl border px-4 py-3 ${k.color}`}>
               <p className="text-[10px] font-bold uppercase tracking-wider opacity-60">{k.label}</p>
@@ -250,6 +303,7 @@ export default function SolicitudesApoyos() {
                     <th className="px-4 py-3 text-left hidden md:table-cell">CURP</th>
                     <th className="px-4 py-3 text-left">Programa</th>
                     <th className="px-4 py-3 text-center">Cant.</th>
+                    <th className="px-4 py-3 text-left">Forma de pago</th>
                     <th className="px-4 py-3 text-left hidden sm:table-cell">Sec. / Fracc.</th>
                     <th className="px-4 py-3 text-left hidden lg:table-cell">SM asignada</th>
                     <th className="px-4 py-3 text-left hidden sm:table-cell">Fecha</th>
@@ -281,6 +335,27 @@ export default function SolicitudesApoyos() {
                         </td>
                         <td className="px-4 py-3 text-center">
                           <span className="font-black text-slate-800">{r.cantidad ?? 1}</span>
+                        </td>
+                        <td className="px-4 py-3">
+                          {r.programas_sociales?.nombre?.toLowerCase().includes("calentador") ? (
+                            <select
+                              value={r.forma_pago ?? ""}
+                              onChange={(e) => e.target.value && actualizarFormaPago(r.id, e.target.value)}
+                              disabled={guardandoPago === r.id}
+                              className={`text-xs px-2 py-1.5 rounded-lg border font-semibold focus:outline-none focus:ring-2 focus:ring-blue-400 disabled:opacity-50 ${
+                                !r.forma_pago
+                                  ? "border-red-300 bg-red-50 text-red-700"
+                                  : "border-slate-200 bg-white text-slate-700"
+                              }`}
+                            >
+                              <option value="">⚠ Sin pago</option>
+                              {OPCIONES_PAGO.map((o) => (
+                                <option key={o.v} value={o.v}>{o.label}</option>
+                              ))}
+                            </select>
+                          ) : (
+                            <span className="text-xs text-slate-400">—</span>
+                          )}
                         </td>
                         <td className="px-4 py-3 hidden sm:table-cell">
                           <span className="text-slate-500 text-xs">

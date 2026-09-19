@@ -712,12 +712,14 @@ export default function RegistroApoyos() {
         const esCalentadorProg = prog.nombre.toLowerCase().includes("calentador");
         const periodoP = getPeriodo(prog.frecuencia);
 
+        // Solo bloquear si ya existe un registro ACTIVO (pendiente o entregado)
         const { data: apoyoExistente } = await supabaseAdmin
           .from("apoyo_entregas")
           .select("id")
           .eq("beneficiario_id", beneficiarioId)
           .eq("programa_id", prog.id)
           .eq("periodo", periodoP)
+          .in("status", ["PENDIENTE", "ENTREGADO"])
           .maybeSingle();
 
         if (!apoyoExistente) {
@@ -729,7 +731,8 @@ export default function RegistroApoyos() {
               periodo:         periodoP,
               status:          "PENDIENTE",
               cantidad:        cantidades[prog.id] ?? 1,
-              ...(esCalentadorProg && formaPago ? { forma_pago: formaPago } : {}),
+              created_at:      new Date().toISOString(),
+              ...(formaPago ? { forma_pago: formaPago } : {}),
             });
           if (ue) throw ue;
         }
