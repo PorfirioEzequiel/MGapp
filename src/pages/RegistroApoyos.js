@@ -534,6 +534,10 @@ export default function RegistroApoyos() {
   );
 
   const confirmarEncuesta = () => {
+    if (seleccionados.size === 0) {
+      setError("Selecciona al menos un programa de apoyo antes de continuar.");
+      return;
+    }
     if (!smSel) {
       setError("Selecciona la Seguidora de Manzana que atendió al beneficiario.");
       return;
@@ -672,8 +676,8 @@ export default function RegistroApoyos() {
             await supabaseAdmin.from("ciudadania").update(act).eq("id", beneficiarioId);
         }
       } else {
-        // Nuevo ciudadano — upsert onConflict curp para obtener el id de forma confiable
-        const { data: nuevo, error: ie } = await supabaseAdmin
+        // Nuevo ciudadano — upsert onConflict curp
+        const { error: ie } = await supabaseAdmin
           .from("ciudadania")
           .upsert(
             [{
@@ -697,11 +701,18 @@ export default function RegistroApoyos() {
               ...territorio,
             }],
             { onConflict: "curp" }
-          )
-          .select("id")
-          .single();
+          );
         if (ie) throw ie;
-        beneficiarioId = nuevo.id;
+
+        // SELECT separado para obtener el id real sin depender del retorno del upsert
+        const { data: rowInsertado, error: seErr } = await supabaseAdmin
+          .from("ciudadania")
+          .select("id")
+          .eq("curp", datosCurp.curp)
+          .maybeSingle();
+        if (seErr) throw seErr;
+        if (!rowInsertado) throw new Error("No se pudo obtener el folio del beneficiario después del registro.");
+        beneficiarioId = rowInsertado.id;
       }
 
       if (!beneficiarioId) throw new Error("No se pudo obtener el folio del beneficiario.");
