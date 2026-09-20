@@ -300,8 +300,10 @@ const SeccionRow = ({ seccion, sm, fracciones, onClick }) => {
 
 // ── Bottom Tab Bar ────────────────────────────────────────────────────────────
 const TABS = [
-  { key: 'resumen', label: 'Listas Generales', Icon: IcoHome },
-  { key: 'mapa',    label: 'Mapa',             Icon: IcoMap  },
+  { key: 'resumen',     label: 'Inicio',      Icon: IcoHome  },
+  { key: 'mapa',        label: 'Mapa',        Icon: IcoMap   },
+  { key: 'actividades', label: 'Actividades', Icon: IcoClip  },
+  { key: 'apoyos',      label: 'Apoyos',      Icon: IcoGift  },
 ];
 
 // ── Main component ────────────────────────────────────────────────────────────
@@ -352,6 +354,9 @@ const Coordinador = () => {
   const [loadingSecInfo, setLoadingSecInfo]     = useState(false);
   const [focusCoords, setFocusCoords]           = useState(null);
   const [electoralMode, setElectoralMode]       = useState(null);
+
+  const [apoyos,        setApoyos]        = useState([]);
+  const [loadingApoyos, setLoadingApoyos] = useState(false);
 
   const [mercadoRows, setMercadoRows]               = useState([]);
   const [electoralData,         setElectoralData]         = useState({});
@@ -533,6 +538,43 @@ const Coordinador = () => {
     setEvidencias(data ?? []);
   };
 
+  const fetchApoyos = async () => {
+    setLoadingApoyos(true);
+    try {
+      // Obtener todos los ciudadanos del sector
+      const { data: ciudSector } = await supabase
+        .from('ciudadania')
+        .select('id, nombre, a_paterno, a_materno, seccion, ubt')
+        .eq('poligono', user.poligono)
+        .limit(1000);
+
+      if (!ciudSector?.length) { setApoyos([]); return; }
+
+      const ciudMap = {};
+      ciudSector.forEach(c => { ciudMap[c.id] = c; });
+      const ids = ciudSector.map(c => c.id);
+
+      const { data: ae } = await supabaseAdmin
+        .from('apoyo_entregas')
+        .select('id, beneficiario_id, cantidad, status, created_at')
+        .in('beneficiario_id', ids)
+        .order('created_at', { ascending: false })
+        .limit(500);
+
+      setApoyos((ae ?? []).map(a => ({ ...a, ciudadano: ciudMap[a.beneficiario_id] ?? null })));
+    } finally {
+      setLoadingApoyos(false);
+    }
+  };
+
+  // Carga lazy de apoyos al entrar al tab
+  useEffect(() => {
+    if (tab === 'apoyos' && apoyos.length === 0 && !loadingApoyos) {
+      fetchApoyos();
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tab]);
+
   // ── Fetch datos de sección seleccionada (misma fuente que TableroBoard) ───
   useEffect(() => {
     if (!seccionMapa) {
@@ -578,6 +620,12 @@ const Coordinador = () => {
       .sort((a, b) => Number(a.seccion) - Number(b.seccion) || String(a.fraccion).localeCompare(String(b.fraccion)))
       .map(f => ({ seccion: f.seccion, fraccion: f.fraccion, sm: smPorUbt[f.fraccion] || null }));
   }, [catalogoFracciones, promotores]);
+
+  const smPorUbt = useMemo(() => {
+    const map = {};
+    promotores.forEach(p => { if (p.ubt) map[String(p.ubt)] = p; });
+    return map;
+  }, [promotores]);
 
   const metaFracciones  = catalogoFracciones.length;
   const cobertura       = pctNum(promotores.length, metaFracciones);
@@ -2987,6 +3035,71 @@ const Coordinador = () => {
             </div>
           </div>
         )}
+        {/* ── TAB: APOYOS ──────────────────────────────────────────────────── */}
+        {tab === 'apoyos' && (
+          <div className="h-full overflow-y-auto">
+            <div className="p-4 space-y-3" style={{ paddingBottom: 24 }}>
+              {loadingApoyos ? (
+                <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-10 text-center">
+                  <p className="text-sm text-slate-400 italic">Cargando registros…</p>
+                </div>
+              ) : apoyos.length === 0 ? (
+                <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-10 text-center">
+                  <p className="text-sm text-slate-400 italic">Sin registros de apoyos en este sector.</p>
+                </div>
+              ) : (
+                <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
+                  <div className="px-4 py-3 border-b border-slate-100 flex items-center justify-between">
+                    <p className="text-[9px] font-black uppercase tracking-[0.18em] text-slate-400">Registros de Apoyos</p>
+                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-500">{apoyos.length}</span>
+                  </div>
+                  <div className="overflow-x-auto">
+                    <table className="w-full">
+                      <thead>
+                        <tr>
+                          <th className={thCls}>Beneficiario</th>
+                          <th className={thCls + ' text-center'}>Secc.</th>
+                          <th className={thCls + ' text-center'}>Fracc.</th>
+                          <th className={thCls + ' text-center'}>Cant.</th>
+                          <th className={thCls + ' text-center'}>Estatus</th>
+                          <th className={thCls}>SM</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {apoyos.map(a => {
+                          const c = a.ciudadano;
+                          const sm = smPorUbt[String(c?.ubt ?? '')];
+                          const statusCls = {
+                            PENDIENTE: 'bg-amber-100 text-amber-700',
+                            ENTREGADO: 'bg-emerald-100 text-emerald-700',
+                            CANCELADO: 'bg-red-100 text-red-600',
+                          }[a.status] ?? 'bg-slate-100 text-slate-500';
+                          return (
+                            <tr key={a.id} className="hover:bg-slate-50 transition-colors">
+                              <td className={tdCls + ' font-medium text-slate-800 whitespace-nowrap'}>
+                                {c ? `${c.nombre} ${c.a_paterno}`.trim() : <span className="text-slate-300 italic text-xs">—</span>}
+                              </td>
+                              <td className={tdCls + ' text-center text-slate-500 font-mono'}>{c?.seccion ?? '—'}</td>
+                              <td className={tdCls + ' text-center text-slate-500 font-mono text-xs'}>{c?.ubt ?? '—'}</td>
+                              <td className={tdCls + ' text-center font-black text-slate-800'}>{a.cantidad ?? 1}</td>
+                              <td className={tdCls + ' text-center'}>
+                                <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${statusCls}`}>{a.status}</span>
+                              </td>
+                              <td className={tdCls + ' text-slate-500 whitespace-nowrap text-xs'}>
+                                {sm ? `${sm.nombre} ${sm.a_paterno}`.trim() : <span className="text-slate-300 italic">—</span>}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
       </main>
 
       {/* ── BOTTOM NAV ─────────────────────────────────────────────────────── */}

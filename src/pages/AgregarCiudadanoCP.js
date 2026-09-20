@@ -785,16 +785,24 @@ const handleSubmit = async (e) => {
   e.preventDefault();
   setLoading(true);
   try {
-    // Si es promotora, asignamos usuario y password
-    if (nuevoCiudadano.puesto === "SM") {
-      nuevoCiudadano.usuario = nuevoCiudadano.curp;
-      nuevoCiudadano.password = nuevoCiudadano.curp;
-    }
+    // Limpiar parámetros de cache-busting de las URLs antes de guardar
+    const cleanUrl = (url) => (url ? url.split('?')[0] : url || null);
 
-    // ✅ Asegurarnos que el status siempre sea SOLICITUD DE ALTA
-    const dataToSave = { ...nuevoCiudadano, status: "SOLICITUD DE ALTA" };
+    const dataToSave = {
+      ...nuevoCiudadano,
+      status: "SOLICITUD DE ALTA",
+      // Asignar usuario/password para SM sin mutar el estado directamente
+      ...(nuevoCiudadano.puesto === "SM" ? {
+        usuario:  nuevoCiudadano.curp,
+        password: nuevoCiudadano.curp,
+      } : {}),
+      // URLs limpias para persistencia confiable en DB
+      url_foto_perfil: cleanUrl(nuevoCiudadano.url_foto_perfil),
+      url_foto_ine1:   cleanUrl(nuevoCiudadano.url_foto_ine1),
+      url_foto_ine2:   cleanUrl(nuevoCiudadano.url_foto_ine2),
+    };
 
-    // Eliminar campo id para evitar conflictos
+    // Eliminar campo id para evitar conflictos en upsert
     const { id, ...dataSinId } = dataToSave;
 
     const { error } = await supabaseStorage
@@ -807,7 +815,7 @@ const handleSubmit = async (e) => {
     navigate(-1);
   } catch (err) {
     console.error("Error al guardar:", err);
-    alert("Error al guardar los datos.");
+    alert("Error al guardar los datos: " + err.message);
   } finally {
     setLoading(false);
   }
