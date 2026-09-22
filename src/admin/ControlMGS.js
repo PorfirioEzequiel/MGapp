@@ -153,16 +153,7 @@ function SectorAnalysis({ tree, loading }) {
   const dashFill = (Math.min(globalPct, 100) / 100) * C;
 
   function handleExport() {
-    const fechaLarga = new Date().toLocaleDateString('es-MX', {
-      weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
-    });
-    const aoa = [
-      ['CONTROL MGS — Desdoble de Movilizadores de Gestión'],
-      [`Generado: ${fechaLarga}`],
-      [`Total registrados: ${totalCount} de ${totalMeta} meta (${globalPct.toFixed(1)}%)`],
-      [],
-      ['Sector / SP', 'Sección', 'Fracción', 'SM (Supervisor de Manzana)', 'MGS (Movilizadora de Gestión)', 'CURP', 'Observaciones'],
-    ];
+    const rows = [];
 
     Object.keys(tree)
       .sort((a, b) => Number(a) - Number(b))
@@ -176,30 +167,40 @@ function SectorAnalysis({ tree, loading }) {
                 const frac = tree[sk].secciones[secK].fracciones[fracK];
                 const smNombre = frac.sm ? fullName(frac.sm) : 'Sin SM asignada';
                 if (frac.movs.length === 0) {
-                  aoa.push([`Sector ${sk}`, Number(secK), Number(fracK), smNombre, '—', '—', '']);
+                  rows.push({
+                    'Sector / SP': `Sector ${sk}`,
+                    'Sección': Number(secK),
+                    'Fracción': Number(fracK),
+                    'SM': smNombre,
+                    'MGS': '—',
+                    'CURP': '—',
+                    'Observaciones': '',
+                  });
                 } else {
                   frac.movs.forEach(m => {
-                    aoa.push([`Sector ${sk}`, Number(secK), Number(fracK), smNombre, fullName(m), m.curp || '—', m.observaciones || '']);
+                    rows.push({
+                      'Sector / SP': `Sector ${sk}`,
+                      'Sección': Number(secK),
+                      'Fracción': Number(fracK),
+                      'SM': smNombre,
+                      'MGS': fullName(m),
+                      'CURP': m.curp || '—',
+                      'Observaciones': m.observaciones || '',
+                    });
                   });
                 }
               });
           });
       });
 
-    const ws = XLSX.utils.aoa_to_sheet(aoa);
+    const ws = XLSX.utils.json_to_sheet(rows);
     ws['!cols'] = [
       { wch: 12 }, { wch: 10 }, { wch: 10 },
       { wch: 34 }, { wch: 34 }, { wch: 20 }, { wch: 40 },
     ];
-    ws['!merges'] = [
-      { s: { r: 0, c: 0 }, e: { r: 0, c: 6 } },
-      { s: { r: 1, c: 0 }, e: { r: 1, c: 6 } },
-      { s: { r: 2, c: 0 }, e: { r: 2, c: 6 } },
-    ];
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'Control MGS');
-    const dateStr = new Date().toISOString().slice(0, 10);
-    XLSX.writeFile(wb, `Control_MGS_${dateStr}.xlsx`);
+    XLSX.writeFile(wb, `Control_MGS_${new Date().toISOString().slice(0, 10)}.xlsx`);
   }
 
   if (loading) {
