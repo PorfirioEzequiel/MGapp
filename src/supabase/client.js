@@ -9,15 +9,34 @@
 
 import { createClient } from "@supabase/supabase-js";
 
-const supabaseUrl = process.env.REACT_APP_SUPABASE_URL;
+const supabaseUrl     = process.env.REACT_APP_SUPABASE_URL;
 const supabaseAnonKey = process.env.REACT_APP_SUPABASE_ANON_KEY;
-const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
-// Cliente con service role usado exclusivamente para subir archivos a Storage
-// (evita el RLS de storage.objects que bloquea al rol anon)
+// Fetch wrapper con timeout de 15s para evitar requests colgados
+const fetchWithTimeout = (url, opts = {}) => {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 15000);
+  return fetch(url, { ...opts, signal: controller.signal })
+    .finally(() => clearTimeout(timer));
+};
+
+const supabase = createClient(supabaseUrl, supabaseAnonKey, {
+  global: { fetch: fetchWithTimeout },
+});
+
+// Cliente con service role exclusivamente para Storage/Mercado queries.
+// storageKey distinto + sin sesión persistida para evitar deadlock de auth con el cliente principal.
 export const supabaseStorage = createClient(
   supabaseUrl,
-  process.env.REACT_APP_SUPABASE_SERVICE_KEY
+  process.env.REACT_APP_SUPABASE_SERVICE_KEY,
+  {
+    global: { fetch: fetchWithTimeout },
+    auth: {
+      storageKey:       'sb-storage-session',
+      persistSession:   false,
+      autoRefreshToken: false,
+    },
+  }
 );
 
 export default supabase;
