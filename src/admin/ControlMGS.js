@@ -161,7 +161,7 @@ function SectorAnalysis({ tree, loading }) {
       [`Generado: ${fechaLarga}`],
       [`Total registrados: ${totalCount} de ${totalMeta} meta (${globalPct.toFixed(1)}%)`],
       [],
-      ['Sector / SP', 'Sección', 'Fracción', 'SM (Supervisor de Manzana)', 'MGS (Movilizadora de Gestión)', 'CURP'],
+      ['Sector / SP', 'Sección', 'Fracción', 'SM (Supervisor de Manzana)', 'MGS (Movilizadora de Gestión)', 'CURP', 'Observaciones'],
     ];
 
     Object.keys(tree)
@@ -176,10 +176,10 @@ function SectorAnalysis({ tree, loading }) {
                 const frac = tree[sk].secciones[secK].fracciones[fracK];
                 const smNombre = frac.sm ? fullName(frac.sm) : 'Sin SM asignada';
                 if (frac.movs.length === 0) {
-                  aoa.push([`Sector ${sk}`, Number(secK), Number(fracK), smNombre, '—', '—']);
+                  aoa.push([`Sector ${sk}`, Number(secK), Number(fracK), smNombre, '—', '—', '']);
                 } else {
                   frac.movs.forEach(m => {
-                    aoa.push([`Sector ${sk}`, Number(secK), Number(fracK), smNombre, fullName(m), m.curp || '—']);
+                    aoa.push([`Sector ${sk}`, Number(secK), Number(fracK), smNombre, fullName(m), m.curp || '—', m.observaciones || '']);
                   });
                 }
               });
@@ -189,12 +189,12 @@ function SectorAnalysis({ tree, loading }) {
     const ws = XLSX.utils.aoa_to_sheet(aoa);
     ws['!cols'] = [
       { wch: 12 }, { wch: 10 }, { wch: 10 },
-      { wch: 34 }, { wch: 34 }, { wch: 20 },
+      { wch: 34 }, { wch: 34 }, { wch: 20 }, { wch: 40 },
     ];
     ws['!merges'] = [
-      { s: { r: 0, c: 0 }, e: { r: 0, c: 5 } },
-      { s: { r: 1, c: 0 }, e: { r: 1, c: 5 } },
-      { s: { r: 2, c: 0 }, e: { r: 2, c: 5 } },
+      { s: { r: 0, c: 0 }, e: { r: 0, c: 6 } },
+      { s: { r: 1, c: 0 }, e: { r: 1, c: 6 } },
+      { s: { r: 2, c: 0 }, e: { r: 2, c: 6 } },
     ];
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'Control MGS');
@@ -447,7 +447,7 @@ export default function ControlMGS() {
           .eq('status', 'ACTIVO'),
         supabase
           .from('ciudadania')
-          .select('id, usuario, nombre, a_paterno, a_materno, curp, telefono_1, movilizador')
+          .select('id, usuario, nombre, a_paterno, a_materno, curp, telefono_1, movilizador, observaciones')
           .ilike('puesto', 'movilizador')
           .eq('status', 'ACTIVO')
           .order('a_paterno'),
