@@ -4,7 +4,6 @@ import * as XLSX from 'xlsx';
 import supabase, { supabaseStorage as supabaseAdmin } from '../supabase/client';
 import MapTerritorial from '../map/MapTerritorial';
 import MapaEstadoMexico from '../map/MapaEstadoMexico';
-import AFILIACION from '../data/afiliacion.json';
 
 const fullName = (p) => p ? `${p.nombre} ${p.a_paterno} ${p.a_materno}`.trim() : null;
 const fmt      = (n)  => n != null ? Number(n).toLocaleString('es-MX') : null;
@@ -321,9 +320,8 @@ const TableroBoard = ({ readOnly = false }) => {
   const [globalSMs,        setGlobalSMs]        = useState({}); // seccion → count
 
   // ── Mercado Solidario ─────────────────────────────────────────────────────
-  const [mercadoEntregas,   setMercadoEntregas]   = useState([]);   // lista de entregas disponibles
-  const [mercadoFiltro,     setMercadoFiltro]     = useState(null); // null = todos; { año, mes, entrega } = filtrado
-  const [mercadoBySec,      setMercadoBySec]      = useState({});   // seccion → { total, pct, estatus, maxRef }
+  const [mercadoEntregas,   setMercadoEntregas]   = useState([]);   // lista de entregas para la gráfica histórica
+  const [mercadoBySec,      setMercadoBySec]      = useState({});   // seccion → { totalPiezas, totalEntregadas, deliveryRate, estatus }
   const [mercadoHistorico,  setMercadoHistorico]  = useState([]);   // [{ entrega, total }] para la gráfica
   const [loadingMercado,    setLoadingMercado]    = useState(false);
 
@@ -331,14 +329,26 @@ const TableroBoard = ({ readOnly = false }) => {
   const [movCountBySec, setMovCountBySec] = useState({}); // seccion → movilizadores count
   const [movDetailSec,  setMovDetailSec]  = useState([]); // movilizadores in selected section with { nombre, a_paterno, a_materno, movilizador }
 
+  // ── Comprobadas dinámicas desde MongoDB ──────────────────────────────────
+  const [comprobadasMongo, setComprobadasMongo] = useState({});
+  const [comprobadasSp0,   setComprobadasSp0]   = useState({});
+
+  // ── Afiliación dinámica desde MongoDB ────────────────────────────────────
+  const [afiliacionData, setAfiliacionData] = useState([]);
+
   useEffect(() => {
-    const fetchAll = async () => {
-      setLoadingMap(true);
-      const { data } = await supabase.from('secciones').select('*');
-      setAllSecciones(data ?? []);
-      setLoadingMap(false);
-    };
-    fetchAll();
+    // Usa supabaseAdmin (service role) para evitar el deadlock de GoTrueClient
+    // y garantizar que bypasea cualquier RLS que bloquee SELECT * sin filtro
+    supabaseAdmin.from('secciones').select('*')
+      .then(({ data, error }) => {
+        if (error) console.error('[TableroBoard] secciones error:', error.message);
+        setAllSecciones(data ?? []);
+        setLoadingMap(false);
+      })
+      .catch(err => {
+        console.error('[TableroBoard] secciones catch:', err.message);
+        setLoadingMap(false);
+      });
   }, []);
 
   useEffect(() => {
@@ -456,6 +466,25 @@ const TableroBoard = ({ readOnly = false }) => {
       .catch(() => {});
   }, []);
 
+  useEffect(() => {
+    fetch('http://localhost:3003/api/comprobadas')
+      .then(r => r.json())
+      .then(data => {
+        const map = {};
+        for (const row of (data.bySec ?? [])) { if (row.seccion != null) map[row.seccion] = row.comprobadas; }
+        setComprobadasMongo(map);
+        setComprobadasSp0(data.bySp0 ?? {});
+      })
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    fetch('http://localhost:3003/api/afiliacion')
+      .then(r => r.json())
+      .then(data => { setAfiliacionData(Array.isArray(data) ? data : []); })
+      .catch(() => {});
+  }, []);
+
   // Fade transition when electoral mode changes
   useEffect(() => {
     if (prevElectoralMode.current !== electoralMode) {
@@ -492,54 +521,54 @@ const TableroBoard = ({ readOnly = false }) => {
       });
   }, []);
 
-  // ── Mercado: carga filas (todas o filtradas por entrega) ──────────────────
+  // ── Mercado: carga todas las filas al montar ─────────────────────────────
   useEffect(() => {
     setLoadingMercado(true);
-    let query = supabaseAdmin.from('mercado').select('seccion, sector, piezas, sm_activas, estatus, fracciones');
-    if (mercadoFiltro) {
-      query = query.eq('año', mercadoFiltro.año).eq('mes', mercadoFiltro.mes).eq('entrega', mercadoFiltro.entrega);
-    }
-    query.then(({ data }) => {
+    supabaseAdmin.from('mercado').select('seccion, sector, total, estatus, fracciones')
+    .then(({ data }) => {
       if (!data) { setMercadoBySec({}); setLoadingMercado(false); return; }
-      // Agrupa por sección: suma piezas×sm_activas (= "Pedido" en el reporte MS)
+      // Acumula el campo `total` (piezas × sm_activas, precalculado en BD) por sección
       const bySec = {};
       for (const r of data) {
         const sec = r.seccion;
         if (!sec) continue;
         if (!bySec[sec]) bySec[sec] = { total: 0, fracciones: r.fracciones ?? 0, sector: r.sector, estatusCounts: {} };
-        bySec[sec].total += (Number(r.piezas ?? 0) * Number(r.sm_activas ?? 0));
-        const est = r.estatus ?? 'PENDIENTE';
+        bySec[sec].total += Math.round(Number(r.total ?? 0));
+        const est = (r.estatus ?? 'PENDIENTE').toUpperCase();
         bySec[sec].estatusCounts[est] = (bySec[sec].estatusCounts[est] || 0) + 1;
       }
-      // Usamos el percentil 75 como referencia (= 100%) en lugar del máximo absoluto.
-      // Esto evita que un sector outlier hunda el color de todas las demás secciones:
-      // ~25% de las secciones quedarán en verde (por encima del p75), el resto distribuido.
-      const sortedTotals = Object.values(bySec).map(v => v.total).sort((a, b) => a - b);
-      const p75idx = Math.max(Math.floor(sortedTotals.length * 0.75) - 1, 0);
-      const refMax = Math.max(sortedTotals[p75idx] ?? sortedTotals[sortedTotals.length - 1], 1);
+      // deliveryRate = total_sección / referencia × 100
+      // Se usa la 2ª sección más alta para que un outlier no comprima todo el semáforo
+      const sorted = Object.values(bySec).map(v => v.total).sort((a, b) => b - a);
+      const maxTotal = sorted.length > 1 ? sorted[1] : (sorted[0] ?? 1);
       const result = {};
       for (const [sec, v] of Object.entries(bySec)) {
         const estatus = Object.entries(v.estatusCounts).sort((a, b) => b[1] - a[1])[0]?.[0] ?? 'PENDIENTE';
         result[Number(sec)] = {
-          total: v.total,
-          fracciones: v.fracciones,
-          sector: v.sector,
+          total:        v.total,
+          fracciones:   v.fracciones,
+          sector:       v.sector,
           estatus,
-          pct: Math.min((v.total / refMax) * 100, 100), // cap en 100 — outliers positivos = verde
-          maxRef: refMax,
+          deliveryRate: Math.min((v.total / maxTotal) * 100, 100),
         };
       }
       setMercadoBySec(result);
       setLoadingMercado(false);
     });
-  }, [mercadoFiltro]);
+  }, []);
 
-  // ── Afiliación (local JSON) ───────────────────────────────────────────────
+  // ── Afiliación (local JSON + comprobadas dinámicas) ─────────────────────
   const afiliacionBySec = useMemo(() => {
     const m = {};
-    AFILIACION.forEach(r => { m[r.seccion] = r; });
+    afiliacionData.forEach(r => {
+      m[r.seccion] = {
+        ...r,
+        comprobadas:             comprobadasMongo[r.seccion] ?? r.comprobadas,
+        credenciales_entregadas: comprobadasMongo[r.seccion] ?? r.credenciales_entregadas,
+      };
+    });
     return m;
-  }, []);
+  }, [afiliacionData, comprobadasMongo]);
 
   // ── Desdoble Movilizadores — cálculo por sección ─────────────────────────
   const movilizadoresBySec = useMemo(() => {
@@ -595,15 +624,26 @@ const TableroBoard = ({ readOnly = false }) => {
     const dbBySec = {};
     allSecciones.forEach(s => { dbBySec[s.seccion] = s; });
 
+    // SP → district mapping (para distribuir comprobadas sin sección al distrito correcto)
+    const spToDistrito = {};
+    allSecciones.forEach(s => { if (s.pologono) spToDistrito[String(s.pologono)] = s.distrito_federal; });
+
     // Filter JSON data directly so sections without DB geometry are still counted
-    const source = AFILIACION.filter(r => {
-      if (selectedSector   != null) return String(r.sp) === String(selectedSector);
-      if (selectedDistrito != null) {
-        const db = dbBySec[r.seccion];
-        return db && db.distrito_federal === selectedDistrito;
-      }
-      return true;
-    });
+    // Override comprobadas with live MongoDB value when available
+    const source = afiliacionData
+      .filter(r => {
+        if (selectedSector   != null) return String(r.sp) === String(selectedSector);
+        if (selectedDistrito != null) {
+          const db = dbBySec[r.seccion];
+          return db && db.distrito_federal === selectedDistrito;
+        }
+        return true;
+      })
+      .map(r => ({
+        ...r,
+        comprobadas:             comprobadasMongo[r.seccion] ?? r.comprobadas,
+        credenciales_entregadas: comprobadasMongo[r.seccion] ?? r.credenciales_entregadas,
+      }));
 
     const bySector   = {};
     const byDistrito = {};
@@ -631,13 +671,23 @@ const TableroBoard = ({ readOnly = false }) => {
       });
     });
 
+    // Agregar comprobadas sin sección (seccion=0) a totales por sector y distrito
+    Object.entries(comprobadasSp0).forEach(([spStr, extra]) => {
+      const spKey = spStr;
+      if (!bySector[spKey]) return; // solo SPs que ya tienen secciones en el scope actual
+      bySector[spKey].comprobadas  += extra;
+      totalPipe.comprobadas        += extra;
+      const dKey = String(spToDistrito[spKey] ?? '');
+      if (byDistrito[dKey]) byDistrito[dKey].comprobadas += extra;
+    });
+
     return {
       mode: selectedSector ? 'sector' : selectedDistrito ? 'distrito' : 'municipio',
       total: { afiliados: totalAf, credenciales: totalCred, ...totalPipe },
       bySector,
       byDistrito,
     };
-  }, [selectedSeccion, selectedSector, selectedDistrito, allSecciones, afiliacionBySec]);
+  }, [selectedSeccion, selectedSector, selectedDistrito, allSecciones, afiliacionData, afiliacionBySec, comprobadasMongo, comprobadasSp0]);
 
   // ── Estadísticas electorales filtradas ───────────────────────────────────
   const electoralStats = useMemo(() => {
@@ -876,6 +926,18 @@ const TableroBoard = ({ readOnly = false }) => {
     fracciones.map(f => ({ ...f, sm: promotores.find(p => p.ubt === f.fraccion) ?? null })),
   [fracciones, promotores]);
 
+  // ── Totales de SMs y fracciones para el alcance actual ─────────────────────
+  const scopeSmStats = useMemo(() => {
+    const secs = (() => {
+      if (selectedSeccion != null) return [selectedSeccion];
+      if (selectedSector  != null) return allSecciones.filter(s => s.pologono === selectedSector).map(s => s.seccion);
+      if (selectedDistrito != null) return allSecciones.filter(s => s.distrito_federal === selectedDistrito).map(s => s.seccion);
+      return allSecciones.map(s => s.seccion);
+    })();
+    const totalFrac = secs.reduce((s, sec) => s + (globalFracciones[sec] ?? 0), 0);
+    const totalSMs  = secs.reduce((s, sec) => s + (globalSMs[sec] ?? 0), 0);
+    return { totalFrac, totalSMs, pct: totalFrac > 0 ? (totalSMs / totalFrac) * 100 : null };
+  }, [selectedSeccion, selectedSector, selectedDistrito, allSecciones, globalFracciones, globalSMs]);
 
   const crumbs = useMemo(() => {
     const list = [{ label: 'Municipio', onClick: () => { setSelectedDistrito(null); setSelectedSector(null); setSelectedSeccion(null); } }];
@@ -964,13 +1026,13 @@ const TableroBoard = ({ readOnly = false }) => {
     const breakdown = (() => {
       if (isSeccion) return null;
       if (isSector) {
-        return AFILIACION
+        return afiliacionData
           .filter(r => String(r.sp) === String(selectedSector))
           .map(r => ({
             label: `Sec. ${r.seccion}`,
             key: r.seccion,
             entregadas_sp: r.entregadas_sp ?? 0,
-            comprobadas:   r.comprobadas   ?? 0,
+            comprobadas:   comprobadasMongo[r.seccion] ?? r.comprobadas ?? 0,
           }))
           .filter(r => r.entregadas_sp > 0)
           .map(r => ({ ...r, pct: (r.comprobadas / r.entregadas_sp) * 100 }))
@@ -1003,6 +1065,43 @@ const TableroBoard = ({ readOnly = false }) => {
 
     return (
       <div className="space-y-2.5">
+
+        {/* ── Resumen territorial ───────────────────────────────── */}
+        {(scopeSmStats.totalFrac > 0 || scopeSmStats.totalSMs > 0) && (
+          <div className="rounded-xl border border-blue-100 bg-blue-50 px-3 py-2.5">
+            <p className="text-[9px] font-bold uppercase tracking-[0.14em] text-blue-400 mb-2">Estructura territorial</p>
+            <div className="grid grid-cols-3 gap-1.5 mb-2">
+              <div className="bg-white rounded-lg p-1.5 text-center">
+                <p className="text-[8px] font-bold uppercase tracking-wide text-slate-400 leading-none mb-0.5">SMs</p>
+                <p className="text-base font-bold tabular-nums text-blue-700">{scopeSmStats.totalSMs}</p>
+              </div>
+              <div className="bg-white rounded-lg p-1.5 text-center">
+                <p className="text-[8px] font-bold uppercase tracking-wide text-slate-400 leading-none mb-0.5">Fracciones</p>
+                <p className="text-base font-bold tabular-nums text-slate-700">{scopeSmStats.totalFrac}</p>
+              </div>
+              <div className="bg-white rounded-lg p-1.5 text-center">
+                <p className="text-[8px] font-bold uppercase tracking-wide text-slate-400 leading-none mb-0.5">Cobertura</p>
+                <p className="text-base font-bold tabular-nums" style={{
+                  color: scopeSmStats.pct == null ? '#9CA3AF'
+                    : scopeSmStats.pct >= 90 ? '#16A34A'
+                    : scopeSmStats.pct >= 60 ? '#CA8A04'
+                    : '#DC2626'
+                }}>
+                  {scopeSmStats.pct != null ? `${scopeSmStats.pct.toFixed(0)}%` : '—'}
+                </p>
+              </div>
+            </div>
+            {scopeSmStats.pct != null && (
+              <div className="h-1.5 bg-blue-100 rounded-full overflow-hidden">
+                <div className="h-full rounded-full transition-all duration-700"
+                  style={{
+                    width: `${Math.min(scopeSmStats.pct, 100)}%`,
+                    backgroundColor: scopeSmStats.pct >= 90 ? '#16A34A' : scopeSmStats.pct >= 60 ? '#CA8A04' : '#DC2626',
+                  }} />
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Cabecera */}
         <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5">
@@ -1383,9 +1482,10 @@ const TableroBoard = ({ readOnly = false }) => {
       ? Object.entries(mercadoBySec).filter(([sec]) => scopeSeccionNums.includes(Number(sec)))
       : Object.entries(mercadoBySec);
 
-    const totalEntregadas = seccionesEnScope.reduce((s, [, v]) => s + v.total, 0);
-    const maxRef = seccionesEnScope.length > 0 ? Math.max(...seccionesEnScope.map(([, v]) => v.total), 1) : 1;
-    const pctGlobal = maxRef > 0 ? (totalEntregadas / (maxRef * seccionesEnScope.length)) * 100 : null;
+    const totalEntregadas   = seccionesEnScope.reduce((s, [, v]) => s + v.total, 0);
+    const sortedScope       = seccionesEnScope.map(([, v]) => v.total).sort((a, b) => b - a);
+    const maxTotal          = sortedScope.length > 1 ? sortedScope[1] : (sortedScope[0] ?? 1);
+    const pctGlobal         = maxTotal > 0 ? (totalEntregadas / (maxTotal * seccionesEnScope.length)) * 100 : null;
     const seccionesConDatos = seccionesEnScope.filter(([, v]) => v.total > 0).length;
 
     // Breakdown por nivel
@@ -1405,7 +1505,7 @@ const TableroBoard = ({ readOnly = false }) => {
         return seccionesEnScope
           .map(([sec, v]) => ({ label: `Sec. ${sec}`, key: sec, ...v }))
           .filter(r => r.total > 0)
-          .sort((a, b) => b.total - a.total)
+          .sort((a, b) => b.deliveryRate - a.deliveryRate)
           .slice(0, 20);
       }
       // Agrupa por sector
@@ -1416,16 +1516,21 @@ const TableroBoard = ({ readOnly = false }) => {
         bySec[sp].total += v.total;
         bySec[sp].count++;
       }
+      const sortedSectors = Object.values(bySec).map(d => d.total).sort((a, b) => b - a);
+      const scopeMax = sortedSectors.length > 1 ? sortedSectors[1] : (sortedSectors[0] ?? 1);
       const bySector = Object.entries(bySec)
-        .map(([sp, d]) => ({ label: `Sector ${sp}`, key: sp, total: d.total, count: d.count, maxRef }))
+        .map(([sp, d]) => ({
+          label:        `Sector ${sp}`, key: sp,
+          total:        d.total,
+          count:        d.count,
+          deliveryRate: Math.min((d.total / scopeMax) * 100, 100),
+        }))
         .filter(r => r.total > 0)
-        .sort((a, b) => b.total - a.total);
+        .sort((a, b) => b.deliveryRate - a.deliveryRate);
       return bySector.length ? bySector : null;
     })();
 
-    const barColor = semaforoColor(seccionesEnScope.length > 0
-      ? (seccionesConDatos / seccionesEnScope.length) * 100
-      : null);
+    const barColor = semaforoColor(pctGlobal);
 
     // Conteo por estatus
     const estatusCount = { ENTREGADO: 0, PARCIAL: 0, PENDIENTE: 0, NO_ENTREGADO: 0 };
@@ -1436,27 +1541,44 @@ const TableroBoard = ({ readOnly = false }) => {
     return (
       <div className="space-y-2.5">
 
-        {/* Filtro de entrega */}
-        <div className="rounded-xl border border-slate-200 bg-slate-50 p-2.5">
-          <p className="text-[9px] font-bold uppercase tracking-[0.14em] text-slate-400 mb-1.5">Filtrar por entrega</p>
-          <select
-            value={mercadoFiltro ? `${mercadoFiltro.año}|${mercadoFiltro.mes}|${mercadoFiltro.entrega}` : ''}
-            onChange={e => {
-              if (!e.target.value) { setMercadoFiltro(null); return; }
-              const [año, mes, entrega] = e.target.value.split('|');
-              setMercadoFiltro({ año: parseInt(año), mes, entrega: parseInt(entrega) });
-            }}
-            className="w-full text-xs border border-slate-200 rounded-lg px-2 py-1.5 bg-white text-slate-700 font-medium focus:outline-none focus:ring-2 focus:ring-emerald-300"
-          >
-            <option value="">Todas las entregas</option>
-            {mercadoEntregas.map(e => (
-              <option key={`${e.año}|${e.mes}|${e.entrega}`} value={`${e.año}|${e.mes}|${e.entrega}`}>
-                Entrega {e.entrega} · {MESES[(['ENERO','FEBRERO','MARZO','ABRIL','MAYO','JUNIO','JULIO','AGOSTO','SEPTIEMBRE','OCTUBRE','NOVIEMBRE','DICIEMBRE'].indexOf(e.mes))]} {e.año}
-              </option>
-            ))}
-          </select>
-          {loadingMercado && <p className="text-[9px] text-slate-400 mt-1">Cargando datos…</p>}
-        </div>
+        {/* ── Resumen territorial ───────────────────────────────── */}
+        {(scopeSmStats.totalFrac > 0 || scopeSmStats.totalSMs > 0) && (
+          <div className="rounded-xl border border-blue-100 bg-blue-50 px-3 py-2.5">
+            <p className="text-[9px] font-bold uppercase tracking-[0.14em] text-blue-400 mb-2">Estructura territorial</p>
+            <div className="grid grid-cols-3 gap-1.5 mb-2">
+              <div className="bg-white rounded-lg p-1.5 text-center">
+                <p className="text-[8px] font-bold uppercase tracking-wide text-slate-400 leading-none mb-0.5">SMs</p>
+                <p className="text-base font-bold tabular-nums text-blue-700">{scopeSmStats.totalSMs}</p>
+              </div>
+              <div className="bg-white rounded-lg p-1.5 text-center">
+                <p className="text-[8px] font-bold uppercase tracking-wide text-slate-400 leading-none mb-0.5">Fracciones</p>
+                <p className="text-base font-bold tabular-nums text-slate-700">{scopeSmStats.totalFrac}</p>
+              </div>
+              <div className="bg-white rounded-lg p-1.5 text-center">
+                <p className="text-[8px] font-bold uppercase tracking-wide text-slate-400 leading-none mb-0.5">Cobertura</p>
+                <p className="text-base font-bold tabular-nums" style={{
+                  color: scopeSmStats.pct == null ? '#9CA3AF'
+                    : scopeSmStats.pct >= 90 ? '#16A34A'
+                    : scopeSmStats.pct >= 60 ? '#CA8A04'
+                    : '#DC2626'
+                }}>
+                  {scopeSmStats.pct != null ? `${scopeSmStats.pct.toFixed(0)}%` : '—'}
+                </p>
+              </div>
+            </div>
+            {scopeSmStats.pct != null && (
+              <div className="h-1.5 bg-blue-100 rounded-full overflow-hidden">
+                <div className="h-full rounded-full transition-all duration-700"
+                  style={{
+                    width: `${Math.min(scopeSmStats.pct, 100)}%`,
+                    backgroundColor: scopeSmStats.pct >= 90 ? '#16A34A' : scopeSmStats.pct >= 60 ? '#CA8A04' : '#DC2626',
+                  }} />
+              </div>
+            )}
+          </div>
+        )}
+
+        {loadingMercado && <p className="text-[9px] text-slate-400">Cargando datos…</p>}
 
         {/* Scope y status global */}
         <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5">
@@ -1480,7 +1602,7 @@ const TableroBoard = ({ readOnly = false }) => {
         <div className="grid grid-cols-3 gap-1.5">
           <div className="bg-emerald-50 rounded-xl p-2 text-center">
             <p className="text-[9px] font-bold uppercase tracking-widest text-emerald-600 leading-none mb-1">Entregadas</p>
-            <p className="text-lg font-bold tabular-nums text-emerald-700">{fmt(totalEntregadas)}</p>
+            <p className="text-lg font-bold tabular-nums text-emerald-700">{fmt(totalEntregadas)} pzas</p>
           </div>
           <div className="bg-blue-50 rounded-xl p-2 text-center">
             <p className="text-[9px] font-bold uppercase tracking-widest text-blue-600 leading-none mb-1">Secciones</p>
@@ -1494,17 +1616,17 @@ const TableroBoard = ({ readOnly = false }) => {
           </div>
         </div>
 
-        {/* Barra de referencia con max */}
-        {seccionesConDatos > 0 && (
+        {/* Barra de avance global */}
+        {totalEntregadas > 0 && (
           <div>
             <div className="flex justify-between mb-0.5">
-              <span className="text-[9px] text-slate-400">Ref p75: {fmt(maxRef)} uds</span>
-              <span className="text-[9px] font-semibold text-slate-500">p75 = 100%</span>
+              <span className="text-[9px] text-slate-400">{fmt(totalEntregadas)} piezas · ref. máx {fmt(maxTotal)}</span>
+              <span className="text-[9px] font-semibold" style={{ color: barColor }}>{pctGlobal != null ? `${pctGlobal.toFixed(0)}%` : '—'}</span>
             </div>
             <div className="h-2 rounded-full overflow-hidden" style={{ background: 'linear-gradient(90deg,#DC2626 0%,#CA8A04 40%,#65A30D 75%,#16A34A 100%)', opacity: 0.15 }} />
             <div className="h-2 rounded-full overflow-hidden -mt-2">
               <div className="h-full rounded-full transition-all duration-700"
-                style={{ width: `${Math.min((seccionesConDatos / Math.max(seccionesEnScope.length, 1)) * 100, 100)}%`, backgroundColor: barColor }} />
+                style={{ width: `${Math.min(pctGlobal ?? 0, 100)}%`, backgroundColor: barColor }} />
             </div>
           </div>
         )}
@@ -1543,19 +1665,19 @@ const TableroBoard = ({ readOnly = false }) => {
             <div className="space-y-1">
               {Object.entries(mercadoBySec)
                 .filter(([, v]) => v.total > 0)
-                .sort((a, b) => b[1].total - a[1].total)
+                .sort((a, b) => b[1].deliveryRate - a[1].deliveryRate)
                 .slice(0, 10)
                 .map(([sec, v], i) => {
-                  const rowColor = semaforoColor(v.pct);
+                  const rowColor = semaforoColor(v.deliveryRate);
                   return (
                     <div key={sec} className="flex items-center gap-1.5">
                       <span className="text-[8px] font-bold tabular-nums text-slate-300 w-3 flex-shrink-0 text-right">{i + 1}</span>
                       <div className="flex-1 flex items-center justify-between min-w-0">
                         <span className="text-[10px] font-semibold text-slate-700 truncate">Sec. {sec}</span>
                         <div className="flex items-center gap-1 flex-shrink-0">
-                          <span className="text-[9px] text-slate-400 tabular-nums">{fmt(v.total)}</span>
+                          <span className="text-[9px] text-slate-400 tabular-nums">{fmt(v.total)} pzas</span>
                           <span className="text-[8px] font-bold px-1 py-0.5 rounded text-white tabular-nums"
-                            style={{ backgroundColor: rowColor }}>{v.pct.toFixed(0)}%</span>
+                            style={{ backgroundColor: rowColor }}>{(v.deliveryRate ?? 0).toFixed(0)}%</span>
                         </div>
                       </div>
                     </div>
@@ -1576,22 +1698,21 @@ const TableroBoard = ({ readOnly = false }) => {
             </div>
             <div className="space-y-1.5">
               {breakdown.map(row => {
-                const pctRow = (row.total / maxRef) * 100;
-                const rowColor = semaforoColor(pctRow);
+                const rowColor = semaforoColor(row.deliveryRate);
                 return (
                   <div key={row.key}>
                     <div className="flex items-center justify-between mb-0.5">
                       <span className="text-[10px] font-semibold text-slate-700">{row.label}</span>
                       <div className="flex items-center gap-1.5">
-                        <span className="text-[9px] text-slate-400 tabular-nums">{fmt(row.total)}</span>
+                        <span className="text-[9px] text-slate-400 tabular-nums">{fmt(row.total)} pzas</span>
                         <span className="text-[9px] font-bold tabular-nums min-w-[2.5rem] text-right" style={{ color: rowColor }}>
-                          {pctRow.toFixed(0)}%
+                          {(row.deliveryRate ?? 0).toFixed(0)}%
                         </span>
                       </div>
                     </div>
                     <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
                       <div className="h-full rounded-full transition-all duration-500"
-                        style={{ width: `${Math.min(pctRow, 100)}%`, backgroundColor: rowColor }} />
+                        style={{ width: `${Math.min(row.deliveryRate ?? 0, 100)}%`, backgroundColor: rowColor }} />
                     </div>
                   </div>
                 );
@@ -1614,34 +1735,22 @@ const TableroBoard = ({ readOnly = false }) => {
                 <div className="flex items-end gap-0.5" style={{ height: BAR_H + 20 }}>
                   {mercadoHistorico.map((r, i) => {
                     const pctBar = (r.total / maxH) * 100;
-                    const isSelected = mercadoFiltro && mercadoFiltro.entrega === r.entrega;
-                    // Color: subida = verde, bajada vs anterior = rojo, igual = amarillo
                     const prev = mercadoHistorico[i - 1];
                     const trend = !prev ? '#16A34A'
                       : r.total > prev.total ? '#16A34A'
                       : r.total < prev.total ? '#DC2626'
                       : '#CA8A04';
                     return (
-                      <div key={r.entrega} className="flex-1 flex flex-col items-center gap-0.5"
-                        style={{ cursor: 'pointer' }}
-                        onClick={() => {
-                          // Buscar la entrega en la lista para tener año/mes
-                          const found = mercadoEntregas.find(e => e.entrega === r.entrega);
-                          if (found) setMercadoFiltro(isSelected ? null : found);
-                        }}
-                      >
-                        <div className="w-full rounded-t-sm transition-all duration-500 relative group"
+                      <div key={r.entrega} className="flex-1 flex flex-col items-center gap-0.5">
+                        <div className="w-full rounded-t-sm transition-all duration-500"
                           style={{
                             height: `${Math.max(Math.round((pctBar / 100) * BAR_H), 3)}px`,
-                            backgroundColor: isSelected ? '#EA580C' : trend,
-                            opacity: isSelected ? 1 : 0.75,
-                            outline: isSelected ? '2px solid #EA580C' : 'none',
-                            outlineOffset: 1,
+                            backgroundColor: trend,
+                            opacity: 0.75,
                           }}
                           title={`Entrega ${r.entrega}: ${r.total.toLocaleString('es-MX')} uds`}
                         />
-                        <span className="text-[8px] tabular-nums font-bold leading-none"
-                          style={{ color: isSelected ? '#EA580C' : '#94A3B8' }}>
+                        <span className="text-[8px] tabular-nums font-bold leading-none text-slate-400">
                           {r.entrega}
                         </span>
                       </div>
@@ -1658,14 +1767,6 @@ const TableroBoard = ({ readOnly = false }) => {
               </div>
               <span className="text-[8px] text-slate-300">última</span>
             </div>
-            {!mercadoFiltro && (
-              <p className="text-[8px] text-slate-400 text-center mt-1">Toca una barra para filtrar por entrega</p>
-            )}
-            {mercadoFiltro && (
-              <p className="text-[8px] text-orange-500 text-center mt-1 font-semibold">
-                Filtrando: Entrega {mercadoFiltro.entrega} · <button onClick={() => setMercadoFiltro(null)} className="underline">Ver todas</button>
-              </p>
-            )}
           </div>
         )}
 
@@ -2407,8 +2508,8 @@ const TableroBoard = ({ readOnly = false }) => {
         const credPct = af.entregadas_sp > 0
           ? Math.round((af.comprobadas / af.entregadas_sp) * 100)
           : 0;
-        const msPct  = ms.total > 0 && ms.maxRef > 0
-          ? Math.min(Math.round((ms.total / ms.maxRef) * 100), 100)
+        const msPct  = ms.total > 0
+          ? Math.min(Math.round(ms.deliveryRate ?? 0), 100)
           : 0;
         const movPct = mov.meta > 0
           ? Math.min(Math.round((mov.count / mov.meta) * 100), 100)
@@ -2458,6 +2559,34 @@ const TableroBoard = ({ readOnly = false }) => {
     XLSX.utils.book_append_sheet(wb, ws, 'Reporte Avances');
     XLSX.writeFile(wb, `reporte_avances_${fecha}.xlsx`);
   }, [allSecciones, globalFracciones, globalSMs, afiliacionBySec, mercadoBySec, movilizadoresBySec]);
+
+  const downloadSMPorSectorExcel = useCallback(() => {
+    // Construye mapa seccion → sector (campo pologono) desde allSecciones
+    const secToSp = {};
+    for (const s of allSecciones) secToSp[s.seccion] = s.pologono;
+
+    // Agrupa SMs por sector usando globalSMs (ciudadania puesto=SM) y globalFracciones
+    const bySector = {};
+    for (const [sec, count] of Object.entries(globalSMs)) {
+      const sp = secToSp[Number(sec)] ?? '?';
+      if (!bySector[sp]) bySector[sp] = { sm: 0, fracciones: 0 };
+      bySector[sp].sm += count;
+    }
+    for (const [sec, count] of Object.entries(globalFracciones)) {
+      const sp = secToSp[Number(sec)] ?? '?';
+      if (!bySector[sp]) bySector[sp] = { sm: 0, fracciones: 0 };
+      bySector[sp].fracciones += count;
+    }
+
+    const rows = Object.entries(bySector)
+      .sort((a, b) => Number(a[0]) - Number(b[0]))
+      .map(([sector, v]) => ({ SECTOR: Number(sector), 'NUMERO DE SM': v.sm, FRACCIONES: v.fracciones }));
+
+    const ws = XLSX.utils.json_to_sheet(rows);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'SM por Sector');
+    XLSX.writeFile(wb, `sm_por_sector_${new Date().toISOString().slice(0,10)}.xlsx`);
+  }, [allSecciones, globalSMs, globalFracciones]);
 
   return (
     <div className="min-h-screen bg-slate-50 font-sans">
@@ -2531,6 +2660,16 @@ const TableroBoard = ({ readOnly = false }) => {
                       <path fillRule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm3.293-7.707a1 1 0 011.414 0L9 10.586V3a1 1 0 112 0v7.586l1.293-1.293a1 1 0 111.414 1.414l-3 3a1 1 0 01-1.414 0l-3-3a1 1 0 010-1.414z" clipRule="evenodd" />
                     </svg>
                     Avances
+                  </button>
+                  <button
+                    onClick={downloadSMPorSectorExcel}
+                    title="Descargar Excel: SM y fracciones por sector"
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-purple-200 bg-purple-50 text-purple-700 text-[11px] font-semibold hover:bg-purple-100 transition-colors"
+                  >
+                    <svg width="13" height="13" viewBox="0 0 20 20" fill="currentColor">
+                      <path fillRule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm3.293-7.707a1 1 0 011.414 0L9 10.586V3a1 1 0 112 0v7.586l1.293-1.293a1 1 0 111.414 1.414l-3 3a1 1 0 01-1.414 0l-3-3a1 1 0 010-1.414z" clipRule="evenodd" />
+                    </svg>
+                    SM / Sector
                   </button>
                 </div>
               )}

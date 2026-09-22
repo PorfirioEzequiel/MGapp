@@ -365,6 +365,7 @@ const Coordinador = () => {
   const [electoralDataSenado,   setElectoralDataSenado]   = useState({});
   const [electoralDataDip2024,  setElectoralDataDip2024]  = useState({});
   const [comprobadasMongo,      setComprobadasMongo]      = useState({});
+  const [comprobadasSp0,        setComprobadasSp0]        = useState({});
 
   const getSnapPx = (snap, h) => {
     if (snap === 'full') return Math.round(h * 0.03);
@@ -477,12 +478,13 @@ const Coordinador = () => {
   }, []);
 
   useEffect(() => {
-    fetch('http://localhost:3001/api/comprobadas')
+    fetch('http://localhost:3003/api/comprobadas')
       .then(r => r.json())
-      .then(rows => {
+      .then(data => {
         const map = {};
-        for (const row of rows) { if (row.seccion != null) map[row.seccion] = row.comprobadas; }
+        for (const row of (data.bySec ?? [])) { if (row.seccion != null) map[row.seccion] = row.comprobadas; }
         setComprobadasMongo(map);
+        setComprobadasSp0(data.bySp0 ?? {});
       })
       .catch(() => {});
   }, []);
@@ -491,10 +493,8 @@ const Coordinador = () => {
     if (!sectionNums?.length) return;
     const { data } = await supabaseAdmin
       .from('mercado')
-      .select('seccion, entrega, mes, año, sector, piezas, sm_activas, entregadas, estatus, nombre')
-      .in('seccion', sectionNums)
-      .order('año', { ascending: false })
-      .order('mes', { ascending: false });
+      .select('seccion, sector, total, estatus, fracciones')
+      .in('seccion', sectionNums);
     setMercadoRows(data ?? []);
   };
 
@@ -692,7 +692,8 @@ const Coordinador = () => {
               .forEach(r => {
                 m[r.seccion] = {
                   ...r,
-                  comprobadas: comprobadasMongo[r.seccion] ?? r.comprobadas,
+                  comprobadas:              comprobadasMongo[r.seccion] ?? r.comprobadas,
+                  credenciales_entregadas:  comprobadasMongo[r.seccion] ?? r.credenciales_entregadas,
                 };
               });
     return m;
@@ -704,26 +705,23 @@ const Coordinador = () => {
     for (const r of mercadoRows) {
       const sec = r.seccion;
       if (!sec) continue;
-      if (!bySec[sec]) bySec[sec] = { total: 0, totalEntregadas: 0, totalPiezas: 0, estatusCounts: {}, rows: [] };
-      bySec[sec].total           += Number(r.piezas ?? 0) * Number(r.sm_activas ?? 1);
-      bySec[sec].totalEntregadas += Number(r.entregadas ?? 0);
-      bySec[sec].totalPiezas     += Number(r.piezas ?? 0);
-      bySec[sec].rows.push(r);
+      if (!bySec[sec]) bySec[sec] = { total: 0, fracciones: r.fracciones ?? 0, sector: r.sector, estatusCounts: {} };
+      bySec[sec].total += Math.round(Number(r.total ?? 0));
       const est = (r.estatus ?? 'PENDIENTE').toUpperCase();
       bySec[sec].estatusCounts[est] = (bySec[sec].estatusCounts[est] || 0) + 1;
     }
+    // deliveryRate = total_sección / 2ª sección más alta × 100 (igual que admin)
+    const sorted = Object.values(bySec).map(v => v.total).sort((a, b) => b - a);
+    const maxTotal = sorted.length > 1 ? sorted[1] : (sorted[0] ?? 1);
     const result = {};
     for (const [sec, v] of Object.entries(bySec)) {
-      const deliveryRate = v.totalPiezas > 0 ? Math.min((v.totalEntregadas / v.totalPiezas) * 100, 100) : 0;
       const estatus = Object.entries(v.estatusCounts).sort((a, b) => b[1] - a[1])[0]?.[0] ?? 'PENDIENTE';
       result[Number(sec)] = {
-        total:           v.total,
-        totalEntregadas: v.totalEntregadas,
-        totalPiezas:     v.totalPiezas,
-        deliveryRate,
+        total:        v.total,
+        fracciones:   v.fracciones,
+        sector:       v.sector,
         estatus,
-        estatusCounts:   v.estatusCounts,
-        rows:            v.rows,
+        deliveryRate: Math.min((v.total / maxTotal) * 100, 100),
       };
     }
     return result;
@@ -1030,7 +1028,8 @@ const Coordinador = () => {
                 if (!afRows.length) return null;
 
                 const totEntregadas  = afRows.reduce((s, r) => s + (r.entregadas_sp || 0), 0);
-                const totComprobadas = afRows.reduce((s, r) => s + ((comprobadasMongo[r.seccion] ?? r.comprobadas) || 0), 0);
+                const totComprobadas = afRows.reduce((s, r) => s + ((comprobadasMongo[r.seccion] ?? r.comprobadas) || 0), 0)
+                                     + (comprobadasSp0[user.poligono] ?? 0);
                 const totAfiliados   = afRows.reduce((s, r) => s + (r.afiliados     || 0), 0);
                 const pct    = totEntregadas > 0 ? (totComprobadas / totEntregadas) * 100 : 0;
                 const noData = totEntregadas === 0;
@@ -1113,16 +1112,15 @@ const Coordinador = () => {
               {/* ── Mercado Solidario ──────────────────────────────────────── */}
               {mercadoRows.length > 0 && (() => {
                 const secKeys = Object.keys(mercadoBySec).map(Number).sort((a, b) => a - b);
-                const totalPiezas      = secKeys.reduce((s, k) => s + (mercadoBySec[k]?.totalPiezas     ?? 0), 0);
-                const totalEntregadas  = secKeys.reduce((s, k) => s + (mercadoBySec[k]?.totalEntregadas ?? 0), 0);
-                const seccionesActivas = secKeys.filter(k => (mercadoBySec[k]?.totalEntregadas ?? 0) > 0).length;
+                const totalPiezas      = secKeys.reduce((s, k) => s + (mercadoBySec[k]?.total ?? 0), 0);
+                const seccionesActivas = secKeys.filter(k => (mercadoBySec[k]?.total ?? 0) > 0).length;
 
                 const topSecKey = secKeys.length > 0
                   ? secKeys.reduce((best, k) =>
-                      (mercadoBySec[k]?.totalEntregadas ?? 0) > (mercadoBySec[best]?.totalEntregadas ?? 0) ? k : best,
+                      (mercadoBySec[k]?.total ?? 0) > (mercadoBySec[best]?.total ?? 0) ? k : best,
                       secKeys[0])
                   : null;
-                const topSecEntregadas = topSecKey ? (mercadoBySec[topSecKey]?.totalEntregadas ?? 0) : 0;
+                const topSecEntregadas = topSecKey ? (mercadoBySec[topSecKey]?.total ?? 0) : 0;
 
                 return (
                   <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
@@ -1143,21 +1141,17 @@ const Coordinador = () => {
                     <div className="p-4">
                       <div className="grid grid-cols-2 gap-2">
                         <div className="bg-slate-50 rounded-xl p-3 text-center border border-slate-100">
-                          <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 leading-none mb-1.5">Total Piezas</p>
+                          <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 leading-none mb-1.5">Total distribuido</p>
                           <p className="text-xl font-black tabular-nums text-slate-700">{fmt(totalPiezas)}</p>
                         </div>
-                        <div className="bg-amber-50 rounded-xl p-3 text-center border border-amber-100">
-                          <p className="text-[10px] font-bold uppercase tracking-widest text-amber-500 leading-none mb-1.5">Entregadas</p>
-                          <p className="text-xl font-black tabular-nums text-amber-700">{fmt(totalEntregadas)}</p>
-                        </div>
                         <div className="bg-blue-50 rounded-xl p-3 text-center border border-blue-100">
-                          <p className="text-[10px] font-bold uppercase tracking-widest text-blue-500 leading-none mb-1.5">Secciones</p>
+                          <p className="text-[10px] font-bold uppercase tracking-widest text-blue-500 leading-none mb-1.5">Secciones activas</p>
                           <p className="text-xl font-black tabular-nums text-blue-700">{seccionesActivas}</p>
                         </div>
-                        <div className="bg-emerald-50 rounded-xl p-3 border border-emerald-100">
+                        <div className="bg-emerald-50 rounded-xl p-3 border border-emerald-100 col-span-2">
                           <p className="text-[10px] font-bold uppercase tracking-widest text-emerald-600 leading-none mb-2">Sección con más entregas</p>
                           <p className="text-2xl font-black tabular-nums text-emerald-700 leading-none">{topSecKey ?? '—'}</p>
-                          <p className="text-[10px] font-bold uppercase tracking-widest text-emerald-600 leading-none mt-2.5 mb-1">Cantidad</p>
+                          <p className="text-[10px] font-bold uppercase tracking-widest text-emerald-600 leading-none mt-2.5 mb-1">Total</p>
                           <p className="text-2xl font-black tabular-nums text-emerald-700 leading-none">{topSecKey ? fmt(topSecEntregadas) : '—'}</p>
                         </div>
                       </div>
@@ -1358,7 +1352,8 @@ const Coordinador = () => {
                   const afRows = AFILIACION.filter(r => Number(r.sp) === Number(user.poligono));
                   if (!afRows.length) return null;
                   const totEntregadas  = afRows.reduce((s, r) => s + (r.entregadas_sp || 0), 0);
-                  const totComprobadas = afRows.reduce((s, r) => s + ((comprobadasMongo[r.seccion] ?? r.comprobadas) || 0), 0);
+                  const totComprobadas = afRows.reduce((s, r) => s + ((comprobadasMongo[r.seccion] ?? r.comprobadas) || 0), 0)
+                                       + (comprobadasSp0[user.poligono] ?? 0);
                   const totAfiliados   = afRows.reduce((s, r) => s + (r.afiliados     || 0), 0);
                   const pct    = totEntregadas > 0 ? (totComprobadas / totEntregadas) * 100 : 0;
                   const noData = totEntregadas === 0;
@@ -1419,13 +1414,12 @@ const Coordinador = () => {
                 {/* Mercado Solidario */}
                 {mercadoRows.length > 0 && (() => {
                   const secKeys = Object.keys(mercadoBySec).map(Number).sort((a, b) => a - b);
-                  const totalPiezas      = secKeys.reduce((s, k) => s + (mercadoBySec[k]?.totalPiezas     ?? 0), 0);
-                  const totalEntregadas  = secKeys.reduce((s, k) => s + (mercadoBySec[k]?.totalEntregadas ?? 0), 0);
-                  const seccionesActivas = secKeys.filter(k => (mercadoBySec[k]?.totalEntregadas ?? 0) > 0).length;
+                  const totalPiezas      = secKeys.reduce((s, k) => s + (mercadoBySec[k]?.total ?? 0), 0);
+                  const seccionesActivas = secKeys.filter(k => (mercadoBySec[k]?.total ?? 0) > 0).length;
                   const topSecKey = secKeys.length > 0
-                    ? secKeys.reduce((best, k) => (mercadoBySec[k]?.totalEntregadas ?? 0) > (mercadoBySec[best]?.totalEntregadas ?? 0) ? k : best, secKeys[0])
+                    ? secKeys.reduce((best, k) => (mercadoBySec[k]?.total ?? 0) > (mercadoBySec[best]?.total ?? 0) ? k : best, secKeys[0])
                     : null;
-                  const topSecEnt = topSecKey ? (mercadoBySec[topSecKey]?.totalEntregadas ?? 0) : 0;
+                  const topSecEnt = topSecKey ? (mercadoBySec[topSecKey]?.total ?? 0) : 0;
                   return (
                     <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
                       <div className="px-4 pt-4 pb-3 border-b border-slate-100">
@@ -1441,21 +1435,17 @@ const Coordinador = () => {
                       <div className="p-4">
                         <div className="grid grid-cols-2 gap-2">
                           <div className="bg-slate-50 rounded-xl p-3 text-center border border-slate-100">
-                            <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 leading-none mb-1.5">Total Piezas</p>
+                            <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 leading-none mb-1.5">Total distribuido</p>
                             <p className="text-xl font-black tabular-nums text-slate-700">{fmt(totalPiezas)}</p>
                           </div>
-                          <div className="bg-amber-50 rounded-xl p-3 text-center border border-amber-100">
-                            <p className="text-[10px] font-bold uppercase tracking-widest text-amber-500 leading-none mb-1.5">Entregadas</p>
-                            <p className="text-xl font-black tabular-nums text-amber-700">{fmt(totalEntregadas)}</p>
-                          </div>
                           <div className="bg-blue-50 rounded-xl p-3 text-center border border-blue-100">
-                            <p className="text-[10px] font-bold uppercase tracking-widest text-blue-500 leading-none mb-1.5">Secciones</p>
+                            <p className="text-[10px] font-bold uppercase tracking-widest text-blue-500 leading-none mb-1.5">Secciones activas</p>
                             <p className="text-xl font-black tabular-nums text-blue-700">{seccionesActivas}</p>
                           </div>
-                          <div className="bg-emerald-50 rounded-xl p-3 border border-emerald-100">
+                          <div className="bg-emerald-50 rounded-xl p-3 border border-emerald-100 col-span-2">
                             <p className="text-[10px] font-bold uppercase tracking-widest text-emerald-600 leading-none mb-2">Sección con más entregas</p>
                             <p className="text-2xl font-black tabular-nums text-emerald-700 leading-none">{topSecKey ?? '—'}</p>
-                            <p className="text-[10px] font-bold uppercase tracking-widest text-emerald-600 leading-none mt-2.5 mb-1">Cantidad</p>
+                            <p className="text-[10px] font-bold uppercase tracking-widest text-emerald-600 leading-none mt-2.5 mb-1">Total</p>
                             <p className="text-2xl font-black tabular-nums text-emerald-700 leading-none">{topSecKey ? fmt(topSecEnt) : '—'}</p>
                           </div>
                         </div>
@@ -1883,7 +1873,8 @@ const Coordinador = () => {
                   // ── Vista sector completo ───────────────────────────────
                   const afRows         = AFILIACION.filter(r => Number(r.sp) === Number(user.poligono));
                   const totEntregadas  = afRows.reduce((s, r) => s + (r.entregadas_sp || 0), 0);
-                  const totComprobadas = afRows.reduce((s, r) => s + ((comprobadasMongo[r.seccion] ?? r.comprobadas) || 0), 0);
+                  const totComprobadas = afRows.reduce((s, r) => s + ((comprobadasMongo[r.seccion] ?? r.comprobadas) || 0), 0)
+                                       + (comprobadasSp0[user.poligono] ?? 0);
                   const totAfiliados   = afRows.reduce((s, r) => s + (r.afiliados     || 0), 0);
                   const pct    = totEntregadas > 0 ? (totComprobadas / totEntregadas) * 100 : 0;
                   const noData = totEntregadas === 0;
@@ -2009,7 +2000,8 @@ const Coordinador = () => {
                     const col = drColor(dr);
                     const entregadas = d.estatusCounts['ENTREGADO'] ?? 0;
                     const pendientes = d.estatusCounts['PENDIENTE'] ?? 0;
-                    const otrosCount = d.rows.length - entregadas - pendientes;
+                    const totalRegs  = Object.values(d.estatusCounts).reduce((s, v) => s + v, 0);
+                    const otrosCount = totalRegs - entregadas - pendientes;
 
                     return (
                       <>
@@ -2039,7 +2031,7 @@ const Coordinador = () => {
                               <p className={`text-2xl font-black tabular-nums leading-none ${drTxt(dr)}`}>{dr.toFixed(1)}%</p>
                             </div>
                             <p className="text-[10px] text-slate-500 tabular-nums text-right">
-                              <span className="font-bold text-slate-700">{fmt(d.totalEntregadas)}</span> de {fmt(d.totalPiezas)} pzas
+                              <span className="font-bold text-slate-700">{fmt(d.total)}</span> pzas distribuidas
                             </p>
                           </div>
                           <div className="h-2 bg-white/60 rounded-full overflow-hidden">
@@ -2067,43 +2059,14 @@ const Coordinador = () => {
                           </div>
                         )}
 
-                        {/* Registros individuales */}
-                        {d.rows.length > 0 && (
-                          <div className="space-y-1.5">
-                            <p className="text-[9px] font-bold uppercase tracking-widest text-slate-400">Registros</p>
-                            {d.rows.map((r, i) => {
-                              const est = (r.estatus ?? 'PENDIENTE').toUpperCase();
-                              const isDone = est === 'ENTREGADO';
-                              const piezas = Number(r.piezas ?? 0);
-                              const entregadasR = Number(r.entregadas ?? 0);
-                              const rRate = piezas > 0 ? Math.min((entregadasR / piezas) * 100, 100) : 0;
-                              return (
-                                <div key={i} className="rounded-lg bg-slate-50 px-2.5 py-2 flex items-center justify-between gap-2">
-                                  <div className="min-w-0">
-                                    <p className="text-[10px] font-semibold text-slate-700 truncate">{r.nombre ?? `Entrega ${r.entrega ?? i + 1}`}</p>
-                                    <p className="text-[8px] text-slate-400 tabular-nums">
-                                      {r.mes && r.año ? `${r.mes}/${r.año} · ` : ''}{entregadasR}/{piezas} pzas
-                                    </p>
-                                  </div>
-                                  <div className="flex flex-col items-end gap-1 flex-shrink-0">
-                                    <span className={`text-[8px] font-bold px-1.5 py-0.5 rounded-full ${isDone ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>
-                                      {est}
-                                    </span>
-                                    <span className="text-[9px] font-bold tabular-nums" style={{ color: drColor(rRate) }}>{rRate.toFixed(0)}%</span>
-                                  </div>
-                                </div>
-                              );
-                            })}
-                          </div>
-                        )}
                       </>
                     );
                   }
 
                   /* ── Vista: sector completo ──────────────────────────────── */
-                  const totalEntregadas = secKeys.reduce((s, k) => s + (mercadoBySec[k]?.totalEntregadas ?? 0), 0);
-                  const totalPiezas     = secKeys.reduce((s, k) => s + (mercadoBySec[k]?.totalPiezas ?? 0), 0);
-                  const globalRate      = totalPiezas > 0 ? Math.min((totalEntregadas / totalPiezas) * 100, 100) : 0;
+                  const totalPiezas     = secKeys.reduce((s, k) => s + (mercadoBySec[k]?.total ?? 0), 0);
+                  const sortedRates     = secKeys.map(k => mercadoBySec[k]?.deliveryRate ?? 0).filter(r => r > 0);
+                  const globalRate      = sortedRates.length > 0 ? sortedRates.reduce((s, r) => s + r, 0) / sortedRates.length : 0;
                   const completadas     = secKeys.filter(k => (mercadoBySec[k]?.deliveryRate ?? 0) >= 100).length;
                   const enProgreso      = secKeys.filter(k => { const r = mercadoBySec[k]?.deliveryRate ?? 0; return r > 0 && r < 100; }).length;
                   const sinIniciar      = secKeys.filter(k => (mercadoBySec[k]?.deliveryRate ?? 0) === 0).length;
@@ -2134,7 +2097,7 @@ const Coordinador = () => {
                             <p className={`text-3xl font-black tabular-nums leading-none ${drTxt(globalRate)}`}>{globalRate.toFixed(1)}%</p>
                           </div>
                           <p className="text-[10px] text-slate-500 tabular-nums text-right">
-                            <span className="font-bold text-slate-700">{fmt(totalEntregadas)}</span><br />de {fmt(totalPiezas)} pzas
+                            <span className="font-bold text-slate-700">{fmt(totalPiezas)}</span><br />pzas distribuidas
                           </p>
                         </div>
                         <div className="h-2 bg-white/60 rounded-full overflow-hidden">
@@ -2178,7 +2141,7 @@ const Coordinador = () => {
                               <div className="flex items-center justify-between mb-0.5">
                                 <span className="text-[10px] font-semibold text-slate-700">Sección {sec}</span>
                                 <div className="flex items-center gap-1.5">
-                                  <span className="text-[8px] text-slate-400 tabular-nums">{fmt(d.totalEntregadas)}/{fmt(d.totalPiezas)} pzas</span>
+                                  <span className="text-[8px] text-slate-400 tabular-nums">{fmt(d.total)} pzas</span>
                                   <span className="text-[9px] font-black tabular-nums" style={{ color: col }}>{dr.toFixed(0)}%</span>
                                 </div>
                               </div>
@@ -2519,7 +2482,7 @@ const Coordinador = () => {
                   const totalMujeres = seccionesSector.reduce((s, x) => s + (Number(x.mujeres) || 0), 0);
                   const smConUbicSec = promotores.filter(p => p.latitud && Number(p.latitud) !== 0 && !isNaN(Number(p.latitud))).length;
 
-                  const afRows   = AFILIACION.filter(r => Number(r.sp) === Number(user.poligono));
+                  const afRows   = Object.values(afiliacionBySec);
                   const afSector = afRows.length > 0 ? {
                     afiliados:               afRows.reduce((s, r) => s + (r.afiliados || 0), 0),
                     credenciales_entregadas: afRows.reduce((s, r) => s + (r.credenciales_entregadas || 0), 0),
@@ -2715,7 +2678,7 @@ const Coordinador = () => {
                   const smConUbic   = smsDeSec.filter(p => p.latitud && Number(p.latitud) !== 0 && !isNaN(Number(p.latitud))).length;
                   const fracConSM   = detalleSec.filter(f => f.sm != null).length;
                   const padronTotal = secSelData?.padron ?? secSelData?.padron_electoral;
-                  const afSec       = AFILIACION.find(r => r.seccion === Number(seccionMapa));
+                  const afSec       = afiliacionBySec[Number(seccionMapa)];
 
                   return (
                     <>

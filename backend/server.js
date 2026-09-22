@@ -224,16 +224,45 @@ app.delete('/campaign', (req, res) => {
   res.json({ ok: true });
 });
 
-// Conteo de comprobadas por sección desde MongoDB
+// Conteo de comprobadas: por sección (seccion > 0) + por SP para registros sin sección
 app.get('/api/comprobadas', async (req, res) => {
   try {
-    const col    = mongoose.connection.db.collection('registros-credenciales');
-    const result = await col.aggregate([
+    const col = mongoose.connection.db.collection('registros-credenciales');
+
+    // Agrupado por seccion — solo registros con sección válida
+    const bySec = await col.aggregate([
+      { $match: { seccion: { $gt: 0 } } },
       { $group: { _id: '$seccion', comprobadas: { $sum: 1 } } },
     ]).toArray();
-    res.json(result.map(r => ({ seccion: r._id, comprobadas: r.comprobadas })));
+
+    // Registros con seccion=0 o null, agrupados por sp (sector)
+    // Son comprobadas reales sin sección asignada — se suman al total del sector
+    const sp0Raw = await col.aggregate([
+      { $match: { $or: [{ seccion: 0 }, { seccion: null }, { seccion: { $exists: false } }] } },
+      { $match: { sp: { $gt: 0 } } },
+      { $group: { _id: '$sp', comprobadas: { $sum: 1 } } },
+    ]).toArray();
+    const bySp0 = {};
+    sp0Raw.forEach(r => { bySp0[r._id] = r.comprobadas; });
+
+    res.json({
+      bySec: bySec.map(r => ({ seccion: r._id, comprobadas: r.comprobadas })),
+      bySp0,
+    });
   } catch (err) {
     console.error('[MONGO] /api/comprobadas:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Pipeline de credenciales por sección (datos de afiliación)
+app.get('/api/afiliacion', async (req, res) => {
+  try {
+    const col  = mongoose.connection.db.collection('pipeline-credenciales');
+    const docs = await col.find({}, { projection: { _id: 0 } }).toArray();
+    res.json(docs);
+  } catch (err) {
+    console.error('[MONGO] /api/afiliacion:', err.message);
     res.status(500).json({ error: err.message });
   }
 });
