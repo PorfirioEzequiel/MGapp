@@ -126,7 +126,7 @@ function EmptyState({ title, sub }) {
 }
 
 // ── Sector Analysis Panel ─────────────────────────────────────────────────
-function SectorAnalysis({ tree, loading }) {
+function SectorAnalysis({ tree, loading, movs, smByUsuario }) {
   const [sortBy, setSortBy] = useState('count');
 
   const rows = useMemo(() => {
@@ -153,50 +153,35 @@ function SectorAnalysis({ tree, loading }) {
   const dashFill = (Math.min(globalPct, 100) / 100) * C;
 
   function handleExport() {
-    const rows = [];
-
-    Object.keys(tree)
-      .sort((a, b) => Number(a) - Number(b))
-      .forEach(sk => {
-        Object.keys(tree[sk].secciones)
-          .sort((a, b) => Number(a) - Number(b))
-          .forEach(secK => {
-            Object.keys(tree[sk].secciones[secK].fracciones)
-              .sort((a, b) => Number(a) - Number(b))
-              .forEach(fracK => {
-                const frac = tree[sk].secciones[secK].fracciones[fracK];
-                const smNombre = frac.sm ? fullName(frac.sm) : 'Sin SM asignada';
-                if (frac.movs.length === 0) {
-                  rows.push({
-                    'Sector / SP': `Sector ${sk}`,
-                    'Sección': Number(secK),
-                    'Fracción': Number(fracK),
-                    'SM': smNombre,
-                    'MGS': '—',
-                    'CURP': '—',
-                    'Observaciones': '',
-                  });
-                } else {
-                  frac.movs.forEach(m => {
-                    rows.push({
-                      'Sector / SP': `Sector ${sk}`,
-                      'Sección': Number(secK),
-                      'Fracción': Number(fracK),
-                      'SM': smNombre,
-                      'MGS': fullName(m),
-                      'CURP': m.curp || '—',
-                      'Observaciones': m.observaciones || '',
-                    });
-                  });
-                }
-              });
-          });
+    const rows = movs
+      .filter(m => m.movilizador)
+      .sort((a, b) => {
+        const sa = smByUsuario[a.movilizador];
+        const sb = smByUsuario[b.movilizador];
+        const diff = (Number(sa?.poligono) || 0) - (Number(sb?.poligono) || 0);
+        if (diff !== 0) return diff;
+        const diffSec = (Number(sa?.seccion) || 0) - (Number(sb?.seccion) || 0);
+        if (diffSec !== 0) return diffSec;
+        return (Number(sa?.ubt) || 0) - (Number(sb?.ubt) || 0);
+      })
+      .map(m => {
+        const sm = smByUsuario[m.movilizador];
+        return {
+          'Sector / SP': sm?.poligono ? `Sector ${sm.poligono}` : '—',
+          'Sección': sm?.seccion ?? '—',
+          'Fracción': sm?.ubt ?? '—',
+          'SM': sm ? fullName(sm) : '—',
+          'MGS': fullName(m),
+          'Observaciones': m.observaciones || '',
+        };
       });
+
+    if (rows.length === 0) return;
 
     const ws = XLSX.utils.json_to_sheet(rows);
     ws['!cols'] = [
       { wch: 12 }, { wch: 10 }, { wch: 10 },
-      { wch: 34 }, { wch: 34 }, { wch: 20 }, { wch: 40 },
+      { wch: 34 }, { wch: 34 }, { wch: 40 },
     ];
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'Control MGS');
@@ -657,7 +642,7 @@ export default function ControlMGS() {
         </div>
 
         {/* ── Sector Analysis Panel ── */}
-        <SectorAnalysis tree={tree} loading={loading} />
+        <SectorAnalysis tree={tree} loading={loading} movs={movs} smByUsuario={smByUsuario} />
 
         {/* ── Drill-down tabs panel ── */}
         <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
