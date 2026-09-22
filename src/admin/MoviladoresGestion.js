@@ -244,66 +244,6 @@ export default function MoviladoresGestion() {
     formState: { errors, isSubmitting },
   } = useForm();
 
-  const [cpLoading, setCpLoading] = useState(false);
-  const [cpColonias, setCpColonias] = useState([]);
-  const [cpInfo, setCpInfo] = useState(null);
-  const [cpError, setCpError] = useState(null);
-
-  // ── CP lookup ──────────────────────────────────────────────────────────────
-  const cpValue = watch('c_p');
-
-  useEffect(() => {
-    const cp = (cpValue || '').replace(/\D/g, '');
-    if (cp.length !== 5) {
-      setCpColonias([]);
-      setCpInfo(null);
-      setCpError(null);
-      setValue('col_loc', '', { shouldValidate: false });
-      return;
-    }
-
-    let cancelled = false;
-    const timer = setTimeout(async () => {
-      setCpLoading(true);
-      setCpError(null);
-      try {
-        const res = await fetch(
-          `https://api.copomex.com/query/info_cp/${cp}?token=pruebas`
-        );
-        const json = await res.json();
-        if (cancelled) return;
-
-        if (json.error || !Array.isArray(json.response) || !json.response.length) {
-          setCpError('Código postal no encontrado');
-          setCpColonias([]);
-          setCpInfo(null);
-          return;
-        }
-
-        const colonias = [...new Set(json.response.map(r => r.d_asenta))];
-        const municipio = json.response[0].D_mnpio || '';
-        const estado = json.response[0].d_estado || '';
-        const isEdoMex =
-          estado.toLowerCase().includes('méxico') ||
-          estado.toLowerCase().includes('estado de mexico');
-
-        setCpColonias(colonias);
-        setCpInfo({ municipio, estado, warn: !isEdoMex });
-        setValue('col_loc', colonias.length === 1 ? colonias[0] : '', {
-          shouldValidate: false,
-        });
-      } catch {
-        if (!cancelled) setCpError('Error de red al consultar el C.P.');
-      } finally {
-        if (!cancelled) setCpLoading(false);
-      }
-    }, 500);
-
-    return () => {
-      cancelled = true;
-      clearTimeout(timer);
-    };
-  }, [cpValue, setValue]);
 
   // ── SM loader ──────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -505,107 +445,35 @@ export default function MoviladoresGestion() {
                 <label className="block text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-1.5">
                   Código Postal<span className="text-red-400 ml-0.5">*</span>
                 </label>
-                <div className="relative w-36">
-                  <input
-                    {...register('c_p', {
-                      required: 'Requerido',
-                      pattern: { value: /^\d{5}$/, message: '5 dígitos' },
-                    })}
-                    type="text"
-                    maxLength={5}
-                    placeholder="55000"
-                    autoComplete="postal-code"
-                    className={`${cx(errors.c_p)} pr-8`}
-                  />
-                  {cpLoading && (
-                    <div className="absolute right-2.5 top-1/2 -translate-y-1/2">
-                      <svg className="animate-spin w-4 h-4 text-blue-400"
-                        viewBox="0 0 24 24" fill="none">
-                        <circle className="opacity-25" cx="12" cy="12" r="10"
-                          stroke="currentColor" strokeWidth="3" />
-                        <path className="opacity-75" fill="currentColor"
-                          d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
-                      </svg>
-                    </div>
-                  )}
-                  {!cpLoading && cpInfo && (
-                    <div className="absolute right-2.5 top-1/2 -translate-y-1/2">
-                      <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-                        <circle cx="7" cy="7" r="6" fill="#10b981" />
-                        <polyline points="4,7 6.5,9.5 10,5"
-                          stroke="white" strokeWidth="1.8"
-                          strokeLinecap="round" strokeLinejoin="round" />
-                      </svg>
-                    </div>
-                  )}
-                </div>
-
-                {/* Error de campo */}
+                <input
+                  {...register('c_p', {
+                    required: 'Requerido',
+                    pattern: { value: /^\d{5}$/, message: '5 dígitos' },
+                  })}
+                  type="text"
+                  inputMode="numeric"
+                  maxLength={5}
+                  placeholder="55000"
+                  autoComplete="postal-code"
+                  className={`w-36 ${cx(errors.c_p)}`}
+                />
                 {errors.c_p && (
                   <p className="text-red-500 text-xs mt-1 pl-0.5">{errors.c_p.message}</p>
                 )}
-
-                {/* Info tag — municipio + estado */}
-                {cpInfo && !cpError && (
-                  <div className={`mt-2 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border ${
-                    cpInfo.warn
-                      ? 'bg-amber-50 border-amber-200 text-amber-700'
-                      : 'bg-emerald-50 border-emerald-200 text-emerald-700'
-                  }`}>
-                    {cpInfo.warn ? (
-                      <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor">
-                        <path d="M6 1L11 10H1L6 1z" />
-                        <rect x="5.4" y="4.5" width="1.2" height="3" rx="0.5" fill="white"/>
-                        <circle cx="6" cy="8.5" r="0.6" fill="white"/>
-                      </svg>
-                    ) : (
-                      <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-                        <circle cx="6" cy="6" r="5" stroke="currentColor" strokeWidth="1.2"/>
-                        <polyline points="3.5,6 5.5,8 8.5,4"
-                          stroke="currentColor" strokeWidth="1.2"
-                          strokeLinecap="round" strokeLinejoin="round"/>
-                      </svg>
-                    )}
-                    <span>{cpInfo.municipio}, {cpInfo.estado}</span>
-                    {cpInfo.warn && (
-                      <span className="text-amber-600 font-normal">· fuera de Tecámac</span>
-                    )}
-                  </div>
-                )}
-
-                {/* Error de API */}
-                {cpError && (
-                  <p className="text-red-500 text-xs mt-1.5 pl-0.5">{cpError}</p>
-                )}
               </div>
 
-              {/* Colonia — select si la API respondió, input libre si no */}
               <div className="grid grid-cols-12 gap-3">
                 <div className="col-span-12 sm:col-span-7">
                   <label className="block text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-1.5">
                     Colonia<span className="text-red-400 ml-0.5">*</span>
                   </label>
-
-                  {cpColonias.length > 0 ? (
-                    <select
-                      {...register('col_loc', { required: 'Selecciona una colonia' })}
-                      className={cx(errors.col_loc)}
-                    >
-                      <option value="">— Selecciona colonia —</option>
-                      {cpColonias.map(c => (
-                        <option key={c} value={c}>{c}</option>
-                      ))}
-                    </select>
-                  ) : (
-                    <input
-                      {...register('col_loc', { required: 'Campo requerido' })}
-                      type="text"
-                      placeholder="CENTRO"
-                      autoComplete="address-level3"
-                      className={`${cx(errors.col_loc)} uppercase`}
-                    />
-                  )}
-
+                  <input
+                    {...register('col_loc', { required: 'Campo requerido' })}
+                    type="text"
+                    placeholder="CENTRO"
+                    autoComplete="address-level3"
+                    className={`${cx(errors.col_loc)} uppercase`}
+                  />
                   {errors.col_loc && (
                     <p className="text-red-500 text-xs mt-1 pl-0.5">{errors.col_loc.message}</p>
                   )}
