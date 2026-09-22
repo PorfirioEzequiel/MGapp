@@ -281,6 +281,7 @@ export default function MoviladoresGestion() {
       puesto: 'MOVILIZADOR',
       movilizador: selectedSM.usuario,
       status: 'ACTIVO',
+      observaciones: data.observaciones?.trim() || null,
     };
 
     const { error } = await supabase.from('ciudadania').insert([record]);
@@ -512,6 +513,19 @@ export default function MoviladoresGestion() {
                 />
               </Field>
             </div>
+          </div>
+
+          {/* ── Observaciones ── */}
+          <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-5 mt-2">
+            <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-4">
+              Observaciones <span className="normal-case font-normal text-slate-300">(opcional)</span>
+            </p>
+            <textarea
+              {...register('observaciones')}
+              rows={3}
+              placeholder="Notas adicionales sobre la movilizadora…"
+              className="w-full border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm text-slate-800 placeholder:text-slate-300 focus:outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-400/10 transition-colors resize-none"
+            />
           </div>
 
           {/* ── Acciones ── */}
