@@ -552,7 +552,7 @@ export default function ControlMGS() {
         const [catRes, secRes, smRes, movRes] = await Promise.all([
           supabaseAdmin.from('ubt_catalogo').select('seccion, fraccion').order('seccion').order('fraccion', { ascending: true }),
           supabaseAdmin.from('secciones').select('seccion, pologono'),
-          supabaseAdmin.from('ciudadania').select('usuario, nombre, a_paterno, a_materno, seccion, poligono, ubt').ilike('puesto', 'sm').eq('status', 'ACTIVO'),
+          supabaseAdmin.from('ciudadania').select('usuario, nombre, a_paterno, a_materno, seccion, poligono, ubt, url_foto_perfil').ilike('puesto', 'sm').eq('status', 'ACTIVO'),
           supabaseAdmin.from('ciudadania').select('id, usuario, nombre, a_paterno, a_materno, curp, telefono_1, movilizador, observaciones').ilike('puesto', 'movilizador').eq('status', 'ACTIVO').order('a_paterno'),
         ]);
         if (catRes.error) throw catRes.error;
@@ -1230,8 +1230,20 @@ export default function ControlMGS() {
                                 onMouseEnter={e => e.currentTarget.style.backgroundColor = G[50]}
                                 onMouseLeave={e => e.currentTarget.style.backgroundColor = ''}>
 
-                                <div className={`w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold flex-shrink-0 ${badgeColor(sm.usuario)}`}>
-                                  {initials(sm)}
+                                <div className={`w-10 h-10 rounded-full flex-shrink-0 overflow-hidden ${!sm.url_foto_perfil ? badgeColor(sm.usuario) : ''} flex items-center justify-center`}>
+                                  {sm.url_foto_perfil
+                                    ? <img src={sm.url_foto_perfil} alt={fullName(sm)}
+                                        className="w-full h-full object-cover"
+                                        onError={e => {
+                                          e.currentTarget.style.display = 'none';
+                                          e.currentTarget.nextSibling.style.display = 'flex';
+                                        }} />
+                                    : null}
+                                  <span
+                                    className={`w-full h-full items-center justify-center text-sm font-bold ${badgeColor(sm.usuario)} rounded-full`}
+                                    style={{ display: sm.url_foto_perfil ? 'none' : 'flex' }}>
+                                    {initials(sm)}
+                                  </span>
                                 </div>
 
                                 <div className="flex-1 min-w-0">
