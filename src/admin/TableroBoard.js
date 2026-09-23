@@ -79,6 +79,12 @@ const CANDIDATOS_DIP = {
   MC:     { nombre: 'Saúl Nayan / Noelia Hdz.',     partido: 'MC',                resultado: '',         fill: '#F59E0B', stroke: '#B45309' },
 };
 
+// ── Candidatos Gubernatura Edomex 2023 ────────────────────────────────────────
+const CANDIDATOS_GUB2023 = {
+  DELFINA:   { nombre: 'Delfina Gómez Álvarez',  partido: 'MORENA · PT · PVEM · Nueva Alianza', resultado: 'GANADORA', fill: '#6B0B20', stroke: '#360008' },
+  OPOSICION: { nombre: 'Alejandra del Moral',     partido: 'PRI · PAN · PRD',                   resultado: '2° lugar', fill: '#1460A8', stroke: '#093E78' },
+};
+
 // ── Alias de secciones históricas (fallback para cuando el dato directo no existe) ──
 const SECTION_ALIASES = {
   7011: 4213, 7012: 4213, 7013: 4213,
@@ -312,6 +318,7 @@ const TableroBoard = ({ readOnly = false }) => {
   const [electoralData2024IEEM, setElectoralData2024IEEM] = useState({});
   const [electoralDataSenado,   setElectoralDataSenado]   = useState({});
   const [electoralDataDip2024,  setElectoralDataDip2024]  = useState({});
+  const [electoralDataGub2023,  setElectoralDataGub2023]  = useState({});
   const [panelFade,     setPanelFade]     = useState(true);
   const prevElectoralMode = useRef(null);
 
@@ -462,6 +469,17 @@ const TableroBoard = ({ readOnly = false }) => {
                         : agg4251.pri >= agg4251.mc ? 'PRI' : 'MC';
         m[4251] = agg4251;
         setElectoralDataDip2024(m);
+      })
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    fetch('/gubernatura_2023_edomex.json')
+      .then(r => r.json())
+      .then(rows => {
+        const m = {};
+        rows.forEach(row => { m[row.seccion] = row; });
+        setElectoralDataGub2023(m);
       })
       .catch(() => {});
   }, []);
@@ -697,10 +715,12 @@ const TableroBoard = ({ readOnly = false }) => {
     const isSenado    = electoralMode === 'senado_2024';
     const isDip2024   = electoralMode === 'dip_2024';
     const isDip       = isDip2024;
+    const isGub2023   = electoralMode === 'gubernatura_2023';
     const dataSource  = isIEEM ? electoralDataIEEM
                       : is2024IEEM ? electoralData2024IEEM
                       : isSenado ? electoralDataSenado
                       : isDip2024 ? electoralDataDip2024
+                      : isGub2023 ? electoralDataGub2023
                       : electoralData;
     if (!electoralMode || !Object.keys(dataSource).length) return null;
 
@@ -723,8 +743,8 @@ const TableroBoard = ({ readOnly = false }) => {
     const senadoBuckets = {};
 
     for (const s of mapSecciones) {
-      // IEEM 2024, Senado 2024 y Dip 2024: alias forzado para secciones fraccionadas
-      const canonical = ((is2024IEEM || isSenado || isDip2024) && IEEM_2024_GRUPOS[s.seccion])
+      // IEEM 2024, Senado 2024, Dip 2024 y Gub 2023: alias forzado para secciones fraccionadas
+      const canonical = ((is2024IEEM || isSenado || isDip2024 || isGub2023) && IEEM_2024_GRUPOS[s.seccion])
         ? IEEM_2024_GRUPOS[s.seccion]
         : dataSource[s.seccion] !== undefined
           ? s.seccion
@@ -784,6 +804,11 @@ const TableroBoard = ({ readOnly = false }) => {
         for (const [p, v] of Object.entries(votes)) {
           if (v > 0) { totals[p] = (totals[p] || 0) + v; grandTotal += v; }
         }
+      } else if (isGub2023) {
+        const { ganador, votos_delfina = 0, votos_oposicion = 0 } = d;
+        secGanadas[ganador] = (secGanadas[ganador] || 0) + 1;
+        if (votos_delfina   > 0) { totals.DELFINA   = (totals.DELFINA   || 0) + votos_delfina;   grandTotal += votos_delfina; }
+        if (votos_oposicion > 0) { totals.OPOSICION = (totals.OPOSICION || 0) + votos_oposicion; grandTotal += votos_oposicion; }
       } else {
         const { ganador_partido, morena_coalicion = 0, morena = 0, pri = 0, pan = 0, pvem = 0, mc = 0, prd = 0, pt = 0, naem = 0 } = d;
         secGanadas[ganador_partido] = (secGanadas[ganador_partido] || 0) + 1;
@@ -828,12 +853,12 @@ const TableroBoard = ({ readOnly = false }) => {
       : null;
 
     return { totals, grandTotal, winner, secGanadas, secciones, sorted, marginVotos, marginPct,
-             isIEEM, is2024, is2024IEEM, isSenado, isDip, isDip2024,
+             isIEEM, is2024, is2024IEEM, isSenado, isDip, isDip2024, isGub2023,
              morena_solo_total, pt_solo_total, naem_solo_total,
              rosi_vs_aaron_total, mg_vs_fuerza_total, votos_nulos_total,
              groupLevel, senadoBreakdown };
   }, [electoralData, electoralDataIEEM, electoralData2024IEEM, electoralDataSenado,
-      electoralDataDip2024, electoralMode, mapSecciones,
+      electoralDataDip2024, electoralDataGub2023, electoralMode, mapSecciones,
       selectedSeccion, selectedSector, selectedDistrito]);
 
   // ── Fetch sector ──────────────────────────────────────────────────────────
@@ -1795,7 +1820,7 @@ const TableroBoard = ({ readOnly = false }) => {
     );
 
     const { totals, grandTotal, winner, secGanadas, secciones, sorted, marginVotos, marginPct,
-            isIEEM, is2024, is2024IEEM, isSenado, isDip, isDip2024,
+            isIEEM, is2024, is2024IEEM, isSenado, isDip, isDip2024, isGub2023,
             morena_solo_total, pt_solo_total, naem_solo_total,
             rosi_vs_aaron_total, mg_vs_fuerza_total, votos_nulos_total,
             groupLevel, senadoBreakdown } = electoralStats;
@@ -1808,11 +1833,12 @@ const TableroBoard = ({ readOnly = false }) => {
       else selectDistrito(unit.key);
     };
     const is2024Any    = is2024 || is2024IEEM;
-    const candTable    = isSenado ? CANDIDATOS_SENADO : isDip ? CANDIDATOS_DIP : is2024Any ? CANDIDATOS_2024 : CANDIDATOS_2021;
+    const candTable    = isGub2023 ? CANDIDATOS_GUB2023 : isSenado ? CANDIDATOS_SENADO : isDip ? CANDIDATOS_DIP : is2024Any ? CANDIDATOS_2024 : CANDIDATOS_2021;
     const winnerCand   = candTable[winner];
-    const winnerColor  = isSenado  ? (CANDIDATOS_SENADO[winner]?.fill ?? '#6B7280')
-                       : isDip     ? (CANDIDATOS_DIP[winner]?.fill    ?? '#6B7280')
-                       : is2024Any ? (CANDIDATOS_2024[winner]?.fill   ?? '#6B7280')
+    const winnerColor  = isGub2023 ? (CANDIDATOS_GUB2023[winner]?.fill ?? '#6B7280')
+                       : isSenado  ? (CANDIDATOS_SENADO[winner]?.fill  ?? '#6B7280')
+                       : isDip     ? (CANDIDATOS_DIP[winner]?.fill     ?? '#6B7280')
+                       : is2024Any ? (CANDIDATOS_2024[winner]?.fill    ?? '#6B7280')
                        : (PARTY_FILL[winner] ?? '#6B7280');
     const totalSec     = Object.values(secGanadas).reduce((s, n) => s + n, 0);
 
@@ -1825,16 +1851,17 @@ const TableroBoard = ({ readOnly = false }) => {
             <div>
               <p className="text-[9px] font-bold uppercase tracking-[0.14em] text-slate-400 leading-none mb-1">Proceso electoral</p>
               <p className="text-xs font-bold text-slate-800 leading-snug">
-                {isDip2024  ? 'Diputación Local 2024 - Interno · Tecámac'
+                {isGub2023  ? 'Gubernatura Edomex · 2023'
+                 : isDip2024  ? 'Diputación Local 2024 - Interno · Tecámac'
                  : isSenado ? 'Senaduría 2024 · Tecámac'
                  : is2024Any ? 'Ayuntamiento Tecámac · 2024'
                  : 'Ayuntamiento Tecámac · 2021'}
               </p>
             </div>
             <span className={`text-[9px] font-bold px-2 py-1 rounded-full whitespace-nowrap flex-shrink-0 text-white ${
-              isDip ? 'bg-slate-700' : is2024IEEM ? 'bg-emerald-700' : is2024 ? 'bg-blue-700' : isSenado ? 'bg-rose-900' : isIEEM ? 'bg-emerald-700' : 'bg-slate-700'
+              isGub2023 ? 'bg-rose-900' : isDip ? 'bg-slate-700' : is2024IEEM ? 'bg-emerald-700' : is2024 ? 'bg-blue-700' : isSenado ? 'bg-rose-900' : isIEEM ? 'bg-emerald-700' : 'bg-slate-700'
             }`}>
-              {isDip2024 ? 'Interno' : is2024IEEM ? 'IEEM oficial' : is2024 ? 'Rosi Wong' : isSenado ? 'Senaduría 2024' : isIEEM ? 'IEEM oficial' : 'Datos internos'}
+              {isGub2023 ? 'IEEM oficial' : isDip2024 ? 'Interno' : is2024IEEM ? 'IEEM oficial' : is2024 ? 'Rosi Wong' : isSenado ? 'Senaduría 2024' : isIEEM ? 'IEEM oficial' : 'Datos internos'}
             </span>
           </div>
           <p className="text-[10px] text-slate-500 mt-1.5 flex items-center gap-1">
@@ -1955,6 +1982,41 @@ const TableroBoard = ({ readOnly = false }) => {
           </div>
         )}
 
+        {/* Comparativa Delfina vs Oposición (solo gubernatura_2023) */}
+        {isGub2023 && (
+          <div className="bg-white border border-slate-100 rounded-xl p-3 shadow-sm">
+            <SectionTitle>Delfina Gómez vs Oposición</SectionTitle>
+            <div className="flex items-center gap-2 mb-2">
+              <div className="flex-1">
+                <p className="text-[9px] font-bold uppercase tracking-widest mb-0.5" style={{ color: CANDIDATOS_GUB2023.DELFINA.fill }}>Delfina Gómez</p>
+                <p className="text-base font-bold tabular-nums" style={{ color: CANDIDATOS_GUB2023.DELFINA.fill }}>{fmt(totals['DELFINA'])}</p>
+                <p className="text-[10px] text-slate-400">{pct(totals['DELFINA'], grandTotal)}</p>
+              </div>
+              <div className="flex flex-col items-center gap-1 flex-shrink-0">
+                <span className="text-sm font-black tabular-nums text-slate-700">
+                  +{fmt((totals['DELFINA'] ?? 0) - (totals['OPOSICION'] ?? 0))}
+                </span>
+                <span className="text-[9px] text-slate-400 uppercase tracking-wider">diferencia</span>
+              </div>
+              <div className="flex-1 text-right">
+                <p className="text-[9px] font-bold uppercase tracking-widest mb-0.5" style={{ color: CANDIDATOS_GUB2023.OPOSICION.fill }}>Oposición</p>
+                <p className="text-base font-bold tabular-nums" style={{ color: CANDIDATOS_GUB2023.OPOSICION.fill }}>{fmt(totals['OPOSICION'])}</p>
+                <p className="text-[10px] text-slate-400">{pct(totals['OPOSICION'], grandTotal)}</p>
+              </div>
+            </div>
+            <div className="h-2.5 bg-slate-100 rounded-full overflow-hidden flex">
+              <div className="h-full rounded-l-full transition-all duration-700"
+                style={{ width: pct(totals['DELFINA'], grandTotal), backgroundColor: CANDIDATOS_GUB2023.DELFINA.fill }} />
+              <div className="h-full rounded-r-full transition-all duration-700"
+                style={{ width: pct(totals['OPOSICION'], grandTotal), backgroundColor: CANDIDATOS_GUB2023.OPOSICION.fill }} />
+            </div>
+            <div className="flex justify-between mt-1">
+              <span className="text-[9px]" style={{ color: CANDIDATOS_GUB2023.DELFINA.fill }}>{pct(totals['DELFINA'], grandTotal)} Delfina</span>
+              <span className="text-[9px]" style={{ color: CANDIDATOS_GUB2023.OPOSICION.fill }}>Oposición {pct(totals['OPOSICION'], grandTotal)}</span>
+            </div>
+          </div>
+        )}
+
         {/* Secciones ganadas vs perdidas (solo senado_2024) */}
         {isSenado && (
           <div className="bg-white border border-slate-100 rounded-xl p-3 shadow-sm">
@@ -2033,7 +2095,7 @@ const TableroBoard = ({ readOnly = false }) => {
           <div className="space-y-2">
             {sorted.filter(([, v]) => v > 0).map(([party, votes]) => {
               const cand = candTable[party];
-              const fill = isSenado ? (CANDIDATOS_SENADO[party]?.fill ?? '#6B7280') : isDip ? (CANDIDATOS_DIP[party]?.fill ?? '#6B7280') : is2024Any ? (CANDIDATOS_2024[party]?.fill ?? '#6B7280') : (PARTY_FILL[party] ?? '#6B7280');
+              const fill = isGub2023 ? (CANDIDATOS_GUB2023[party]?.fill ?? '#6B7280') : isSenado ? (CANDIDATOS_SENADO[party]?.fill ?? '#6B7280') : isDip ? (CANDIDATOS_DIP[party]?.fill ?? '#6B7280') : is2024Any ? (CANDIDATOS_2024[party]?.fill ?? '#6B7280') : (PARTY_FILL[party] ?? '#6B7280');
               return (
                 <div key={party}>
                   <div className="flex items-center justify-between mb-0.5">
@@ -2103,8 +2165,8 @@ const TableroBoard = ({ readOnly = false }) => {
           <SectionTitle>Mapa político · Secciones ganadas</SectionTitle>
           <div className="space-y-1.5">
             {Object.entries(secGanadas).sort((a, b) => b[1] - a[1]).map(([party, count]) => {
-              const fill = isSenado ? (CANDIDATOS_SENADO[party]?.fill ?? '#6B7280') : isDip ? (CANDIDATOS_DIP[party]?.fill ?? '#6B7280') : is2024Any ? (CANDIDATOS_2024[party]?.fill ?? '#6B7280') : (PARTY_FILL[party] ?? '#6B7280');
-              const label = isSenado ? (CANDIDATOS_SENADO[party]?.nombre ?? party) : isDip ? (CANDIDATOS_DIP[party]?.nombre ?? party) : is2024Any ? (CANDIDATOS_2024[party]?.nombre ?? party) : party;
+              const fill = isGub2023 ? (CANDIDATOS_GUB2023[party]?.fill ?? '#6B7280') : isSenado ? (CANDIDATOS_SENADO[party]?.fill ?? '#6B7280') : isDip ? (CANDIDATOS_DIP[party]?.fill ?? '#6B7280') : is2024Any ? (CANDIDATOS_2024[party]?.fill ?? '#6B7280') : (PARTY_FILL[party] ?? '#6B7280');
+              const label = isGub2023 ? (CANDIDATOS_GUB2023[party]?.nombre ?? party) : isSenado ? (CANDIDATOS_SENADO[party]?.nombre ?? party) : isDip ? (CANDIDATOS_DIP[party]?.nombre ?? party) : is2024Any ? (CANDIDATOS_2024[party]?.nombre ?? party) : party;
               return (
                 <div key={party} className="flex items-center gap-2">
                   <div className="w-2 h-2 rounded-sm flex-shrink-0" style={{ backgroundColor: fill }} />
@@ -2122,11 +2184,11 @@ const TableroBoard = ({ readOnly = false }) => {
 
         {/* Candidatos */}
         <div className="bg-white border border-slate-100 rounded-xl p-3 shadow-sm">
-          <SectionTitle>{isSenado ? 'Candidatos · Senaduría 2024' : isDip ? 'Candidatos · Diputación Local 2024' : `Candidatos · Ayuntamiento ${is2024Any ? '2024' : '2021'}`}</SectionTitle>
+          <SectionTitle>{isGub2023 ? 'Candidatos · Gubernatura Edomex 2023' : isSenado ? 'Candidatos · Senaduría 2024' : isDip ? 'Candidatos · Diputación Local 2024' : `Candidatos · Ayuntamiento ${is2024Any ? '2024' : '2021'}`}</SectionTitle>
           <div className="divide-y divide-slate-50">
             {sorted.filter(([, v]) => v > 0).map(([party, votes]) => {
                 const cand = candTable[party];
-                const fill = isSenado ? (CANDIDATOS_SENADO[party]?.fill ?? '#6B7280') : isDip ? (CANDIDATOS_DIP[party]?.fill ?? '#6B7280') : is2024Any ? (CANDIDATOS_2024[party]?.fill ?? '#6B7280') : (PARTY_FILL[party] ?? '#6B7280');
+                const fill = isGub2023 ? (CANDIDATOS_GUB2023[party]?.fill ?? '#6B7280') : isSenado ? (CANDIDATOS_SENADO[party]?.fill ?? '#6B7280') : isDip ? (CANDIDATOS_DIP[party]?.fill ?? '#6B7280') : is2024Any ? (CANDIDATOS_2024[party]?.fill ?? '#6B7280') : (PARTY_FILL[party] ?? '#6B7280');
                 if (!cand) return null;
                 return (
                   <div key={party} className="flex items-center gap-2.5 py-2 first:pt-0 last:pb-0">
@@ -2153,7 +2215,9 @@ const TableroBoard = ({ readOnly = false }) => {
         {/* Nota metodológica */}
         <div className="rounded-xl border border-slate-100 bg-slate-50 px-3 py-2">
           <p className="text-[9px] text-slate-400 leading-relaxed">
-            {isSenado
+            {isGub2023
+              ? <><strong className="text-slate-500">Fuente:</strong> Cómputo oficial IEEM · Gubernatura Estado de México 2023. Delfina Gómez Álvarez (MORENA · PT · PVEM · Nueva Alianza) vs Alejandra del Moral (PRI · PAN · PRD). Filtrado municipio 82 (Tecámac), 186 secciones vigentes en 2023. Secciones 6857–6867 no existían en 2023 — se mapean a sección 4251.</>
+              : isSenado
               ? <><strong className="text-slate-500">Fuente:</strong> PREP / Actas de cómputo IEEM · Senaduría · Estado de México 2024. Filtrado al municipio de Tecámac (82), 197 secciones. Secciones 7011–7017 y 7018–7024 agrupadas en secciones históricas 4213 y 4228 respectivamente.</>
               : is2024IEEM
                 ? <><strong className="text-slate-500">Fuente:</strong> Cómputo oficial IEEM · Municipio 82 (Tecámac) · Ayuntamiento 2024. Coalición PAN·PRI·PRD·NAEM (Aaron Urbina) sumada en todas sus combinaciones por sección. Secciones 7011–7017 y 7018–7024 agrupadas en históricas 4213 y 4228. Secciones 6857–6867 contabilizadas individualmente (no existían en 2021 como sección independiente).</>

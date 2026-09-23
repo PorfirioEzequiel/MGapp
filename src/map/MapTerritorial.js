@@ -73,6 +73,12 @@ const PARTY_COLORS_DIP = {
   MC:     { fill: '#F59E0B', stroke: '#B45309', label: 'MC' },
 };
 
+// Colores para Gubernatura 2023 (Delfina=guinda, Oposición=azul)
+const PARTY_COLORS_GUB2023 = {
+  DELFINA:   { fill: '#6B0B20', stroke: '#360008', label: 'Delfina Gómez' },
+  OPOSICION: { fill: '#1460A8', stroke: '#093E78', label: 'Oposición' },
+};
+
 // ── Alias de secciones históricas (fallback) ──────────────────────────────────
 // Solo activa si la sección no tiene datos propios en el dataset.
 // 7011-7017 siempre caen a 4213; 6857-6867 caen a 4251.
@@ -855,6 +861,7 @@ const MapTerritorial = ({
   const [electoralData2024IEEM,  setElectoralData2024IEEM]  = useState({});
   const [electoralDataSenado,    setElectoralDataSenado]    = useState({});
   const [electoralDataDip2024,   setElectoralDataDip2024]   = useState({});
+  const [electoralDataGub2023,   setElectoralDataGub2023]   = useState({});
   // Controlled from parent if onElectoralModeChange is provided, uncontrolled otherwise
   const electoralMode = onElectoralModeChange ? electoralModeExternal : localElectoralMode;
   const handleSetElectoralMode = (mode) => {
@@ -1123,6 +1130,33 @@ const MapTerritorial = ({
     if (mc     > 0) votes.MC     = mc;
     return { winner: ganador, votes, total, isDip: true, isDip2024: true };
   }, [electoralDataDip2024]);
+
+  useEffect(() => {
+    fetch('/gubernatura_2023_edomex.json')
+      .then(r => r.json())
+      .then(rows => {
+        const m = {};
+        rows.forEach(row => { m[row.seccion] = row; });
+        setElectoralDataGub2023(m);
+      })
+      .catch(err => console.error('Error cargando gubernatura_2023_edomex.json', err));
+  }, []);
+
+  const getElectoralResultGub2023 = useCallback((seccion) => {
+    // 2023 usa límites pre-fraccionamiento: SECTION_ALIASES + IEEM_2024_GRUPOS como fallback
+    const alias = SECTION_ALIASES[seccion] ?? IEEM_2024_GRUPOS[seccion];
+    const d = electoralDataGub2023[seccion] ?? electoralDataGub2023[alias];
+    if (!d) return null;
+    const { ganador, votos_delfina = 0, votos_oposicion = 0, votos_calculado = 0,
+            diferencia = 0, lista_nominal = 0, casillas = 0 } = d;
+    const votes = {};
+    if (votos_delfina   > 0) votes.DELFINA   = votos_delfina;
+    if (votos_oposicion > 0) votes.OPOSICION = votos_oposicion;
+    const total       = votos_delfina + votos_oposicion;
+    const diferencia_pct = total > 0 ? ((Math.abs(diferencia) / total) * 100).toFixed(1) : '0';
+    return { winner: ganador, votes, total: votos_calculado || total,
+             diferencia_pct, lista_nominal, casillas, isGub2023: true };
+  }, [electoralDataGub2023]);
 
   // Color por sector
   useEffect(() => {
@@ -1684,6 +1718,15 @@ const MapTerritorial = ({
                   >
                     <BallotSvg /> Diputación Local 2024 - Interno
                   </button>
+                  <button
+                    onClick={() => handleSetElectoralMode(electoralMode === 'gubernatura_2023' ? null : 'gubernatura_2023')}
+                    className={`w-full px-2.5 py-2 md:py-1 rounded-md text-xs font-medium transition-all text-left leading-tight ${
+                      electoralMode === 'gubernatura_2023' ? 'bg-rose-900 text-white shadow-sm' : 'text-gray-600 hover:bg-gray-100'
+                    }`}
+                    title="Gubernatura Edomex 2023 — Delfina Gómez vs Oposición · IEEM"
+                  >
+                    <BallotSvg /> Gubernatura 2023 - Delfina Gómez
+                  </button>
                 </>
               )}
 
@@ -1879,10 +1922,13 @@ const MapTerritorial = ({
                       ? getElectoralResultSenado(sec.seccion)
                       : electoralMode === 'dip_2024'
                         ? getElectoralResultDip2024(sec.seccion)
-                        : null;
+                        : electoralMode === 'gubernatura_2023'
+                          ? getElectoralResultGub2023(sec.seccion)
+                          : null;
               const colorPalette = electoralMode === 'ayu_2024_ieem' ? PARTY_COLORS_2024
-                                 : electoralMode === 'senado_2024' ? PARTY_COLORS_SENADO
-                                 : electoralMode === 'dip_2024' ? PARTY_COLORS_DIP
+                                 : electoralMode === 'senado_2024'    ? PARTY_COLORS_SENADO
+                                 : electoralMode === 'dip_2024'       ? PARTY_COLORS_DIP
+                                 : electoralMode === 'gubernatura_2023' ? PARTY_COLORS_GUB2023
                                  : PARTY_COLORS;
               const color      = isSemaforo
                 ? (() => {
@@ -1931,10 +1977,14 @@ const MapTerritorial = ({
                           ? (IEEM_2024_GRUPOS[sec.seccion] !== undefined
                              || (electoralDataDip2024[sec.seccion] === undefined && _aliasTarget !== undefined
                                  && electoralDataDip2024[_aliasTarget] !== undefined))
-                          : false;
+                          : electoralMode === 'gubernatura_2023'
+                            ? (IEEM_2024_GRUPOS[sec.seccion] !== undefined
+                               || (electoralDataGub2023[sec.seccion] === undefined && _aliasTarget !== undefined
+                                   && electoralDataGub2023[_aliasTarget] !== undefined))
+                            : false;
 
               // Secciones agrupadas muestran borde normal en capas IEEM y resultados 2024+.
-              const showFadedBorder = isAliased && electoralMode !== 'ayu_2021_ieem' && electoralMode !== 'ayu_2024_ieem' && electoralMode !== 'senado_2024' && electoralMode !== 'dip_2024';
+              const showFadedBorder = isAliased && electoralMode !== 'ayu_2021_ieem' && electoralMode !== 'ayu_2024_ieem' && electoralMode !== 'senado_2024' && electoralMode !== 'dip_2024' && electoralMode !== 'gubernatura_2023';
 
               return (
                 <React.Fragment key={sec.id ?? idx}>
@@ -1980,7 +2030,11 @@ const MapTerritorial = ({
                       : electoralMode === 'dip_2024'
                         ? (IEEM_2024_GRUPOS[sec.seccion] !== undefined
                            || (electoralDataDip2024[sec.seccion] === undefined && _at !== undefined && electoralDataDip2024[_at] !== undefined))
-                        : false;
+                        : electoralMode === 'gubernatura_2023'
+                          ? (IEEM_2024_GRUPOS[sec.seccion] !== undefined
+                             || (electoralDataGub2023[sec.seccion] === undefined && _at !== undefined
+                                 && electoralDataGub2023[_at] !== undefined))
+                          : false;
             // Suppressed: group label handles aliased sections
             if (isAliased && electoralMode) return null;
             // Sector 8 has too many sections — labels overlap; rely on hover + dashboard list
@@ -2089,14 +2143,19 @@ const MapTerritorial = ({
           {/* ── Etiquetas de grupo (secciones históricas aliased) ───── */}
           {electoralMode && currentZoom >= 14 && (() => {
             // Group aliased sections by their alias target and compute a shared centroid
+            // Uses IEEM_2024_GRUPOS additionally for modes that require it (gubernatura_2023, etc.)
+            const usesIeemGrupos = electoralMode === 'ayu_2021_ieem' || electoralMode === 'ayu_2024_ieem'
+              || electoralMode === 'senado_2024' || electoralMode === 'dip_2024'
+              || electoralMode === 'gubernatura_2023';
             const groups = {};
             for (const sec of secciones) {
-              const alias = SECTION_ALIASES[sec.seccion];
+              const alias = SECTION_ALIASES[sec.seccion] ?? (usesIeemGrupos ? IEEM_2024_GRUPOS[sec.seccion] : undefined);
               if (!alias) continue;
-              const dataSource = electoralMode === 'ayu_2021_ieem' ? electoralDataIEEM
-                               : electoralMode === 'ayu_2024_ieem' ? electoralData2024IEEM
-                               : electoralMode === 'senado_2024'   ? electoralDataSenado
-                               : electoralMode === 'dip_2024'      ? electoralDataDip2024
+              const dataSource = electoralMode === 'ayu_2021_ieem'    ? electoralDataIEEM
+                               : electoralMode === 'ayu_2024_ieem'   ? electoralData2024IEEM
+                               : electoralMode === 'senado_2024'      ? electoralDataSenado
+                               : electoralMode === 'dip_2024'         ? electoralDataDip2024
+                               : electoralMode === 'gubernatura_2023' ? electoralDataGub2023
                                : electoralData;
               if (dataSource[sec.seccion] !== undefined) continue; // has own data, not aliased
               if (dataSource[alias] === undefined) continue; // alias target also missing, skip
@@ -2621,10 +2680,11 @@ const MapTerritorial = ({
             afil={hovered.tipo === 'seccion' ? afiliacionBySec[hovered.data?.seccion] : null}
             mercado={hovered.tipo === 'seccion' && electoralMode === 'semaforo_mercado' ? mercadoBySec[hovered.data?.seccion] : null}
             electoral={electoralMode && electoralMode !== 'semaforo_mercado' && hovered.tipo === 'seccion'
-              ? (electoralMode === 'ayu_2021_ieem'  ? getElectoralResultIEEM(hovered.data?.seccion)
-               : electoralMode === 'ayu_2024_ieem'  ? getElectoralResult2024IEEM(hovered.data?.seccion)
-               : electoralMode === 'senado_2024'    ? getElectoralResultSenado(hovered.data?.seccion)
-               : electoralMode === 'dip_2024'       ? getElectoralResultDip2024(hovered.data?.seccion)
+              ? (electoralMode === 'ayu_2021_ieem'    ? getElectoralResultIEEM(hovered.data?.seccion)
+               : electoralMode === 'ayu_2024_ieem'    ? getElectoralResult2024IEEM(hovered.data?.seccion)
+               : electoralMode === 'senado_2024'      ? getElectoralResultSenado(hovered.data?.seccion)
+               : electoralMode === 'dip_2024'         ? getElectoralResultDip2024(hovered.data?.seccion)
+               : electoralMode === 'gubernatura_2023' ? getElectoralResultGub2023(hovered.data?.seccion)
                : getElectoralResult(hovered.data?.seccion))
               : null}
           />
@@ -2669,9 +2729,10 @@ const MapTerritorial = ({
               </>
             ) : (
             <span className={`text-xs font-semibold mr-1 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
-              {electoralMode === 'ayu_2021_ieem' ? 'Ayuntamiento 2021 — IEEM'
-               : electoralMode === 'senado_2024' ? 'Senaduría 2024 — Mariela Gutiérrez'
-               : electoralMode === 'dip_2024'    ? 'Diputación Local 2024 — Interno'
+              {electoralMode === 'ayu_2021_ieem'    ? 'Ayuntamiento 2021 — IEEM'
+               : electoralMode === 'senado_2024'    ? 'Senaduría 2024 — Mariela Gutiérrez'
+               : electoralMode === 'dip_2024'       ? 'Diputación Local 2024 — Interno'
+               : electoralMode === 'gubernatura_2023' ? 'Gubernatura Edomex 2023 — IEEM'
                : 'Ayuntamiento 2021 — interno'}
             </span>)}
             {!(electoralMode === 'semaforo_cred' || electoralMode === 'semaforo_mercado' || electoralMode === 'semaforo_mov') && (
@@ -2689,6 +2750,17 @@ const MapTerritorial = ({
                   : electoralMode === 'dip_2024'
                     ? Object.entries(PARTY_COLORS_DIP).map(([key, c]) => {
                         const count = Object.values(electoralDataDip2024).filter(d => d.ganador === key).length;
+                        if (!count) return null;
+                        return (
+                          <div key={key} className="flex items-center gap-1.5">
+                            <div className="w-3 h-3 rounded-sm flex-shrink-0" style={{ backgroundColor: c.fill, border: `1.5px solid ${c.stroke}` }} />
+                            <span className={`text-xs ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>{c.label} <span className="opacity-60">({count})</span></span>
+                          </div>
+                        );
+                      })
+                  : electoralMode === 'gubernatura_2023'
+                    ? Object.entries(PARTY_COLORS_GUB2023).map(([key, c]) => {
+                        const count = Object.values(electoralDataGub2023).filter(d => d.ganador === key).length;
                         if (!count) return null;
                         return (
                           <div key={key} className="flex items-center gap-1.5">
