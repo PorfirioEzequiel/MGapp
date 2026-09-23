@@ -21,6 +21,7 @@ const Filtro = () => {
   const [loading, setLoading] = useState(false);
   const [opciones, setOpciones] = useState({ poligonos: [], puestos: [], status: [] });
   const [poligonoSecciones, setPoligonoSecciones] = useState({});
+  const [smMap, setSmMap] = useState({});
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -70,12 +71,33 @@ const Filtro = () => {
       );
     }
     const { data, error } = await query;
-    if (!error && data) setResultados(data);
+    if (!error && data) {
+      setResultados(data);
+      // Resolve territorial data for movilizadores from their assigned SM
+      const smUsernames = [
+        ...new Set(
+          data
+            .filter(r => r.puesto?.toUpperCase() === 'MOVILIZADOR' && r.movilizador)
+            .map(r => r.movilizador)
+        ),
+      ];
+      if (smUsernames.length > 0) {
+        const { data: smRows } = await supabase
+          .from('ciudadania')
+          .select('usuario, poligono, seccion, ubt')
+          .in('usuario', smUsernames);
+        const map = {};
+        (smRows || []).forEach(sm => { map[sm.usuario] = sm; });
+        setSmMap(map);
+      } else {
+        setSmMap({});
+      }
+    }
     setLoading(false);
   };
 
   const limpiarFiltros = () => {
-    setPoligono(''); setSeccion(''); setPuesto(''); setStatus(''); setNombre(''); setResultados([]);
+    setPoligono(''); setSeccion(''); setPuesto(''); setStatus(''); setNombre(''); setResultados([]); setSmMap({});
   };
 
   const selCls =
@@ -185,11 +207,25 @@ const Filtro = () => {
                   </tr>
                 </thead>
                 <tbody>
-                  {resultados.map(r => (
+                  {resultados.map(r => {
+                    const esMovilizador = r.puesto?.toUpperCase() === 'MOVILIZADOR';
+                    const smRef = esMovilizador && r.movilizador ? smMap[r.movilizador] : null;
+                    const displayPoligono = (r.poligono != null && r.poligono !== '') ? r.poligono : smRef?.poligono;
+                    const displaySeccion  = (r.seccion  != null && r.seccion  !== '') ? r.seccion  : smRef?.seccion;
+                    const displayUbt      = (r.ubt      != null && r.ubt      !== '') ? r.ubt      : smRef?.ubt;
+                    const isDerived = esMovilizador && smRef && (!r.poligono || !r.seccion);
+                    return (
                     <tr key={r.id} className="border-b border-slate-50 hover:bg-slate-50/70 transition-colors">
-                      <td className="px-4 py-3 text-xs font-semibold text-slate-600 whitespace-nowrap">{r.poligono}</td>
-                      <td className="px-4 py-3 text-xs text-slate-500 tabular-nums">{r.seccion}</td>
-                      <td className="px-4 py-3 text-xs text-slate-500">{r.ubt}</td>
+                      <td className="px-4 py-3 text-xs font-semibold whitespace-nowrap" style={{ color: isDerived && displayPoligono ? '#64748b' : undefined }}>
+                        {displayPoligono ?? '—'}
+                        {isDerived && displayPoligono && <span className="ml-1 text-[9px] text-slate-300 font-normal">SM</span>}
+                      </td>
+                      <td className="px-4 py-3 text-xs tabular-nums" style={{ color: isDerived && displaySeccion ? '#64748b' : undefined }}>
+                        {displaySeccion ?? '—'}
+                      </td>
+                      <td className="px-4 py-3 text-xs" style={{ color: isDerived && displayUbt ? '#64748b' : undefined }}>
+                        {displayUbt ?? '—'}
+                      </td>
                       <td className="px-4 py-3 text-xs font-medium text-slate-800 whitespace-nowrap">
                         {r.nombre} {r.a_paterno} {r.a_materno}
                       </td>
@@ -211,7 +247,8 @@ const Filtro = () => {
                         </button>
                       </td>
                     </tr>
-                  ))}
+                    );
+                  })}
                 </tbody>
               </table>
             </div>

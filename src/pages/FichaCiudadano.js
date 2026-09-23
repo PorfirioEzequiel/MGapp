@@ -122,6 +122,7 @@ const FichaCiudadano = () => {
   const [fraccionesCat, setFraccionesCat] = useState([]);
   const [sectoresCat, setSectoresCat] = useState([]);
   const [seccionesCat, setSeccionesCat] = useState([]);
+  const [smData, setSmData] = useState(null);
 
   let viewer = null;
   try { viewer = JSON.parse(sessionStorage.getItem("user")); } catch { viewer = null; }
@@ -200,6 +201,19 @@ const FichaCiudadano = () => {
     return () => { cancelled = true; };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ciudadano?.poligono]);
+
+  // Datos territoriales derivados de la SM (solo para movilizadores)
+  useEffect(() => {
+    const esMovilizador = ciudadano?.puesto?.toUpperCase() === 'MOVILIZADOR';
+    const smUsuario = ciudadano?.movilizador;
+    if (!esMovilizador || !smUsuario) { setSmData(null); return; }
+    supabase
+      .from('ciudadania')
+      .select('nombre, a_paterno, a_materno, seccion, poligono, ubt')
+      .eq('usuario', smUsuario)
+      .maybeSingle()
+      .then(({ data }) => setSmData(data ?? null));
+  }, [ciudadano?.puesto, ciudadano?.movilizador]);
 
   // Geometría de la sección para el mapa
   useEffect(() => {
@@ -395,6 +409,32 @@ const FichaCiudadano = () => {
         {/* ── Ubicación territorial ── */}
         <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-6">
           <SectionTitle>Ubicación Territorial</SectionTitle>
+
+          {/* Banner con datos derivados de la SM (solo movilizadores) */}
+          {smData && (
+            <div className="mb-4 flex items-start gap-2.5 px-3.5 py-3 rounded-xl bg-blue-50 border border-blue-100 text-xs text-slate-600">
+              <svg className="flex-shrink-0 mt-px text-blue-400" width="14" height="14" viewBox="0 0 14 14"
+                fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
+                <circle cx="7" cy="7" r="6" />
+                <line x1="7" y1="5.5" x2="7" y2="7" />
+                <line x1="7" y1="8.5" x2="7" y2="9.5" />
+              </svg>
+              <div className="leading-snug">
+                <span className="font-semibold text-blue-700">Ubicación heredada de SM: </span>
+                {[smData.nombre, smData.a_paterno, smData.a_materno].filter(Boolean).join(' ')}
+                {smData.poligono != null && smData.poligono !== '' && (
+                  <> · Sector <strong className="text-slate-700">{smData.poligono}</strong></>
+                )}
+                {smData.seccion != null && smData.seccion !== '' && (
+                  <> · Sección <strong className="text-slate-700">{smData.seccion}</strong></>
+                )}
+                {smData.ubt != null && smData.ubt !== '' && (
+                  <> · Fracción <strong className="text-slate-700">{smData.ubt}</strong></>
+                )}
+              </div>
+            </div>
+          )}
+
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
             <Field label="Distrito Federal">
               <select className={selectCls} value={curDttoFed} onChange={e => handleDttoFed(e.target.value)}>

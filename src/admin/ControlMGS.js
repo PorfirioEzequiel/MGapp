@@ -142,6 +142,119 @@ function EmptyState({ title, sub }) {
   );
 }
 
+// ── Loading Screen ────────────────────────────────────────────────────────
+function LoadingScreen() {
+  return (
+    <div className="min-h-screen flex flex-col items-center justify-center select-none"
+      style={{ background: `linear-gradient(135deg, ${G[950]} 0%, ${G[900]} 55%, ${G[800]} 100%)` }}>
+
+      <style>{`
+        @keyframes mgs-arc-a {
+          from { transform: rotate(0deg);    }
+          to   { transform: rotate(360deg);  }
+        }
+        @keyframes mgs-arc-b {
+          from { transform: rotate(0deg);    }
+          to   { transform: rotate(-360deg); }
+        }
+        @keyframes mgs-arc-c {
+          0%   { transform: rotate(0deg);   stroke-dashoffset: 0;   }
+          50%  { stroke-dashoffset: -60; }
+          100% { transform: rotate(360deg); stroke-dashoffset: 0;   }
+        }
+        @keyframes mgs-dot-pulse {
+          0%,100% { opacity:.25; transform:scale(.7); }
+          50%     { opacity:1;   transform:scale(1.15); }
+        }
+        @keyframes mgs-fade-up {
+          from { opacity:0; transform:translateY(10px); }
+          to   { opacity:1; transform:translateY(0); }
+        }
+        @keyframes mgs-shimmer {
+          0%   { opacity:.4; }
+          50%  { opacity:1; }
+          100% { opacity:.4; }
+        }
+      `}</style>
+
+      {/* Spinner stack */}
+      <div className="relative w-24 h-24 mb-10">
+
+        {/* Ambient glow */}
+        <div className="absolute inset-0 rounded-full pointer-events-none"
+          style={{ boxShadow: `0 0 60px rgba(190,18,60,0.35), 0 0 120px rgba(190,18,60,0.12)` }} />
+
+        {/* Outer track */}
+        <svg className="absolute inset-0 w-full h-full"
+          style={{ animation: 'mgs-arc-a 1.6s linear infinite' }}
+          viewBox="0 0 96 96">
+          <circle cx="48" cy="48" r="43" fill="none"
+            stroke="rgba(255,255,255,0.06)" strokeWidth="3" />
+          <circle cx="48" cy="48" r="43" fill="none"
+            stroke="rgba(255,255,255,0.88)" strokeWidth="3"
+            strokeDasharray="68 203" strokeLinecap="round"
+            transform="rotate(-90 48 48)" />
+        </svg>
+
+        {/* Mid track (counter-rotate, slightly slower) */}
+        <svg className="absolute"
+          style={{ inset: '10px', width: 'calc(100% - 20px)', height: 'calc(100% - 20px)', animation: 'mgs-arc-b 2.2s linear infinite' }}
+          viewBox="0 0 76 76">
+          <circle cx="38" cy="38" r="33" fill="none"
+            stroke="rgba(254,205,211,0.22)" strokeWidth="2.5"
+            strokeDasharray="42 165" strokeLinecap="round"
+            transform="rotate(-90 38 38)" />
+        </svg>
+
+        {/* Inner track (co-rotate, fastest) */}
+        <svg className="absolute"
+          style={{ inset: '22px', width: 'calc(100% - 44px)', height: 'calc(100% - 44px)', animation: 'mgs-arc-a 0.9s linear infinite' }}
+          viewBox="0 0 52 52">
+          <circle cx="26" cy="26" r="21" fill="none"
+            stroke="rgba(255,255,255,0.15)" strokeWidth="2"
+            strokeDasharray="22 110" strokeLinecap="round"
+            transform="rotate(-90 26 26)" />
+        </svg>
+
+        {/* Center dot */}
+        <div className="absolute inset-0 flex items-center justify-center">
+          <div className="w-3 h-3 rounded-full"
+            style={{
+              background: 'rgba(255,255,255,0.75)',
+              boxShadow: '0 0 12px rgba(255,255,255,0.5)',
+              animation: 'mgs-dot-pulse 1.8s ease-in-out infinite',
+            }} />
+        </div>
+      </div>
+
+      {/* Title */}
+      <p className="text-white font-bold text-2xl tracking-tight mb-1"
+        style={{ animation: 'mgs-fade-up .5s cubic-bezier(.25,.46,.45,.94) .1s both' }}>
+        Control MGS
+      </p>
+      <p className="text-sm mb-10"
+        style={{
+          color: 'rgba(255,255,255,0.38)',
+          animation: 'mgs-fade-up .5s cubic-bezier(.25,.46,.45,.94) .22s both',
+        }}>
+        Cargando datos del sistema…
+      </p>
+
+      {/* Three pulsing dots */}
+      <div className="flex gap-2">
+        {[0, 1, 2].map(i => (
+          <div key={i}
+            className="w-1.5 h-1.5 rounded-full"
+            style={{
+              backgroundColor: `${G[200]}`,
+              animation: `mgs-dot-pulse 1.5s ease-in-out ${i * 0.18}s infinite`,
+            }} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
 // ── PIN Gate ───────────────────────────────────────────────────────────────
 const PIN_SECRET = '2027';
 
@@ -704,6 +817,7 @@ export default function ControlMGS() {
 
   // ── Render ────────────────────────────────────────────────────────────────
   if (!pinVerified) return <PinGate onUnlock={() => setPinVerified(true)} />;
+  if (loading)     return <LoadingScreen />;
 
   if (loadError) {
     return (
@@ -736,9 +850,34 @@ export default function ControlMGS() {
   return (
     <div className="min-h-screen" style={{ backgroundColor: '#fdf8f9' }}>
 
+      <style>{`
+        @keyframes mgs-enter {
+          from { opacity: 0; transform: translateY(22px) scale(0.97); }
+          to   { opacity: 1; transform: translateY(0)    scale(1);    }
+        }
+        @keyframes mgs-enter-left {
+          from { opacity: 0; transform: translateX(-28px); }
+          to   { opacity: 1; transform: translateX(0);     }
+        }
+        @keyframes mgs-header-in {
+          from { opacity: 0; transform: translateY(-18px); }
+          to   { opacity: 1; transform: translateY(0);     }
+        }
+        .mgs-h  { animation: mgs-header-in .42s cubic-bezier(.25,.46,.45,.94) both; }
+        .mgs-k1 { animation: mgs-enter .44s cubic-bezier(.25,.46,.45,.94) .06s both; }
+        .mgs-k2 { animation: mgs-enter .44s cubic-bezier(.25,.46,.45,.94) .14s both; }
+        .mgs-k3 { animation: mgs-enter .44s cubic-bezier(.25,.46,.45,.94) .22s both; }
+        .mgs-k4 { animation: mgs-enter .44s cubic-bezier(.25,.46,.45,.94) .30s both; }
+        .mgs-sb { animation: mgs-enter-left .50s cubic-bezier(.25,.46,.45,.94) .20s both; }
+        .mgs-pn { animation: mgs-enter .50s cubic-bezier(.25,.46,.45,.94) .26s both; }
+        @media (prefers-reduced-motion: reduce) {
+          .mgs-h, .mgs-k1, .mgs-k2, .mgs-k3, .mgs-k4, .mgs-sb, .mgs-pn { animation: none !important; }
+        }
+      `}</style>
+
       {/* ── Header ────────────────────────────────────────────────────────── */}
       <header
-        className="px-5 lg:px-8 py-4 flex items-center gap-4 sticky top-0 z-20"
+        className="mgs-h px-5 lg:px-8 py-4 flex items-center gap-4 sticky top-0 z-20"
         style={{ background: `linear-gradient(135deg, ${G[950]} 0%, ${G[900]} 60%, ${G[800]} 100%)` }}>
         <button
           onClick={() => navigate(-1)}
@@ -782,7 +921,7 @@ export default function ControlMGS() {
 
           {/* MGS Registrados — guinda hero */}
           <div
-            className="rounded-2xl p-5 relative overflow-hidden"
+            className="mgs-k1 rounded-2xl p-5 relative overflow-hidden"
             style={{ background: `linear-gradient(135deg, ${G[900]} 0%, ${G[700]} 100%)` }}>
             <div className="absolute right-3 top-3 opacity-10">
               <svg width="48" height="48" viewBox="0 0 24 24" fill="white" stroke="none">
@@ -807,7 +946,7 @@ export default function ControlMGS() {
           </div>
 
           {/* Fracciones completas */}
-          <div className="bg-white rounded-2xl p-5 border shadow-sm transition-shadow hover:shadow-md"
+          <div className="mgs-k2 bg-white rounded-2xl p-5 border shadow-sm transition-shadow hover:shadow-md"
             style={{ borderColor: G[100] }}>
             <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-2">
               Fracciones completas
@@ -830,7 +969,7 @@ export default function ControlMGS() {
           </div>
 
           {/* SMs con movilizadoras */}
-          <div className="bg-white rounded-2xl p-5 border shadow-sm transition-shadow hover:shadow-md"
+          <div className="mgs-k3 bg-white rounded-2xl p-5 border shadow-sm transition-shadow hover:shadow-md"
             style={{ borderColor: G[100] }}>
             <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-2">
               SMs con movilizadoras
@@ -851,7 +990,7 @@ export default function ControlMGS() {
           </div>
 
           {/* Avance global */}
-          <div className="bg-white rounded-2xl p-5 border shadow-sm transition-shadow hover:shadow-md"
+          <div className="mgs-k4 bg-white rounded-2xl p-5 border shadow-sm transition-shadow hover:shadow-md"
             style={{ borderColor: G[100] }}>
             <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-2">
               Avance global
@@ -876,12 +1015,12 @@ export default function ControlMGS() {
         <div className="lg:flex gap-5 items-start pb-16">
 
           {/* Left sidebar: Sector Analysis (desktop only) */}
-          <aside className="hidden lg:block w-[380px] flex-shrink-0">
+          <aside className="mgs-sb hidden lg:block w-[380px] flex-shrink-0">
             <SectorAnalysis tree={tree} loading={loading} movs={movs} smByUsuario={smByUsuario} />
           </aside>
 
           {/* Right: Detail panel */}
-          <div className="flex-1 min-w-0">
+          <div className="mgs-pn flex-1 min-w-0">
             <div className="bg-white rounded-2xl border shadow-sm overflow-hidden"
               style={{ borderColor: `${G[100]}` }}>
 
