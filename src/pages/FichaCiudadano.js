@@ -212,7 +212,25 @@ const FichaCiudadano = () => {
       .select('nombre, a_paterno, a_materno, seccion, poligono, ubt')
       .eq('usuario', smUsuario)
       .maybeSingle()
-      .then(({ data }) => setSmData(data ?? null));
+      .then(({ data }) => {
+        setSmData(data ?? null);
+        if (!data) return;
+        // Auto-populate territorial fields if the movilizador's own fields are empty
+        setCiudadano(prev => {
+          if (!prev) return prev;
+          const sinPoligono = prev.poligono == null || prev.poligono === '';
+          const sinSeccion  = prev.seccion  == null || prev.seccion  === '';
+          const sinUbt      = prev.ubt      == null || prev.ubt      === '';
+          if (!sinPoligono && !sinSeccion && !sinUbt) return prev;
+          return {
+            ...prev,
+            poligono: sinPoligono ? (data.poligono ?? prev.poligono) : prev.poligono,
+            seccion:  sinSeccion  ? (data.seccion  ?? prev.seccion)  : prev.seccion,
+            ubt:      sinUbt      ? (data.ubt      ?? prev.ubt)      : prev.ubt,
+          };
+        });
+      });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ciudadano?.puesto, ciudadano?.movilizador]);
 
   // Geometría de la sección para el mapa

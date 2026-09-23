@@ -250,7 +250,7 @@ export default function MoviladoresGestion() {
     // ilike = case-insensitive match, catches 'sm', 'SM', 'Sm'
     supabase
       .from('ciudadania')
-      .select('usuario, nombre, a_paterno, a_materno, seccion, poligono')
+      .select('usuario, nombre, a_paterno, a_materno, seccion, poligono, ubt')
       .ilike('puesto', 'sm')
       .eq('status', 'ACTIVO')
       .order('nombre')
@@ -280,6 +280,9 @@ export default function MoviladoresGestion() {
       usuario: data.curp.toUpperCase(),
       puesto: 'MOVILIZADOR',
       movilizador: selectedSM.usuario,
+      poligono: selectedSM.poligono ?? null,
+      seccion: selectedSM.seccion ?? null,
+      ubt: selectedSM.ubt ?? null,
       status: 'ACTIVO',
       observaciones: data.observaciones?.trim() || null,
     };
