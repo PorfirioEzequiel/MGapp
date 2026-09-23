@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useMemo, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { LiaArrowLeftSolid } from 'react-icons/lia';
-import supabase, { supabaseStorage as supabaseAdmin } from '../supabase/client';
+import { supabaseStorage as supabaseAdmin } from '../supabase/client';
 import * as XLSX from 'xlsx';
 
 const META = 10;
@@ -326,7 +326,10 @@ function SectorAnalysis({ tree, loading, movs, smByUsuario }) {
         };
       });
 
-    if (exportRows.length === 0) return;
+    if (exportRows.length === 0) {
+      alert('No hay MGS registradas con SM asignada para exportar.');
+      return;
+    }
 
     const ws = XLSX.utils.json_to_sheet(exportRows);
     ws['!cols'] = [
@@ -530,6 +533,8 @@ function SectorAnalysis({ tree, loading, movs, smByUsuario }) {
 export default function ControlMGS() {
   const navigate = useNavigate();
   const [loading, setLoading]               = useState(true);
+  const [loadError, setLoadError]           = useState(null);
+  const [retryCount, setRetryCount]         = useState(0);
   const [catalog, setCatalog]               = useState([]);
   const [secsList, setSecsList]             = useState([]);
   const [smsList, setSmsList]               = useState([]);
@@ -543,20 +548,29 @@ export default function ControlMGS() {
 
   useEffect(() => {
     async function load() {
-      const [catRes, secRes, smRes, movRes] = await Promise.all([
-        supabaseAdmin.from('ubt_catalogo').select('seccion, fraccion').order('seccion').order('fraccion', { ascending: true }),
-        supabaseAdmin.from('secciones').select('seccion, pologono'),
-        supabaseAdmin.from('ciudadania').select('usuario, nombre, a_paterno, a_materno, seccion, poligono, ubt').ilike('puesto', 'sm').eq('status', 'ACTIVO'),
-        supabaseAdmin.from('ciudadania').select('id, usuario, nombre, a_paterno, a_materno, curp, telefono_1, movilizador, observaciones').ilike('puesto', 'movilizador').eq('status', 'ACTIVO').order('a_paterno'),
-      ]);
-      setCatalog(catRes.data ?? []);
-      setSecsList(secRes.data ?? []);
-      setSmsList(smRes.data ?? []);
-      setMovs(movRes.data ?? []);
-      setLoading(false);
+      try {
+        const [catRes, secRes, smRes, movRes] = await Promise.all([
+          supabaseAdmin.from('ubt_catalogo').select('seccion, fraccion').order('seccion').order('fraccion', { ascending: true }),
+          supabaseAdmin.from('secciones').select('seccion, pologono'),
+          supabaseAdmin.from('ciudadania').select('usuario, nombre, a_paterno, a_materno, seccion, poligono, ubt').ilike('puesto', 'sm').eq('status', 'ACTIVO'),
+          supabaseAdmin.from('ciudadania').select('id, usuario, nombre, a_paterno, a_materno, curp, telefono_1, movilizador, observaciones').ilike('puesto', 'movilizador').eq('status', 'ACTIVO').order('a_paterno'),
+        ]);
+        if (catRes.error) throw catRes.error;
+        if (secRes.error) throw secRes.error;
+        if (smRes.error)  throw smRes.error;
+        if (movRes.error) throw movRes.error;
+        setCatalog(catRes.data ?? []);
+        setSecsList(secRes.data ?? []);
+        setSmsList(smRes.data ?? []);
+        setMovs(movRes.data ?? []);
+      } catch (err) {
+        setLoadError(err?.message ?? 'Error al cargar los datos');
+      } finally {
+        setLoading(false);
+      }
     }
     load();
-  }, []);
+  }, [retryCount]);
 
   // ── Derived maps ──────────────────────────────────────────────────────────
   const secToSector = useMemo(() => {
@@ -616,16 +630,20 @@ export default function ControlMGS() {
     const totalMovs  = movs.length;
     const pct        = totalMeta > 0 ? (totalMovs / totalMeta) * 100 : null;
     let fracsOK = 0;
+    let fracsConAlMenos1 = 0;
     let smsConMovs = 0;
     smsList.forEach(sm => {
       if ((movsBySmUsuario[sm.usuario] ?? []).length > 0) smsConMovs++;
     });
     Object.values(tree).forEach(sector =>
       Object.values(sector.secciones).forEach(sec =>
-        Object.values(sec.fracciones).forEach(f => { if (f.count >= META) fracsOK++; })
+        Object.values(sec.fracciones).forEach(f => {
+          if (f.count >= META) fracsOK++;
+          if (f.count > 0) fracsConAlMenos1++;
+        })
       )
     );
-    return { totalMovs, totalMeta, totalFracs: catalog.length, fracsOK, totalSMs: smsList.length, smsConMovs, pct };
+    return { totalMovs, totalMeta, totalFracs: catalog.length, fracsOK, fracsConAlMenos1, totalSMs: smsList.length, smsConMovs, pct };
   }, [catalog, movs, smsList, movsBySmUsuario, tree]);
 
   // ── Search filters ────────────────────────────────────────────────────────
@@ -687,6 +705,34 @@ export default function ControlMGS() {
   // ── Render ────────────────────────────────────────────────────────────────
   if (!pinVerified) return <PinGate onUnlock={() => setPinVerified(true)} />;
 
+  if (loadError) {
+    return (
+      <div className="min-h-screen flex items-center justify-center px-6" style={{ backgroundColor: '#fdf8f9' }}>
+        <div className="text-center max-w-sm">
+          <div className="w-14 h-14 rounded-2xl flex items-center justify-center mx-auto mb-4"
+            style={{ backgroundColor: G[50], border: `1px solid ${G[100]}` }}>
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none"
+              stroke={G[700]} strokeWidth="1.5" strokeLinecap="round">
+              <circle cx="12" cy="12" r="10" />
+              <line x1="12" y1="8" x2="12" y2="12" />
+              <circle cx="12" cy="16" r="0.8" fill={G[700]} />
+            </svg>
+          </div>
+          <p className="text-base font-bold text-slate-800 mb-1">Error al cargar los datos</p>
+          <p className="text-sm text-slate-500 mb-5">{loadError}</p>
+          <button
+            onClick={() => { setLoadError(null); setLoading(true); setRetryCount(c => c + 1); }}
+            className="px-5 py-2.5 rounded-xl text-sm font-bold text-white cursor-pointer transition-all active:scale-95"
+            style={{ backgroundColor: G[900] }}
+            onMouseEnter={e => e.currentTarget.style.backgroundColor = G[800]}
+            onMouseLeave={e => e.currentTarget.style.backgroundColor = G[900]}>
+            Reintentar
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen" style={{ backgroundColor: '#fdf8f9' }}>
 
@@ -745,9 +791,10 @@ export default function ControlMGS() {
             </div>
             <p className="text-[10px] font-bold uppercase tracking-widest mb-2"
               style={{ color: 'rgba(255,255,255,0.6)' }}>MGS Registrados</p>
-            <p className="text-3xl font-bold tabular-nums text-white leading-none">
-              {loading ? '—' : fmt(stats.totalMovs)}
-            </p>
+            {loading
+              ? <div className="h-9 w-20 rounded-lg animate-pulse mt-1" style={{ backgroundColor: 'rgba(255,255,255,0.15)' }} />
+              : <p className="text-3xl font-bold tabular-nums text-white leading-none">{fmt(stats.totalMovs)}</p>
+            }
             <p className="text-xs mt-2" style={{ color: 'rgba(255,255,255,0.5)' }}>
               de {loading ? '—' : fmt(stats.totalMeta)} meta
             </p>
@@ -759,22 +806,27 @@ export default function ControlMGS() {
             )}
           </div>
 
-          {/* Fracciones con MGS */}
+          {/* Fracciones completas */}
           <div className="bg-white rounded-2xl p-5 border shadow-sm transition-shadow hover:shadow-md"
             style={{ borderColor: G[100] }}>
             <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-2">
-              Fracciones con MGS
+              Fracciones completas
             </p>
-            <div className="flex items-end gap-1">
-              <p className="text-3xl font-bold tabular-nums leading-none"
-                style={{ color: stats.fracsOK > 0 ? G[900] : '#1e293b' }}>
-                {loading ? '—' : stats.fracsOK}
-              </p>
-              <p className="text-xl text-slate-300 mb-0.5 tabular-nums leading-none">
-                /{loading ? '—' : stats.totalFracs}
-              </p>
-            </div>
-            <p className="text-xs text-slate-400 mt-2">en meta (10/10)</p>
+            {loading
+              ? <div className="h-9 w-16 rounded-lg bg-slate-100 animate-pulse mt-1" />
+              : (
+                <div className="flex items-end gap-1">
+                  <p className="text-3xl font-bold tabular-nums leading-none"
+                    style={{ color: stats.fracsOK > 0 ? G[900] : '#1e293b' }}>
+                    {stats.fracsOK}
+                  </p>
+                  <p className="text-xl text-slate-300 mb-0.5 tabular-nums leading-none">/{stats.totalFracs}</p>
+                </div>
+              )
+            }
+            <p className="text-xs text-slate-400 mt-2">
+              {loading ? '—' : `en meta (10/10) · ${stats.fracsConAlMenos1} iniciadas`}
+            </p>
           </div>
 
           {/* SMs con movilizadoras */}
@@ -783,15 +835,18 @@ export default function ControlMGS() {
             <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-2">
               SMs con movilizadoras
             </p>
-            <div className="flex items-end gap-1">
-              <p className="text-3xl font-bold tabular-nums leading-none"
-                style={{ color: stats.smsConMovs > 0 ? '#0369A1' : '#1e293b' }}>
-                {loading ? '—' : stats.smsConMovs}
-              </p>
-              <p className="text-xl text-slate-300 mb-0.5 tabular-nums leading-none">
-                /{loading ? '—' : stats.totalSMs}
-              </p>
-            </div>
+            {loading
+              ? <div className="h-9 w-16 rounded-lg bg-slate-100 animate-pulse mt-1" />
+              : (
+                <div className="flex items-end gap-1">
+                  <p className="text-3xl font-bold tabular-nums leading-none"
+                    style={{ color: stats.smsConMovs > 0 ? '#0369A1' : '#1e293b' }}>
+                    {stats.smsConMovs}
+                  </p>
+                  <p className="text-xl text-slate-300 mb-0.5 tabular-nums leading-none">/{stats.totalSMs}</p>
+                </div>
+              )
+            }
             <p className="text-xs text-slate-400 mt-2">con ≥ 1 MGS asignada</p>
           </div>
 
@@ -801,9 +856,12 @@ export default function ControlMGS() {
             <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-2">
               Avance global
             </p>
-            <p className="text-3xl font-bold tabular-nums leading-none" style={{ color: globalColor }}>
-              {loading ? '—' : stats.pct != null ? `${stats.pct.toFixed(1)}%` : '—'}
-            </p>
+            {loading
+              ? <div className="h-9 w-24 rounded-lg bg-slate-100 animate-pulse mt-1" />
+              : <p className="text-3xl font-bold tabular-nums leading-none" style={{ color: globalColor }}>
+                  {stats.pct != null ? `${stats.pct.toFixed(1)}%` : '—'}
+                </p>
+            }
             <p className="text-xs font-semibold mt-2" style={{ color: globalColor }}>{globalLabel}</p>
             {!loading && stats.pct != null && (
               <div className="mt-3 h-1 bg-slate-100 rounded-full overflow-hidden">
@@ -858,19 +916,20 @@ export default function ControlMGS() {
                     value={search}
                     onChange={e => setSearch(e.target.value)}
                     placeholder={
-                      tab === 'lista'  ? 'Buscar MGS, CURP o SM asignada…' :
+                      tab === 'lista'  ? 'Buscar por nombre o SM asignada…' :
                       tab === 'sector' ? 'Buscar sector, sección o fracción…' :
                       'Buscar SM por nombre, sección o sector…'
                     }
                     className="w-full border border-slate-200 rounded-xl py-2 pl-8 pr-3 text-sm focus:outline-none placeholder:text-slate-300 transition-all duration-150"
                     style={{ '--tw-ring-color': `${G[200]}` }}
-                    onFocus={e => { e.target.style.borderColor = G[400] ?? G[700]; e.target.style.boxShadow = `0 0 0 3px ${G[100]}`; }}
+                    onFocus={e => { e.target.style.borderColor = G[700]; e.target.style.boxShadow = `0 0 0 3px ${G[100]}`; }}
                     onBlur={e => { e.target.style.borderColor = ''; e.target.style.boxShadow = ''; }}
                   />
                   {search && (
                     <button
                       onClick={() => setSearch('')}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-300 hover:text-slate-500 transition-colors cursor-pointer">
+                      className="absolute right-2 top-1/2 -translate-y-1/2 w-7 h-7 flex items-center justify-center rounded-lg text-slate-300 hover:text-slate-600 hover:bg-slate-100 transition-all cursor-pointer"
+                      aria-label="Limpiar búsqueda">
                       <svg width="12" height="12" viewBox="0 0 12 12" fill="none"
                         stroke="currentColor" strokeWidth="2" strokeLinecap="round">
                         <line x1="2" y1="2" x2="10" y2="10" /><line x1="10" y1="2" x2="2" y2="10" />
@@ -1211,8 +1270,7 @@ export default function ControlMGS() {
                                       Sin movilizadoras registradas
                                     </p>
                                   ) : (
-                                    <div className="divide-y max-h-52 overflow-y-auto"
-                                      style={{ divideColor: G[100] }}>
+                                    <div className="divide-y divide-rose-50 max-h-52 overflow-y-auto">
                                       {smMovs.map((m, idx) => (
                                         <div key={m.id ?? m.usuario}
                                           className="flex items-center gap-2.5 px-4 py-2.5 transition-colors"
