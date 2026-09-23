@@ -544,10 +544,10 @@ export default function ControlMGS() {
   useEffect(() => {
     async function load() {
       const [catRes, secRes, smRes, movRes] = await Promise.all([
-        supabase.from('ubt_catalogo').select('seccion, fraccion').order('seccion').order('fraccion', { ascending: true }),
+        supabaseAdmin.from('ubt_catalogo').select('seccion, fraccion').order('seccion').order('fraccion', { ascending: true }),
         supabaseAdmin.from('secciones').select('seccion, pologono'),
-        supabase.from('ciudadania').select('usuario, nombre, a_paterno, a_materno, seccion, poligono, ubt').ilike('puesto', 'sm').eq('status', 'ACTIVO'),
-        supabase.from('ciudadania').select('id, usuario, nombre, a_paterno, a_materno, curp, telefono_1, movilizador, observaciones').ilike('puesto', 'movilizador').eq('status', 'ACTIVO').order('a_paterno'),
+        supabaseAdmin.from('ciudadania').select('usuario, nombre, a_paterno, a_materno, seccion, poligono, ubt').ilike('puesto', 'sm').eq('status', 'ACTIVO'),
+        supabaseAdmin.from('ciudadania').select('id, usuario, nombre, a_paterno, a_materno, curp, telefono_1, movilizador, observaciones').ilike('puesto', 'movilizador').eq('status', 'ACTIVO').order('a_paterno'),
       ]);
       setCatalog(catRes.data ?? []);
       setSecsList(secRes.data ?? []);
