@@ -323,9 +323,6 @@ function SectorAnalysis({ tree, loading, movs, smByUsuario }) {
           'SM':          sm ? fullName(sm) : '—',
           'MGS':         fullName(m),
           'Observaciones': m.observaciones || '',
-          'Fecha de captura': m.created_at
-            ? new Date(m.created_at).toLocaleDateString('es-MX', { day: '2-digit', month: '2-digit', year: 'numeric' })
-            : '—',
         };
       });
 
@@ -334,7 +331,7 @@ function SectorAnalysis({ tree, loading, movs, smByUsuario }) {
     const ws = XLSX.utils.json_to_sheet(exportRows);
     ws['!cols'] = [
       { wch: 12 }, { wch: 10 }, { wch: 10 },
-      { wch: 34 }, { wch: 34 }, { wch: 40 }, { wch: 16 },
+      { wch: 34 }, { wch: 34 }, { wch: 40 },
     ];
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'Control MGS');
@@ -550,7 +547,7 @@ export default function ControlMGS() {
         supabaseAdmin.from('ubt_catalogo').select('seccion, fraccion').order('seccion').order('fraccion', { ascending: true }),
         supabaseAdmin.from('secciones').select('seccion, pologono'),
         supabaseAdmin.from('ciudadania').select('usuario, nombre, a_paterno, a_materno, seccion, poligono, ubt').ilike('puesto', 'sm').eq('status', 'ACTIVO'),
-        supabaseAdmin.from('ciudadania').select('id, usuario, nombre, a_paterno, a_materno, curp, telefono_1, movilizador, observaciones, created_at').ilike('puesto', 'movilizador').eq('status', 'ACTIVO').order('a_paterno'),
+        supabaseAdmin.from('ciudadania').select('id, usuario, nombre, a_paterno, a_materno, curp, telefono_1, movilizador, observaciones').ilike('puesto', 'movilizador').eq('status', 'ACTIVO').order('a_paterno'),
       ]);
       setCatalog(catRes.data ?? []);
       setSecsList(secRes.data ?? []);
