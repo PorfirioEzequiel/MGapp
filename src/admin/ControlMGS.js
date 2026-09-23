@@ -539,7 +539,7 @@ export default function ControlMGS() {
   const [secsList, setSecsList]             = useState([]);
   const [smsList, setSmsList]               = useState([]);
   const [movs, setMovs]                     = useState([]);
-  const [tab, setTab]                       = useState('lista');
+  const [tab, setTab]                       = useState('sm');
   const [search, setSearch]                 = useState('');
   const [openSectors, setOpenSectors]       = useState({});
   const [openSecciones, setOpenSecciones]   = useState({});
