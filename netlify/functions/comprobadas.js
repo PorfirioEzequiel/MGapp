@@ -39,6 +39,7 @@ exports.handler = async () => {
       }),
     };
   } catch (err) {
+    cachedClient = null;
     return {
       statusCode: 500,
       body: JSON.stringify({ error: err.message }),

@@ -38,6 +38,7 @@ exports.handler = async (event) => {
       body: JSON.stringify(docs),
     };
   } catch (err) {
+    cachedClient = null;
     return {
       statusCode: 500,
       body: JSON.stringify({ error: err.message }),

@@ -3,6 +3,9 @@
   publish = "build"
   functions = "netlify/functions"
 
+[functions]
+  node_bundler = "nft"
+
 [[redirects]]
   from = "/api/comprobadas"
   to = "/.netlify/functions/comprobadas"
