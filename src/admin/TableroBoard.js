@@ -4,6 +4,7 @@ import * as XLSX from 'xlsx';
 import supabase, { supabaseStorage as supabaseAdmin } from '../supabase/client';
 import MapTerritorial from '../map/MapTerritorial';
 import MapaEstadoMexico from '../map/MapaEstadoMexico';
+import afiliacionLocalData from '../data/afiliacion.json';
 
 const fullName = (p) => p ? `${p.nombre} ${p.a_paterno} ${p.a_materno}`.trim() : null;
 const fmt      = (n)  => n != null ? Number(n).toLocaleString('es-MX') : null;
@@ -341,7 +342,7 @@ const TableroBoard = ({ readOnly = false }) => {
   const [comprobadasSp0,   setComprobadasSp0]   = useState({});
 
   // ── Afiliación dinámica desde MongoDB ────────────────────────────────────
-  const [afiliacionData, setAfiliacionData] = useState([]);
+  const [afiliacionData, setAfiliacionData] = useState(afiliacionLocalData);
 
   useEffect(() => {
     // Usa supabaseAdmin (service role) para evitar el deadlock de GoTrueClient
@@ -485,7 +486,7 @@ const TableroBoard = ({ readOnly = false }) => {
   }, []);
 
   useEffect(() => {
-    fetch('http://localhost:3003/api/comprobadas')
+    fetch(`${process.env.REACT_APP_BACKEND_URL || 'http://localhost:3003'}/api/comprobadas`)
       .then(r => r.json())
       .then(data => {
         const map = {};
@@ -497,9 +498,9 @@ const TableroBoard = ({ readOnly = false }) => {
   }, []);
 
   useEffect(() => {
-    fetch('http://localhost:3003/api/afiliacion')
+    fetch(`${process.env.REACT_APP_BACKEND_URL || 'http://localhost:3003'}/api/afiliacion`)
       .then(r => r.json())
-      .then(data => { setAfiliacionData(Array.isArray(data) ? data : []); })
+      .then(data => { setAfiliacionData(Array.isArray(data) && data.length > 0 ? data : afiliacionLocalData); })
       .catch(() => {});
   }, []);
 

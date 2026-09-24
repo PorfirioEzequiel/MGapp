@@ -28,7 +28,8 @@ const client = new Client({
   authStrategy: new LocalAuth({ clientId: 'mgapp', dataPath: './wsp-session' }),
   puppeteer: {
     headless: true,
-    args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'],
+    executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined,
+    args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage', '--disable-gpu'],
   },
 });
 

@@ -483,7 +483,7 @@ const Coordinador = () => {
   }, []);
 
   useEffect(() => {
-    fetch('http://localhost:3003/api/comprobadas')
+    fetch(`${process.env.REACT_APP_BACKEND_URL || 'http://localhost:3003'}/api/comprobadas`)
       .then(r => r.json())
       .then(data => {
         const map = {};

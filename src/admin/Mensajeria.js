@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import supabase from '../supabase/client';
 
-const BACKEND_URL  = 'http://localhost:3001';
+const BACKEND_URL  = process.env.REACT_APP_BACKEND_URL || 'http://localhost:3003';
 const STEPS        = ['Destinatarios', 'Mensaje', 'Envío'];
 const TOKENS       = [
   { label: '{nombre}', value: '{nombre}', tip: 'Nombre del SM' },
