@@ -4,6 +4,7 @@ import supabase, { supabaseStorage as supabaseAdmin } from '../supabase/client';
 import MapTerritorial from '../map/MapTerritorial';
 import ToggleStatusButtonCP from './ToggleStatusButtonCP';
 import AFILIACION from '../data/afiliacion.json';
+import { backendFetch } from '../utils/backendFetch';
 
 // ── Splash screen (mismo estilo que VisorConsultor) ───────────────────────────
 const SPLASH_MSGS = [
@@ -483,15 +484,13 @@ const Coordinador = () => {
   }, []);
 
   useEffect(() => {
-    fetch(`${process.env.REACT_APP_BACKEND_URL || 'http://localhost:3003'}/api/comprobadas`)
-      .then(r => r.json())
-      .then(data => {
-        const map = {};
-        for (const row of (data.bySec ?? [])) { if (row.seccion != null) map[row.seccion] = row.comprobadas; }
-        setComprobadasMongo(map);
-        setComprobadasSp0(data.bySp0 ?? {});
-      })
-      .catch(() => {});
+    backendFetch('/api/comprobadas').then(data => {
+      if (!data) return;
+      const map = {};
+      for (const row of (data.bySec ?? [])) { if (row.seccion != null) map[row.seccion] = row.comprobadas; }
+      setComprobadasMongo(map);
+      setComprobadasSp0(data.bySp0 ?? {});
+    });
   }, []);
 
   const fetchMercado = async (sectionNums) => {

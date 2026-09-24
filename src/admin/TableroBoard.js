@@ -5,6 +5,7 @@ import supabase, { supabaseStorage as supabaseAdmin } from '../supabase/client';
 import MapTerritorial from '../map/MapTerritorial';
 import MapaEstadoMexico from '../map/MapaEstadoMexico';
 import afiliacionLocalData from '../data/afiliacion.json';
+import { backendFetch } from '../utils/backendFetch';
 
 const fullName = (p) => p ? `${p.nombre} ${p.a_paterno} ${p.a_materno}`.trim() : null;
 const fmt      = (n)  => n != null ? Number(n).toLocaleString('es-MX') : null;
@@ -486,22 +487,19 @@ const TableroBoard = ({ readOnly = false }) => {
   }, []);
 
   useEffect(() => {
-    fetch(`${process.env.REACT_APP_BACKEND_URL || 'http://localhost:3003'}/api/comprobadas`)
-      .then(r => r.json())
-      .then(data => {
-        const map = {};
-        for (const row of (data.bySec ?? [])) { if (row.seccion != null) map[row.seccion] = row.comprobadas; }
-        setComprobadasMongo(map);
-        setComprobadasSp0(data.bySp0 ?? {});
-      })
-      .catch(() => {});
+    backendFetch('/api/comprobadas').then(data => {
+      if (!data) return;
+      const map = {};
+      for (const row of (data.bySec ?? [])) { if (row.seccion != null) map[row.seccion] = row.comprobadas; }
+      setComprobadasMongo(map);
+      setComprobadasSp0(data.bySp0 ?? {});
+    });
   }, []);
 
   useEffect(() => {
-    fetch(`${process.env.REACT_APP_BACKEND_URL || 'http://localhost:3003'}/api/afiliacion`)
-      .then(r => r.json())
-      .then(data => { setAfiliacionData(Array.isArray(data) && data.length > 0 ? data : afiliacionLocalData); })
-      .catch(() => {});
+    backendFetch('/api/afiliacion').then(data => {
+      setAfiliacionData(Array.isArray(data) && data.length > 0 ? data : afiliacionLocalData);
+    });
   }, []);
 
   // Fade transition when electoral mode changes
