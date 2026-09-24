@@ -1,5 +1,6 @@
 const BACKEND_URLS = [...new Set([
   process.env.REACT_APP_BACKEND_URL,
+  typeof window !== 'undefined' ? window.location.origin : null,
   'http://localhost:3003',
 ].filter(Boolean))];
 
