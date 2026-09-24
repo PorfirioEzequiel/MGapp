@@ -266,23 +266,68 @@ export default function MoviladoresGestion() {
     setServerError(null);
     setSuccess(null);
 
+    const curpNorm = data.curp.toUpperCase();
+    const nombreNorm = data.nombre.toUpperCase();
+    const apNorm = data.a_paterno.toUpperCase();
+
+    // Verificar si la CURP ya existe en ciudadania
+    const { data: existing } = await supabase
+      .from('ciudadania')
+      .select('id, puesto')
+      .eq('curp', curpNorm)
+      .maybeSingle();
+
+    if (existing) {
+      if (existing.puesto === 'BENEFICIARIO') {
+        // Convertir de Beneficiario a Movilizador en lugar de duplicar
+        const { error: updateError } = await supabase
+          .from('ciudadania')
+          .update({
+            puesto:      'MOVILIZADOR',
+            movilizador: selectedSM.usuario,
+            poligono:    selectedSM.poligono ?? null,
+            seccion:     selectedSM.seccion  ?? null,
+            ubt:         selectedSM.ubt      ?? null,
+            status:      'ACTIVO',
+            observaciones: data.observaciones?.trim() || null,
+          })
+          .eq('id', existing.id);
+
+        if (updateError) {
+          setServerError(`Error al actualizar: ${updateError.message}`);
+          return;
+        }
+
+        setSuccess(`${nombreNorm} ${apNorm} actualizado de Beneficiario a Movilizador correctamente`);
+        const smToKeep = selectedSM;
+        reset();
+        setSelectedSM(smToKeep);
+        return;
+      }
+
+      // Existe con otro puesto → duplicado real
+      setServerError('La CURP ingresada ya está registrada en el sistema');
+      return;
+    }
+
+    // No existe → insertar normalmente
     const record = {
-      nombre: data.nombre.toUpperCase(),
-      a_paterno: data.a_paterno.toUpperCase(),
+      nombre: nombreNorm,
+      a_paterno: apNorm,
       a_materno: data.a_materno.toUpperCase(),
-      curp: data.curp.toUpperCase(),
+      curp: curpNorm,
       telefono_1: data.telefono_1,
       calle: data.calle.toUpperCase(),
       col_loc: data.col_loc.toUpperCase(),
       c_p: data.c_p,
       n_ext_mz: data.n_ext_mz.toUpperCase(),
       n_int_lt: data.n_int_lt ? data.n_int_lt.toUpperCase() : '',
-      usuario: data.curp.toUpperCase(),
+      usuario: curpNorm,
       puesto: 'MOVILIZADOR',
       movilizador: selectedSM.usuario,
       poligono: selectedSM.poligono ?? null,
-      seccion: selectedSM.seccion ?? null,
-      ubt: selectedSM.ubt ?? null,
+      seccion: selectedSM.seccion  ?? null,
+      ubt: selectedSM.ubt          ?? null,
       status: 'ACTIVO',
       observaciones: data.observaciones?.trim() || null,
     };

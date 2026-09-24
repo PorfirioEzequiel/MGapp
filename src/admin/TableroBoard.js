@@ -362,20 +362,28 @@ const TableroBoard = ({ readOnly = false }) => {
 
   useEffect(() => {
     Promise.all([
-      supabase.from('ubt_catalogo').select('seccion'),
-      supabase.from('ciudadania').select('seccion').eq('puesto', 'SM'),
-      supabase.from('ciudadania').select('seccion').eq('puesto', 'MOVILIZADOR').eq('status', 'ACTIVO'),
+      supabaseAdmin.from('ubt_catalogo').select('seccion'),
+      supabaseAdmin.from('ciudadania').select('seccion, usuario').eq('puesto', 'SM'),
+      supabaseAdmin.from('ciudadania').select('seccion, movilizador').eq('puesto', 'MOVILIZADOR').eq('status', 'ACTIVO'),
     ]).then(([fracRes, smRes, movRes]) => {
       const fracBySec = {};
       (fracRes.data ?? []).forEach(r => { fracBySec[r.seccion] = (fracBySec[r.seccion] ?? 0) + 1; });
       setGlobalFracciones(fracBySec);
 
       const smBySec = {};
-      (smRes.data ?? []).forEach(r => { smBySec[r.seccion] = (smBySec[r.seccion] ?? 0) + 1; });
+      const smSecByUsuario = {};
+      (smRes.data ?? []).forEach(r => {
+        smBySec[r.seccion] = (smBySec[r.seccion] ?? 0) + 1;
+        if (r.usuario) smSecByUsuario[r.usuario] = r.seccion;
+      });
       setGlobalSMs(smBySec);
 
+      // Derivar sección del SM asignado si el registro propio tiene seccion null
       const movBySec = {};
-      (movRes.data ?? []).forEach(r => { if (r.seccion) movBySec[r.seccion] = (movBySec[r.seccion] ?? 0) + 1; });
+      (movRes.data ?? []).forEach(r => {
+        const sec = r.seccion ?? smSecByUsuario[r.movilizador];
+        if (sec) movBySec[sec] = (movBySec[sec] ?? 0) + 1;
+      });
       setMovCountBySec(movBySec);
     });
   }, []);
@@ -886,10 +894,10 @@ const TableroBoard = ({ readOnly = false }) => {
     }
     const run = async () => {
       setLoadingInfo(true);
-      const [rsRes, smRes, fracRes, regRes, geoRes, fracGeoRes, movRes] = await Promise.all([
+      const [rsRes, smRes, fracRes, regRes, geoRes, fracGeoRes] = await Promise.all([
         supabase.from('ciudadania').select('nombre, a_paterno, a_materno')
           .eq('puesto', 'SECCIONAL').eq('seccion', selectedSeccion).eq('status', 'ACTIVO').maybeSingle(),
-        supabase.from('ciudadania').select('nombre, a_paterno, a_materno, ubt, usuario, telefono_1, latitud, longitud, url_foto_perfil')
+        supabaseAdmin.from('ciudadania').select('nombre, a_paterno, a_materno, ubt, usuario, telefono_1, latitud, longitud, url_foto_perfil')
           .eq('puesto', 'SM').eq('seccion', selectedSeccion).eq('status', 'ACTIVO').order('ubt', { ascending: true }),
         supabase.from('ubt_catalogo').select('fraccion').eq('seccion', selectedSeccion).order('fraccion', { ascending: true }),
         supabase.from('ciudadania').select('id', { count: 'exact', head: true })
@@ -897,12 +905,10 @@ const TableroBoard = ({ readOnly = false }) => {
         supabase.from('ciudadania').select('id, nombre, a_paterno, a_materno, latitud, longitud, puesto, ubt, seccion, url_foto_perfil, telefono_1')
           .eq('seccion', selectedSeccion).eq('status', 'ACTIVO').not('latitud', 'is', null),
         supabase.from('fracciones').select('fraccion, seccion, geometry').eq('seccion', selectedSeccion),
-        supabase.from('ciudadania')
-          .select('nombre, a_paterno, a_materno, movilizador')
-          .eq('seccion', selectedSeccion).eq('puesto', 'MOVILIZADOR').eq('status', 'ACTIVO'),
       ]);
       setSeccional(rsRes.data ?? null);
-      setPromotores(smRes.data ?? []);
+      const smList = smRes.data ?? [];
+      setPromotores(smList);
       setRegCount(regRes.count ?? 0);
       setCiudadanosGeo(geoRes.data ?? []);
       const fraccionList = fracRes.data?.map(f => f.fraccion) ?? [];
@@ -911,7 +917,18 @@ const TableroBoard = ({ readOnly = false }) => {
       setFracciones(fraccionList.map(frac => ({
         fraccion: frac, seccion: selectedSeccion, geometry: geoByFrac[String(frac)] ?? null,
       })));
-      setMovDetailSec(movRes.data ?? []);
+
+      // Buscar movilizadores por usuarios de SMs de esta sección — cubre casos donde seccion=null en el registro
+      const smUsuarios = smList.map(p => p.usuario).filter(Boolean);
+      if (smUsuarios.length > 0) {
+        const { data: movData } = await supabaseAdmin.from('ciudadania')
+          .select('nombre, a_paterno, a_materno, movilizador')
+          .eq('puesto', 'MOVILIZADOR').eq('status', 'ACTIVO')
+          .in('movilizador', smUsuarios);
+        setMovDetailSec(movData ?? []);
+      } else {
+        setMovDetailSec([]);
+      }
       setLoadingInfo(false);
     };
     run();
@@ -947,7 +964,7 @@ const TableroBoard = ({ readOnly = false }) => {
   }, []);
 
   const fraccionesWithSM = useMemo(() =>
-    fracciones.map(f => ({ ...f, sm: promotores.find(p => p.ubt === f.fraccion) ?? null })),
+    fracciones.map(f => ({ ...f, sm: promotores.find(p => String(p.ubt) === String(f.fraccion)) ?? null })),
   [fracciones, promotores]);
 
   // ── Totales de SMs y fracciones para el alcance actual ─────────────────────
@@ -1011,9 +1028,16 @@ const TableroBoard = ({ readOnly = false }) => {
     const af = afiliacionStats;
     if (!af) return null;
 
-    const { entregadas_sp = 0, comprobadas = 0 } = af.mode === 'seccion'
-      ? (af.seccion ?? {})
-      : (af.total ?? {});
+    const pipeSource = af.mode === 'seccion' ? af.seccion : af.total;
+    const { entregadas_sp = 0, comprobadas = 0 } = pipeSource ?? {};
+    const pipeline = pipeSource ? [
+      { label: 'Impresiones',   value: pipeSource.impresiones,   dot: '#64748B' },
+      { label: 'Loteadas',      value: pipeSource.loteadas,      dot: '#3B82F6' },
+      { label: 'En stock',      value: pipeSource.en_stock,      dot: '#8B5CF6' },
+      { label: 'Entregadas SP', value: pipeSource.entregadas_sp, dot: '#D97706' },
+      { label: 'Comprobadas',   value: pipeSource.comprobadas,   dot: '#059669' },
+      { label: 'Sin entregar',  value: pipeSource.sin_entregar,  dot: '#E11D48' },
+    ].filter(r => r.value != null) : [];
 
     const pctGlobal = entregadas_sp > 0 ? (comprobadas / entregadas_sp) * 100 : 0;
 
@@ -1180,6 +1204,26 @@ const TableroBoard = ({ readOnly = false }) => {
           </div>
         )}
 
+        {/* Pipeline de credenciales */}
+        {pipeline.length > 0 && (
+          <div className="rounded-xl border border-slate-200 overflow-hidden">
+            <div className="bg-slate-50 border-b border-slate-100 px-3 py-2">
+              <p className="text-[9px] font-bold uppercase tracking-widest text-slate-400">Pipeline de credenciales</p>
+            </div>
+            <div className="divide-y divide-slate-50">
+              {pipeline.map(({ label, value, dot }) => (
+                <div key={label} className="flex items-center justify-between px-3 py-2">
+                  <div className="flex items-center gap-2">
+                    <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: dot }} />
+                    <span className="text-[11px] text-slate-600">{label}</span>
+                  </div>
+                  <span className="text-[11px] font-bold tabular-nums text-slate-700">{fmt(value)}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* Leyenda */}
         <div className="rounded-xl border border-slate-100 p-2.5">
           <p className="text-[9px] font-bold uppercase tracking-widest text-slate-400 mb-1.5">Escala de avance</p>
@@ -1285,9 +1329,18 @@ const TableroBoard = ({ readOnly = false }) => {
           ? Object.entries(movilizadoresBySec).filter(([sec]) => allSecciones.find(s => s.seccion === Number(sec) && s.distrito_federal === selectedDistrito))
           : Object.entries(movilizadoresBySec);
 
-    const totalCount = scopeEntries.reduce((s, [, v]) => s + v.count, 0);
     const totalMeta  = scopeEntries.reduce((s, [, v]) => s + v.meta,  0);
-    const pctGlobal  = totalMeta > 0 ? Math.min((totalCount / totalMeta) * 100, 100) : null;
+
+    // Conteo real desde movCountBySec — incluye secciones sin fracciones registradas
+    const scopeSecNums = isSeccion ? [selectedSeccion]
+      : isSector   ? allSecciones.filter(s => s.pologono === selectedSector).map(s => s.seccion)
+      : isDistrito ? allSecciones.filter(s => s.distrito_federal === selectedDistrito).map(s => s.seccion)
+      : null;
+    const rawCount = scopeSecNums
+      ? scopeSecNums.reduce((sum, sec) => sum + (movCountBySec[sec] ?? 0), 0)
+      : Object.values(movCountBySec).reduce((sum, v) => sum + v, 0);
+
+    const pctGlobal  = totalMeta > 0 ? Math.min((rawCount / totalMeta) * 100, 100) : null;
     const noData     = totalMeta === 0;
     const barColor   = semaforoColor(pctGlobal);
     const statusLabel = semaforoLabel(pctGlobal);
@@ -1298,7 +1351,7 @@ const TableroBoard = ({ readOnly = false }) => {
       if (isSector) {
         return scopeEntries
           .map(([sec, v]) => ({ label: `Sec. ${sec}`, key: sec, count: v.count, meta: v.meta, pct: v.pct }))
-          .filter(r => r.meta > 0)
+          .filter(r => r.count > 0)
           .sort((a, b) => a.pct - b.pct);
       }
       // Municipio or Distrito → by sector
@@ -1311,7 +1364,7 @@ const TableroBoard = ({ readOnly = false }) => {
         bySector[sectorKey].meta  += v.meta;
       });
       return Object.entries(bySector)
-        .filter(([, v]) => v.meta > 0)
+        .filter(([, v]) => v.count > 0)
         .map(([sp, v]) => ({ label: `Sector ${sp}`, key: sp, count: v.count, meta: v.meta, pct: v.meta > 0 ? (v.count / v.meta) * 100 : 0 }))
         .sort((a, b) => a.pct - b.pct);
     })();
@@ -1323,6 +1376,43 @@ const TableroBoard = ({ readOnly = false }) => {
 
     return (
       <div className="space-y-2.5">
+
+        {/* Estructura territorial */}
+        {(scopeSmStats.totalFrac > 0 || scopeSmStats.totalSMs > 0) && (
+          <div className="rounded-xl border border-blue-100 bg-blue-50 px-3 py-2.5">
+            <p className="text-[9px] font-bold uppercase tracking-[0.14em] text-blue-400 mb-2">Estructura territorial</p>
+            <div className="grid grid-cols-3 gap-1.5 mb-2">
+              <div className="bg-white rounded-lg p-1.5 text-center">
+                <p className="text-[8px] font-bold uppercase tracking-wide text-slate-400 leading-none mb-0.5">SMs</p>
+                <p className="text-base font-bold tabular-nums text-blue-700">{scopeSmStats.totalSMs}</p>
+              </div>
+              <div className="bg-white rounded-lg p-1.5 text-center">
+                <p className="text-[8px] font-bold uppercase tracking-wide text-slate-400 leading-none mb-0.5">Fracciones</p>
+                <p className="text-base font-bold tabular-nums text-slate-700">{scopeSmStats.totalFrac}</p>
+              </div>
+              <div className="bg-white rounded-lg p-1.5 text-center">
+                <p className="text-[8px] font-bold uppercase tracking-wide text-slate-400 leading-none mb-0.5">Cobertura SM</p>
+                <p className="text-base font-bold tabular-nums" style={{
+                  color: scopeSmStats.pct == null ? '#9CA3AF'
+                    : scopeSmStats.pct >= 90 ? '#16A34A'
+                    : scopeSmStats.pct >= 60 ? '#CA8A04'
+                    : '#DC2626'
+                }}>
+                  {scopeSmStats.pct != null ? `${scopeSmStats.pct.toFixed(0)}%` : '—'}
+                </p>
+              </div>
+            </div>
+            {scopeSmStats.pct != null && (
+              <div className="h-1.5 bg-blue-100 rounded-full overflow-hidden">
+                <div className="h-full rounded-full transition-all duration-700"
+                  style={{
+                    width: `${Math.min(scopeSmStats.pct, 100)}%`,
+                    backgroundColor: scopeSmStats.pct >= 90 ? '#16A34A' : scopeSmStats.pct >= 60 ? '#CA8A04' : '#DC2626',
+                  }} />
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Cabecera */}
         <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5">
@@ -1345,8 +1435,8 @@ const TableroBoard = ({ readOnly = false }) => {
         {/* Métricas clave */}
         <div className="grid grid-cols-3 gap-1.5">
           <div className="bg-sky-50 rounded-xl p-2 text-center">
-            <p className="text-[9px] font-bold uppercase tracking-widest text-sky-500 leading-none mb-1">Registrados</p>
-            <p className="text-lg font-bold tabular-nums text-sky-700">{fmt(totalCount)}</p>
+            <p className="text-[9px] font-bold uppercase tracking-widest text-sky-500 leading-none mb-1">Movilizadores</p>
+            <p className="text-lg font-bold tabular-nums text-sky-700">{fmt(rawCount)}</p>
           </div>
           <div className="bg-slate-50 rounded-xl p-2 text-center">
             <p className="text-[9px] font-bold uppercase tracking-widest text-slate-500 leading-none mb-1">Meta</p>
@@ -1384,7 +1474,7 @@ const TableroBoard = ({ readOnly = false }) => {
             </div>
             <div className="divide-y divide-slate-50">
               {fracciones.map(f => {
-                const sm = promotores.find(p => p.ubt === f.fraccion);
+                const sm = promotores.find(p => String(p.ubt) === String(f.fraccion));
                 const smMov = movDetailSec.filter(m => sm && m.movilizador === sm.usuario);
                 const smCount = smMov.length;
                 const smPct = Math.min((smCount / 10) * 100, 100);
@@ -1411,29 +1501,6 @@ const TableroBoard = ({ readOnly = false }) => {
             </div>
           </div>
         )}
-
-        {/* Leyenda */}
-        <div className="rounded-xl border border-slate-100 p-2.5">
-          <p className="text-[9px] font-bold uppercase tracking-widest text-slate-400 mb-1.5">Escala de avance</p>
-          <div className="space-y-1">
-            {[
-              { label: 'Excelente', range: '≥ 90%',  color: '#16A34A' },
-              { label: 'Bien',      range: '75–89%', color: '#65A30D' },
-              { label: 'Regular',   range: '50–74%', color: '#CA8A04' },
-              { label: 'Bajo',      range: '25–49%', color: '#EA580C' },
-              { label: 'Crítico',   range: '< 25%',  color: '#DC2626' },
-              { label: 'Sin datos', range: '—',       color: '#9CA3AF' },
-            ].map(({ label, range, color }) => (
-              <div key={label} className="flex items-center justify-between">
-                <div className="flex items-center gap-1.5">
-                  <div className="w-2 h-2 rounded-sm flex-shrink-0" style={{ backgroundColor: color }} />
-                  <span className="text-[10px] font-medium text-slate-700">{label}</span>
-                </div>
-                <span className="text-[9px] text-slate-400 tabular-nums">{range}</span>
-              </div>
-            ))}
-          </div>
-        </div>
 
         {/* Breakdown por nivel */}
         {breakdown && breakdown.length > 0 && (
@@ -1472,6 +1539,29 @@ const TableroBoard = ({ readOnly = false }) => {
         {nivelLabel && (
           <p className="text-[9px] text-slate-400 text-center leading-snug pt-1">{nivelLabel}</p>
         )}
+
+        {/* Leyenda */}
+        <div className="rounded-xl border border-slate-100 p-2.5">
+          <p className="text-[9px] font-bold uppercase tracking-widest text-slate-400 mb-1.5">Escala de avance</p>
+          <div className="space-y-1">
+            {[
+              { label: 'Excelente', range: '≥ 90%',  color: '#16A34A' },
+              { label: 'Bien',      range: '75–89%', color: '#65A30D' },
+              { label: 'Regular',   range: '50–74%', color: '#CA8A04' },
+              { label: 'Bajo',      range: '25–49%', color: '#EA580C' },
+              { label: 'Crítico',   range: '< 25%',  color: '#DC2626' },
+              { label: 'Sin datos', range: '—',       color: '#9CA3AF' },
+            ].map(({ label, range, color }) => (
+              <div key={label} className="flex items-center justify-between">
+                <div className="flex items-center gap-1.5">
+                  <div className="w-2 h-2 rounded-sm flex-shrink-0" style={{ backgroundColor: color }} />
+                  <span className="text-[10px] font-medium text-slate-700">{label}</span>
+                </div>
+                <span className="text-[9px] text-slate-400 tabular-nums">{range}</span>
+              </div>
+            ))}
+          </div>
+        </div>
       </div>
     );
   };
@@ -2245,7 +2335,7 @@ const TableroBoard = ({ readOnly = false }) => {
       const secData    = allSecciones.find(s => s.seccion === selectedSeccion);
       const padronTotal = secData?.padron ?? secData?.padron_electoral;
       const smConUbic  = promotores.filter(p => p.latitud && Number(p.latitud) !== 0).length;
-      const fracConSM  = fracciones.filter(f => promotores.some(p => p.ubt === f.fraccion)).length;
+      const fracConSM  = fracciones.filter(f => promotores.some(p => String(p.ubt) === String(f.fraccion))).length;
       const afSec      = afiliacionStats?.seccion;
 
       return (
@@ -2273,12 +2363,6 @@ const TableroBoard = ({ readOnly = false }) => {
                 <CoverageBar label="SMs con ubicación" value={smConUbic} total={promotores.length} colorClass="bg-emerald-500" />
                 {regCount != null && <CoverageBar label="Ciudadanos reg." value={regCount} total={Number(secData?.lista_nominal) || regCount} colorClass="bg-violet-400" />}
               </>
-            )}
-            {afSec && (
-              <div className={fracciones.length > 0 ? 'pt-2 mt-1 border-t border-slate-100' : ''}>
-                <SectionTitle accent="bg-teal-500">Actividad · Afiliación</SectionTitle>
-                <AfilCard afiliados={afSec.afiliados} credenciales={afSec.credenciales_entregadas} data={afSec} />
-              </div>
             )}
           </div>
 
@@ -2315,8 +2399,8 @@ const TableroBoard = ({ readOnly = false }) => {
                   </thead>
                   <tbody className="divide-y divide-slate-50">
                     {fracciones.map(f => {
-                      const sm           = promotores.find(p => p.ubt === f.fraccion);
-                      const isSelected   = selectedSM?.ubt === f.fraccion;
+                      const sm           = promotores.find(p => String(p.ubt) === String(f.fraccion));
+                      const isSelected   = String(selectedSM?.ubt) === String(f.fraccion);
                       const hasCoords    = sm?.latitud && Number(sm.latitud) !== 0 && !isNaN(Number(sm.latitud));
                       const dot          = sm ? (hasCoords ? 'bg-emerald-400' : 'bg-blue-400') : 'bg-slate-200';
                       const movOpen      = expandedMovFrac === f.fraccion;
@@ -2448,13 +2532,6 @@ const TableroBoard = ({ readOnly = false }) => {
             <StatCard label="SMs" value={smsSector || '—'} sub="activas" />
             <StatCard label="Ubicados" value={ciudadanosGeo.length || '—'} sub="con coordenadas" />
           </div>
-          {afSect && (
-            <div className="bg-white border border-slate-100 rounded-xl p-3 shadow-sm">
-              <SectionTitle accent="bg-teal-500">Actividad · Afiliación Sector {selectedSector}</SectionTitle>
-              <AfilCard afiliados={afSect.afiliados} credenciales={afSect.credenciales} data={afSect} />
-              <AfilTable rows={secRows} />
-            </div>
-          )}
           <div className="bg-white border border-slate-100 rounded-xl p-3 shadow-sm">
             <SectionTitle>Coordinador de Sector</SectionTitle>
             <ResponsableRow role="SP" name={fullName(sp)} roleColor="bg-violet-100 text-violet-700" avatarColor="bg-violet-100 text-violet-600" />
@@ -2487,13 +2564,6 @@ const TableroBoard = ({ readOnly = false }) => {
             <StatCard label="Fracciones" value={fraccionesDistrito || '—'} sub="en este distrito" />
             <StatCard label="SMs" value={smsDistrito || '—'} sub="activas" />
           </div>
-          {afDist && (
-            <div className="bg-white border border-slate-100 rounded-xl p-3 shadow-sm">
-              <SectionTitle accent="bg-teal-500">Actividad · Afiliación Dto. {selectedDistrito}</SectionTitle>
-              <AfilCard afiliados={afDist.afiliados} credenciales={afDist.credenciales} data={afDist} />
-              <AfilTable rows={sectRows} />
-            </div>
-          )}
           <EmptyGuide>Selecciona un sector para ver sus secciones y coordinadores.</EmptyGuide>
         </div>
       );
@@ -2520,13 +2590,6 @@ const TableroBoard = ({ readOnly = false }) => {
           <StatCard label="Fracciones" value={totalFracciones || '—'} sub="total municipal" />
           <StatCard label="SMs" value={totalSMsMun || '—'} sub="activas" />
         </div>
-        {afTotal?.afiliados > 0 && (
-          <div className="bg-white border border-slate-100 rounded-xl p-3 shadow-sm">
-            <SectionTitle accent="bg-teal-500">Actividad · Afiliación Municipal</SectionTitle>
-            <AfilCard afiliados={afTotal.afiliados} credenciales={afTotal.credenciales} data={afTotal} />
-            <AfilTable rows={sectorRows} />
-          </div>
-        )}
         <EmptyGuide>Selecciona un distrito federal para comenzar el análisis territorial.</EmptyGuide>
       </div>
     );
