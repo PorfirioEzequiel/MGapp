@@ -257,10 +257,21 @@ app.get('/api/comprobadas', async (req, res) => {
 });
 
 // Pipeline de credenciales por sección (datos de afiliación)
+let _afiliacionCache = null;
+let _afiliacionCacheAt = 0;
+const AFILIACION_TTL = 5 * 60 * 1000; // 5 minutos
+
 app.get('/api/afiliacion', async (req, res) => {
   try {
+    const now = Date.now();
+    const fresh = _afiliacionCache && (now - _afiliacionCacheAt) < AFILIACION_TTL;
+    if (fresh && req.query.refresh !== 'true') {
+      return res.json(_afiliacionCache);
+    }
     const col  = mongoose.connection.db.collection('pipeline-credenciales');
     const docs = await col.find({}, { projection: { _id: 0 } }).toArray();
+    _afiliacionCache  = docs;
+    _afiliacionCacheAt = now;
     res.json(docs);
   } catch (err) {
     console.error('[MONGO] /api/afiliacion:', err.message);
