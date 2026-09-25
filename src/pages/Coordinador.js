@@ -130,6 +130,11 @@ const CANDIDATOS_GUB2023 = {
   DELFINA:   { nombre: 'Delfina Gómez Álvarez',  partido: 'MORENA · PT · PVEM · Nueva Alianza', resultado: 'GANADORA', fill: '#6B0B20', stroke: '#360008' },
   OPOSICION: { nombre: 'Alejandra del Moral',     partido: 'PRI · PAN · PRD',                   resultado: '2° lugar', fill: '#1460A8', stroke: '#093E78' },
 };
+const CANDIDATOS_PRES2024 = {
+  CLAUDIA: { nombre: 'Claudia Sheinbaum Pardo', partido: 'MORENA · PT · PVEM · NAEM', resultado: 'GANADORA', fill: '#6B0B20', stroke: '#360008' },
+  XOCHITL: { nombre: 'Xóchitl Gálvez Ruiz',    partido: 'PAN · PRI · PRD',           resultado: '2° lugar', fill: '#1460A8', stroke: '#093E78' },
+  MC:      { nombre: 'Jorge Álvarez Máynez',    partido: 'MC',                         resultado: '3° lugar', fill: '#F59E0B', stroke: '#B45309' },
+};
 const SECTION_ALIASES = {
   7011: 4213, 7012: 4213, 7013: 4213, 7014: 4213, 7015: 4213, 7016: 4213, 7017: 4213,
   7018: 4228, 7019: 4228, 7020: 4228, 7021: 4228, 7022: 4228, 7023: 4228, 7024: 4228,
@@ -370,6 +375,7 @@ const Coordinador = () => {
   const [electoralDataSenado,   setElectoralDataSenado]   = useState({});
   const [electoralDataDip2024,  setElectoralDataDip2024]  = useState({});
   const [electoralDataGub2023,  setElectoralDataGub2023]  = useState({});
+  const [electoralDataPres2024, setElectoralDataPres2024] = useState({});
   const [comprobadasMongo,      setComprobadasMongo]      = useState({});
   const [comprobadasSp0,        setComprobadasSp0]        = useState({});
 
@@ -794,6 +800,24 @@ const Coordinador = () => {
     }).catch(() => {});
   }, []);
 
+  useEffect(() => {
+    const PRES_KEYS = ['claudia_morena','xochitl_oposicion','pres_mc','votos_nulos','casillas','lista_nominal','total_votos'];
+    fetch('/presidencia_2024.json').then(r => r.json()).then(rows => {
+      const m = {};
+      rows.forEach(row => { m[row.seccion] = row; });
+      const firstSub = m[SUBS_4251[0]];
+      const agg4251 = { seccion: 4251, distrito_federal: firstSub?.distrito_federal ?? 5 };
+      PRES_KEYS.forEach(k => { agg4251[k] = 0; });
+      SUBS_4251.forEach(s => { if (m[s]) PRES_KEYS.forEach(k => { agg4251[k] += m[s][k] || 0; }); });
+      agg4251.claudia_vs_xochitl = agg4251.claudia_morena - agg4251.xochitl_oposicion;
+      const val4251 = agg4251.total_votos - agg4251.votos_nulos;
+      agg4251.ganador = agg4251.claudia_morena >= agg4251.xochitl_oposicion ? 'CLAUDIA' : 'XOCHITL';
+      agg4251.diferencia_pct = val4251 > 0 ? Math.abs((agg4251.claudia_vs_xochitl / val4251) * 100).toFixed(2) : 0;
+      m[4251] = agg4251;
+      setElectoralDataPres2024(m);
+    }).catch(() => {});
+  }, []);
+
   // ── Estadísticas electorales — escopo sector SP ───────────────────────────
   const electoralStats = useMemo(() => {
     if (!electoralMode || electoralMode === 'semaforo_cred' || electoralMode === 'semaforo_mercado') return null;
@@ -802,11 +826,13 @@ const Coordinador = () => {
     const isSenado   = electoralMode === 'senado_2024';
     const isDip2024  = electoralMode === 'dip_2024';
     const isGub2023  = electoralMode === 'gubernatura_2023';
+    const isPres2024 = electoralMode === 'pres_2024';
     const dataSource = isIEEM ? electoralDataIEEM
                      : is2024IEEM ? electoralData2024IEEM
                      : isSenado ? electoralDataSenado
                      : isDip2024 ? electoralDataDip2024
                      : isGub2023 ? electoralDataGub2023
+                     : isPres2024 ? electoralDataPres2024
                      : electoralData;
 
     if (!Object.keys(dataSource).length) return null;
@@ -826,7 +852,7 @@ const Coordinador = () => {
       : seccionesSector;
 
     for (const s of source) {
-      const canonical = ((is2024IEEM || isSenado || isDip2024 || isGub2023) && IEEM_2024_GRUPOS[s.seccion])
+      const canonical = ((is2024IEEM || isSenado || isDip2024 || isGub2023 || isPres2024) && IEEM_2024_GRUPOS[s.seccion])
         ? IEEM_2024_GRUPOS[s.seccion]
         : dataSource[s.seccion] !== undefined ? s.seccion : (SECTION_ALIASES[s.seccion] ?? s.seccion);
       if (counted.has(canonical)) continue;
@@ -871,6 +897,14 @@ const Coordinador = () => {
         secGanadas[ganador] = (secGanadas[ganador] || 0) + 1;
         if (votos_delfina   > 0) { totals.DELFINA   = (totals.DELFINA   || 0) + votos_delfina;   grandTotal += votos_delfina; }
         if (votos_oposicion > 0) { totals.OPOSICION = (totals.OPOSICION || 0) + votos_oposicion; grandTotal += votos_oposicion; }
+      } else if (isPres2024) {
+        const { ganador, claudia_morena = 0, xochitl_oposicion = 0, pres_mc = 0, claudia_vs_xochitl = 0, votos_nulos = 0 } = d;
+        secGanadas[ganador] = (secGanadas[ganador] || 0) + 1;
+        const votes = { CLAUDIA: claudia_morena, XOCHITL: xochitl_oposicion };
+        if (pres_mc > 0) votes.MC = pres_mc;
+        for (const [p, v] of Object.entries(votes)) { if (v > 0) { totals[p] = (totals[p] || 0) + v; grandTotal += v; } }
+        mg_vs_fuerza_total += claudia_vs_xochitl;
+        votos_nulos_total  += votos_nulos;
       } else {
         const { ganador_partido, morena_coalicion = 0, morena = 0, pri = 0, pan = 0, pvem = 0, mc = 0, prd = 0, pt = 0, naem = 0 } = d;
         secGanadas[ganador_partido] = (secGanadas[ganador_partido] || 0) + 1;
@@ -899,12 +933,12 @@ const Coordinador = () => {
       : null;
 
     return { totals, grandTotal, winner, secGanadas, secciones, sorted, marginVotos, marginPct,
-             isIEEM, is2024IEEM, isSenado, isDip2024, isGub2023,
+             isIEEM, is2024IEEM, isSenado, isDip2024, isGub2023, isPres2024,
              morena_solo_total, pt_solo_total, naem_solo_total,
              rosi_vs_aaron_total, mg_vs_fuerza_total, votos_nulos_total,
              groupLevel, senadoBreakdown };
   }, [electoralData, electoralDataIEEM, electoralData2024IEEM, electoralDataSenado,
-      electoralDataDip2024, electoralDataGub2023, electoralMode, seccionesSector, seccionMapa]);
+      electoralDataDip2024, electoralDataGub2023, electoralDataPres2024, electoralMode, seccionesSector, seccionMapa]);
 
   const manejarFiltro = async () => {
     setLoadingBusqueda(true);
@@ -2184,7 +2218,7 @@ const Coordinador = () => {
                   );
 
                   const { totals, grandTotal, winner, secGanadas, secciones, sorted, marginVotos, marginPct,
-                          isIEEM, is2024IEEM, isSenado, isDip2024, isGub2023,
+                          isIEEM, is2024IEEM, isSenado, isDip2024, isGub2023, isPres2024,
                           morena_solo_total, pt_solo_total, naem_solo_total,
                           rosi_vs_aaron_total, mg_vs_fuerza_total, votos_nulos_total,
                           groupLevel, senadoBreakdown } = electoralStats;
@@ -2194,12 +2228,13 @@ const Coordinador = () => {
                   const marielaPerdidas = Math.max(0, secciones - marielaGanadas);
                   const senadoInsight   = isSenado ? buildSenadoInsight(senadoBreakdown, groupLevel, scopeLabel) : null;
                   const drillInto = (unit) => { setSeccionMapa(String(unit.key)); };
-                  const candTable    = isGub2023 ? CANDIDATOS_GUB2023 : isSenado ? CANDIDATOS_SENADO : isDip2024 ? CANDIDATOS_DIP : is2024IEEM ? CANDIDATOS_2024 : CANDIDATOS_2021;
+                  const candTable    = isPres2024 ? CANDIDATOS_PRES2024 : isGub2023 ? CANDIDATOS_GUB2023 : isSenado ? CANDIDATOS_SENADO : isDip2024 ? CANDIDATOS_DIP : is2024IEEM ? CANDIDATOS_2024 : CANDIDATOS_2021;
                   const winnerCand   = candTable[winner];
-                  const winnerColor  = isGub2023  ? (CANDIDATOS_GUB2023[winner]?.fill ?? '#6B7280')
-                                     : isSenado   ? (CANDIDATOS_SENADO[winner]?.fill  ?? '#6B7280')
-                                     : isDip2024  ? (CANDIDATOS_DIP[winner]?.fill     ?? '#6B7280')
-                                     : is2024IEEM ? (CANDIDATOS_2024[winner]?.fill    ?? '#6B7280')
+                  const winnerColor  = isPres2024 ? (CANDIDATOS_PRES2024[winner]?.fill ?? '#6B7280')
+                                     : isGub2023  ? (CANDIDATOS_GUB2023[winner]?.fill  ?? '#6B7280')
+                                     : isSenado   ? (CANDIDATOS_SENADO[winner]?.fill   ?? '#6B7280')
+                                     : isDip2024  ? (CANDIDATOS_DIP[winner]?.fill      ?? '#6B7280')
+                                     : is2024IEEM ? (CANDIDATOS_2024[winner]?.fill     ?? '#6B7280')
                                      : (PARTY_FILL[winner] ?? '#6B7280');
                   const totalSec = Object.values(secGanadas).reduce((s, n) => s + n, 0);
 
@@ -2212,7 +2247,8 @@ const Coordinador = () => {
                           <div>
                             <p className="text-[9px] font-bold uppercase tracking-[0.14em] text-slate-400 leading-none mb-1">Proceso electoral</p>
                             <p className="text-xs font-bold text-slate-800 leading-snug">
-                              {isGub2023  ? 'Gubernatura Edomex · 2023'
+                              {isPres2024 ? 'Presidencia 2024 · Tecámac'
+                               : isGub2023  ? 'Gubernatura Edomex · 2023'
                                : isDip2024  ? 'Diputación Local 2024 - Interno · Tecámac'
                                : isSenado ? 'Senaduría 2024 · Tecámac'
                                : is2024IEEM ? 'Ayuntamiento Tecámac · 2024'
@@ -2220,9 +2256,9 @@ const Coordinador = () => {
                             </p>
                           </div>
                           <span className={`text-[9px] font-bold px-2 py-1 rounded-full whitespace-nowrap flex-shrink-0 text-white ${
-                            isGub2023 ? 'bg-rose-900' : isDip2024 ? 'bg-slate-700' : is2024IEEM ? 'bg-emerald-700' : isSenado ? 'bg-rose-900' : isIEEM ? 'bg-emerald-700' : 'bg-slate-700'
+                            isPres2024 ? 'bg-rose-900' : isGub2023 ? 'bg-rose-900' : isDip2024 ? 'bg-slate-700' : is2024IEEM ? 'bg-emerald-700' : isSenado ? 'bg-rose-900' : isIEEM ? 'bg-emerald-700' : 'bg-slate-700'
                           }`}>
-                            {isGub2023 ? 'IEEM oficial' : isDip2024 ? 'Interno' : is2024IEEM ? 'IEEM oficial' : isSenado ? 'Senaduría 2024' : isIEEM ? 'IEEM oficial' : 'Datos internos'}
+                            {isPres2024 ? 'Cómputos INE' : isGub2023 ? 'IEEM oficial' : isDip2024 ? 'Interno' : is2024IEEM ? 'IEEM oficial' : isSenado ? 'Senaduría 2024' : isIEEM ? 'IEEM oficial' : 'Datos internos'}
                           </span>
                         </div>
                         <p className="text-[10px] text-slate-500 mt-1.5 flex items-center gap-1">
@@ -2372,6 +2408,43 @@ const Coordinador = () => {
                         </div>
                       )}
 
+                      {/* Claudia vs Xóchitl (pres_2024) */}
+                      {isPres2024 && (
+                        <div className="bg-white border border-slate-100 rounded-xl p-3 shadow-sm">
+                          <SectionTitle>Claudia Sheinbaum vs Xóchitl Gálvez</SectionTitle>
+                          <div className="flex items-center gap-2 mb-2">
+                            <div className="flex-1">
+                              <p className="text-[9px] font-bold uppercase tracking-widest mb-0.5" style={{ color: CANDIDATOS_PRES2024.CLAUDIA.fill }}>Claudia S.</p>
+                              <p className="text-base font-bold tabular-nums" style={{ color: CANDIDATOS_PRES2024.CLAUDIA.fill }}>{fmt(totals['CLAUDIA'])}</p>
+                              <p className="text-[10px] text-slate-400">{pct(totals['CLAUDIA'], grandTotal)}</p>
+                            </div>
+                            <div className="flex flex-col items-center gap-1 flex-shrink-0">
+                              <span className="text-sm font-black tabular-nums text-slate-700">{mg_vs_fuerza_total >= 0 ? '+' : ''}{fmt(mg_vs_fuerza_total)}</span>
+                              <span className="text-[9px] text-slate-400 uppercase tracking-wider">diferencia</span>
+                            </div>
+                            <div className="flex-1 text-right">
+                              <p className="text-[9px] font-bold uppercase tracking-widest mb-0.5" style={{ color: CANDIDATOS_PRES2024.XOCHITL.fill }}>Xóchitl G.</p>
+                              <p className="text-base font-bold tabular-nums" style={{ color: CANDIDATOS_PRES2024.XOCHITL.fill }}>{fmt(totals['XOCHITL'])}</p>
+                              <p className="text-[10px] text-slate-400">{pct(totals['XOCHITL'], grandTotal)}</p>
+                            </div>
+                          </div>
+                          <div className="h-2.5 bg-slate-100 rounded-full overflow-hidden flex">
+                            <div className="h-full rounded-l-full transition-all duration-700" style={{ width: pct(totals['CLAUDIA'], grandTotal), backgroundColor: CANDIDATOS_PRES2024.CLAUDIA.fill }} />
+                            <div className="h-full rounded-r-full transition-all duration-700" style={{ width: pct(totals['XOCHITL'], grandTotal), backgroundColor: CANDIDATOS_PRES2024.XOCHITL.fill }} />
+                          </div>
+                          <div className="flex justify-between mt-1">
+                            <span className="text-[9px]" style={{ color: CANDIDATOS_PRES2024.CLAUDIA.fill }}>{pct(totals['CLAUDIA'], grandTotal)} Claudia</span>
+                            <span className="text-[9px]" style={{ color: CANDIDATOS_PRES2024.XOCHITL.fill }}>Xóchitl {pct(totals['XOCHITL'], grandTotal)}</span>
+                          </div>
+                          {votos_nulos_total > 0 && (
+                            <div className="mt-2 pt-2 border-t border-slate-100 flex justify-between items-center">
+                              <span className="text-[9px] text-slate-400 uppercase tracking-widest">Votos nulos</span>
+                              <span className="text-[11px] font-bold tabular-nums text-slate-500">{fmt(votos_nulos_total)}</span>
+                            </div>
+                          )}
+                        </div>
+                      )}
+
                       {/* Secciones ganadas vs perdidas (senado) */}
                       {isSenado && (
                         <div className="bg-white border border-slate-100 rounded-xl p-3 shadow-sm">
@@ -2444,7 +2517,7 @@ const Coordinador = () => {
                         <div className="space-y-2">
                           {sorted.filter(([, v]) => v > 0).map(([party, votes]) => {
                             const cand = candTable[party];
-                            const fill = isGub2023 ? (CANDIDATOS_GUB2023[party]?.fill ?? '#6B7280') : isSenado ? (CANDIDATOS_SENADO[party]?.fill ?? '#6B7280') : isDip2024 ? (CANDIDATOS_DIP[party]?.fill ?? '#6B7280') : is2024IEEM ? (CANDIDATOS_2024[party]?.fill ?? '#6B7280') : (PARTY_FILL[party] ?? '#6B7280');
+                            const fill = isPres2024 ? (CANDIDATOS_PRES2024[party]?.fill ?? '#6B7280') : isGub2023 ? (CANDIDATOS_GUB2023[party]?.fill ?? '#6B7280') : isSenado ? (CANDIDATOS_SENADO[party]?.fill ?? '#6B7280') : isDip2024 ? (CANDIDATOS_DIP[party]?.fill ?? '#6B7280') : is2024IEEM ? (CANDIDATOS_2024[party]?.fill ?? '#6B7280') : (PARTY_FILL[party] ?? '#6B7280');
                             return (
                               <div key={party}>
                                 <div className="flex items-center justify-between mb-0.5">

@@ -87,6 +87,13 @@ const CANDIDATOS_GUB2023 = {
   OPOSICION: { nombre: 'Alejandra del Moral',     partido: 'PRI · PAN · PRD',                   resultado: '2° lugar', fill: '#1460A8', stroke: '#093E78' },
 };
 
+// ── Candidatos Presidencia 2024 — Cómputos finales INE ────────────────────────
+const CANDIDATOS_PRES2024 = {
+  CLAUDIA: { nombre: 'Claudia Sheinbaum Pardo', partido: 'MORENA · PT · PVEM · NAEM', resultado: 'GANADORA', fill: '#6B0B20', stroke: '#360008' },
+  XOCHITL: { nombre: 'Xóchitl Gálvez Ruiz',    partido: 'PAN · PRI · PRD',           resultado: '2° lugar', fill: '#1460A8', stroke: '#093E78' },
+  MC:      { nombre: 'Jorge Álvarez Máynez',    partido: 'MC',                         resultado: '3° lugar', fill: '#F59E0B', stroke: '#B45309' },
+};
+
 // ── Alias de secciones históricas (fallback para cuando el dato directo no existe) ──
 const SECTION_ALIASES = {
   7011: 4213, 7012: 4213, 7013: 4213,
@@ -321,6 +328,7 @@ const TableroBoard = ({ readOnly = false }) => {
   const [electoralDataSenado,   setElectoralDataSenado]   = useState({});
   const [electoralDataDip2024,  setElectoralDataDip2024]  = useState({});
   const [electoralDataGub2023,  setElectoralDataGub2023]  = useState({});
+  const [electoralDataPres2024, setElectoralDataPres2024] = useState({});
   const [panelFade,     setPanelFade]     = useState(true);
   const prevElectoralMode = useRef(null);
 
@@ -490,6 +498,33 @@ const TableroBoard = ({ readOnly = false }) => {
         const m = {};
         rows.forEach(row => { m[row.seccion] = row; });
         setElectoralDataGub2023(m);
+      })
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    const PRES_KEYS = ['claudia_morena','xochitl_oposicion','pres_mc','votos_nulos','casillas','lista_nominal','total_votos'];
+    fetch('/presidencia_2024.json')
+      .then(r => r.json())
+      .then(rows => {
+        const m = {};
+        rows.forEach(row => { m[row.seccion] = row; });
+        const firstSub = m[Object.keys(IEEM_2024_GRUPOS).map(Number).find(s => IEEM_2024_GRUPOS[s] === 4251)];
+        const agg4251 = { seccion: 4251, distrito_federal: firstSub?.distrito_federal ?? 5 };
+        PRES_KEYS.forEach(k => { agg4251[k] = 0; });
+        Object.keys(IEEM_2024_GRUPOS).forEach(s => {
+          if (IEEM_2024_GRUPOS[s] !== 4251) return;
+          const r = m[Number(s)];
+          if (!r) return;
+          PRES_KEYS.forEach(k => { agg4251[k] += r[k] || 0; });
+        });
+        agg4251.claudia_vs_xochitl = agg4251.claudia_morena - agg4251.xochitl_oposicion;
+        const validos4251 = agg4251.total_votos - agg4251.votos_nulos;
+        agg4251.ganador = agg4251.claudia_morena >= agg4251.xochitl_oposicion ? 'CLAUDIA' : 'XOCHITL';
+        agg4251.diferencia_pct = validos4251 > 0
+          ? Math.abs((agg4251.claudia_vs_xochitl / validos4251) * 100).toFixed(2) : 0;
+        m[4251] = agg4251;
+        setElectoralDataPres2024(m);
       })
       .catch(() => {});
   }, []);
@@ -723,11 +758,13 @@ const TableroBoard = ({ readOnly = false }) => {
     const isDip2024   = electoralMode === 'dip_2024';
     const isDip       = isDip2024;
     const isGub2023   = electoralMode === 'gubernatura_2023';
+    const isPres2024  = electoralMode === 'pres_2024';
     const dataSource  = isIEEM ? electoralDataIEEM
                       : is2024IEEM ? electoralData2024IEEM
                       : isSenado ? electoralDataSenado
                       : isDip2024 ? electoralDataDip2024
                       : isGub2023 ? electoralDataGub2023
+                      : isPres2024 ? electoralDataPres2024
                       : electoralData;
     if (!electoralMode || !Object.keys(dataSource).length) return null;
 
@@ -750,8 +787,8 @@ const TableroBoard = ({ readOnly = false }) => {
     const senadoBuckets = {};
 
     for (const s of mapSecciones) {
-      // IEEM 2024, Senado 2024, Dip 2024 y Gub 2023: alias forzado para secciones fraccionadas
-      const canonical = ((is2024IEEM || isSenado || isDip2024 || isGub2023) && IEEM_2024_GRUPOS[s.seccion])
+      // IEEM 2024, Senado 2024, Dip 2024, Gub 2023 y Pres 2024: alias forzado para secciones fraccionadas
+      const canonical = ((is2024IEEM || isSenado || isDip2024 || isGub2023 || isPres2024) && IEEM_2024_GRUPOS[s.seccion])
         ? IEEM_2024_GRUPOS[s.seccion]
         : dataSource[s.seccion] !== undefined
           ? s.seccion
@@ -760,7 +797,7 @@ const TableroBoard = ({ readOnly = false }) => {
       const d = dataSource[canonical];
       if (!d) continue;
       if (isDip2024 && d.distrito !== 33) continue;
-      if ((is2024 || is2024IEEM || isSenado) && dataSource[s.seccion] === undefined && dataSource[canonical] === undefined) continue;
+      if ((is2024 || is2024IEEM || isSenado || isPres2024) && dataSource[s.seccion] === undefined && dataSource[canonical] === undefined) continue;
       counted.add(canonical);
       secciones++;
 
@@ -816,6 +853,16 @@ const TableroBoard = ({ readOnly = false }) => {
         secGanadas[ganador] = (secGanadas[ganador] || 0) + 1;
         if (votos_delfina   > 0) { totals.DELFINA   = (totals.DELFINA   || 0) + votos_delfina;   grandTotal += votos_delfina; }
         if (votos_oposicion > 0) { totals.OPOSICION = (totals.OPOSICION || 0) + votos_oposicion; grandTotal += votos_oposicion; }
+      } else if (isPres2024) {
+        const { ganador, claudia_morena = 0, xochitl_oposicion = 0, pres_mc = 0, claudia_vs_xochitl = 0, votos_nulos = 0 } = d;
+        secGanadas[ganador] = (secGanadas[ganador] || 0) + 1;
+        const votes = { CLAUDIA: claudia_morena, XOCHITL: xochitl_oposicion };
+        if (pres_mc > 0) votes.MC = pres_mc;
+        for (const [p, v] of Object.entries(votes)) {
+          if (v > 0) { totals[p] = (totals[p] || 0) + v; grandTotal += v; }
+        }
+        mg_vs_fuerza_total += claudia_vs_xochitl;
+        votos_nulos_total  += votos_nulos;
       } else {
         const { ganador_partido, morena_coalicion = 0, morena = 0, pri = 0, pan = 0, pvem = 0, mc = 0, prd = 0, pt = 0, naem = 0 } = d;
         secGanadas[ganador_partido] = (secGanadas[ganador_partido] || 0) + 1;
@@ -860,12 +907,12 @@ const TableroBoard = ({ readOnly = false }) => {
       : null;
 
     return { totals, grandTotal, winner, secGanadas, secciones, sorted, marginVotos, marginPct,
-             isIEEM, is2024, is2024IEEM, isSenado, isDip, isDip2024, isGub2023,
+             isIEEM, is2024, is2024IEEM, isSenado, isDip, isDip2024, isGub2023, isPres2024,
              morena_solo_total, pt_solo_total, naem_solo_total,
              rosi_vs_aaron_total, mg_vs_fuerza_total, votos_nulos_total,
              groupLevel, senadoBreakdown };
   }, [electoralData, electoralDataIEEM, electoralData2024IEEM, electoralDataSenado,
-      electoralDataDip2024, electoralDataGub2023, electoralMode, mapSecciones,
+      electoralDataDip2024, electoralDataGub2023, electoralDataPres2024, electoralMode, mapSecciones,
       selectedSeccion, selectedSector, selectedDistrito]);
 
   // ── Fetch sector ──────────────────────────────────────────────────────────
@@ -1909,7 +1956,7 @@ const TableroBoard = ({ readOnly = false }) => {
     );
 
     const { totals, grandTotal, winner, secGanadas, secciones, sorted, marginVotos, marginPct,
-            isIEEM, is2024, is2024IEEM, isSenado, isDip, isDip2024, isGub2023,
+            isIEEM, is2024, is2024IEEM, isSenado, isDip, isDip2024, isGub2023, isPres2024,
             morena_solo_total, pt_solo_total, naem_solo_total,
             rosi_vs_aaron_total, mg_vs_fuerza_total, votos_nulos_total,
             groupLevel, senadoBreakdown } = electoralStats;
@@ -1922,9 +1969,10 @@ const TableroBoard = ({ readOnly = false }) => {
       else selectDistrito(unit.key);
     };
     const is2024Any    = is2024 || is2024IEEM;
-    const candTable    = isGub2023 ? CANDIDATOS_GUB2023 : isSenado ? CANDIDATOS_SENADO : isDip ? CANDIDATOS_DIP : is2024Any ? CANDIDATOS_2024 : CANDIDATOS_2021;
+    const candTable    = isPres2024 ? CANDIDATOS_PRES2024 : isGub2023 ? CANDIDATOS_GUB2023 : isSenado ? CANDIDATOS_SENADO : isDip ? CANDIDATOS_DIP : is2024Any ? CANDIDATOS_2024 : CANDIDATOS_2021;
     const winnerCand   = candTable[winner];
-    const winnerColor  = isGub2023 ? (CANDIDATOS_GUB2023[winner]?.fill ?? '#6B7280')
+    const winnerColor  = isPres2024 ? (CANDIDATOS_PRES2024[winner]?.fill ?? '#6B7280')
+                       : isGub2023 ? (CANDIDATOS_GUB2023[winner]?.fill ?? '#6B7280')
                        : isSenado  ? (CANDIDATOS_SENADO[winner]?.fill  ?? '#6B7280')
                        : isDip     ? (CANDIDATOS_DIP[winner]?.fill     ?? '#6B7280')
                        : is2024Any ? (CANDIDATOS_2024[winner]?.fill    ?? '#6B7280')
@@ -1940,7 +1988,8 @@ const TableroBoard = ({ readOnly = false }) => {
             <div>
               <p className="text-[9px] font-bold uppercase tracking-[0.14em] text-slate-400 leading-none mb-1">Proceso electoral</p>
               <p className="text-xs font-bold text-slate-800 leading-snug">
-                {isGub2023  ? 'Gubernatura Edomex · 2023'
+                {isPres2024 ? 'Presidencia 2024 · Tecámac'
+                 : isGub2023  ? 'Gubernatura Edomex · 2023'
                  : isDip2024  ? 'Diputación Local 2024 - Interno · Tecámac'
                  : isSenado ? 'Senaduría 2024 · Tecámac'
                  : is2024Any ? 'Ayuntamiento Tecámac · 2024'
@@ -1948,9 +1997,9 @@ const TableroBoard = ({ readOnly = false }) => {
               </p>
             </div>
             <span className={`text-[9px] font-bold px-2 py-1 rounded-full whitespace-nowrap flex-shrink-0 text-white ${
-              isGub2023 ? 'bg-rose-900' : isDip ? 'bg-slate-700' : is2024IEEM ? 'bg-emerald-700' : is2024 ? 'bg-blue-700' : isSenado ? 'bg-rose-900' : isIEEM ? 'bg-emerald-700' : 'bg-slate-700'
+              isPres2024 ? 'bg-rose-900' : isGub2023 ? 'bg-rose-900' : isDip ? 'bg-slate-700' : is2024IEEM ? 'bg-emerald-700' : is2024 ? 'bg-blue-700' : isSenado ? 'bg-rose-900' : isIEEM ? 'bg-emerald-700' : 'bg-slate-700'
             }`}>
-              {isGub2023 ? 'IEEM oficial' : isDip2024 ? 'Interno' : is2024IEEM ? 'IEEM oficial' : is2024 ? 'Rosi Wong' : isSenado ? 'Senaduría 2024' : isIEEM ? 'IEEM oficial' : 'Datos internos'}
+              {isPres2024 ? 'Cómputos INE' : isGub2023 ? 'IEEM oficial' : isDip2024 ? 'Interno' : is2024IEEM ? 'IEEM oficial' : is2024 ? 'Rosi Wong' : isSenado ? 'Senaduría 2024' : isIEEM ? 'IEEM oficial' : 'Datos internos'}
             </span>
           </div>
           <p className="text-[10px] text-slate-500 mt-1.5 flex items-center gap-1">
@@ -2103,6 +2152,47 @@ const TableroBoard = ({ readOnly = false }) => {
               <span className="text-[9px]" style={{ color: CANDIDATOS_GUB2023.DELFINA.fill }}>{pct(totals['DELFINA'], grandTotal)} Delfina</span>
               <span className="text-[9px]" style={{ color: CANDIDATOS_GUB2023.OPOSICION.fill }}>Oposición {pct(totals['OPOSICION'], grandTotal)}</span>
             </div>
+          </div>
+        )}
+
+        {/* Comparativa Claudia vs Xóchitl (solo pres_2024) */}
+        {isPres2024 && (
+          <div className="bg-white border border-slate-100 rounded-xl p-3 shadow-sm">
+            <SectionTitle>Claudia Sheinbaum vs Xóchitl Gálvez</SectionTitle>
+            <div className="flex items-center gap-2 mb-2">
+              <div className="flex-1">
+                <p className="text-[9px] font-bold uppercase tracking-widest mb-0.5" style={{ color: CANDIDATOS_PRES2024.CLAUDIA.fill }}>Claudia S.</p>
+                <p className="text-base font-bold tabular-nums" style={{ color: CANDIDATOS_PRES2024.CLAUDIA.fill }}>{fmt(totals['CLAUDIA'])}</p>
+                <p className="text-[10px] text-slate-400">{pct(totals['CLAUDIA'], grandTotal)}</p>
+              </div>
+              <div className="flex flex-col items-center gap-1 flex-shrink-0">
+                <span className="text-sm font-black tabular-nums text-slate-700">
+                  {mg_vs_fuerza_total >= 0 ? '+' : ''}{fmt(mg_vs_fuerza_total)}
+                </span>
+                <span className="text-[9px] text-slate-400 uppercase tracking-wider">diferencia</span>
+              </div>
+              <div className="flex-1 text-right">
+                <p className="text-[9px] font-bold uppercase tracking-widest mb-0.5" style={{ color: CANDIDATOS_PRES2024.XOCHITL.fill }}>Xóchitl G.</p>
+                <p className="text-base font-bold tabular-nums" style={{ color: CANDIDATOS_PRES2024.XOCHITL.fill }}>{fmt(totals['XOCHITL'])}</p>
+                <p className="text-[10px] text-slate-400">{pct(totals['XOCHITL'], grandTotal)}</p>
+              </div>
+            </div>
+            <div className="h-2.5 bg-slate-100 rounded-full overflow-hidden flex">
+              <div className="h-full rounded-l-full transition-all duration-700"
+                style={{ width: pct(totals['CLAUDIA'], grandTotal), backgroundColor: CANDIDATOS_PRES2024.CLAUDIA.fill }} />
+              <div className="h-full rounded-r-full transition-all duration-700"
+                style={{ width: pct(totals['XOCHITL'], grandTotal), backgroundColor: CANDIDATOS_PRES2024.XOCHITL.fill }} />
+            </div>
+            <div className="flex justify-between mt-1">
+              <span className="text-[9px]" style={{ color: CANDIDATOS_PRES2024.CLAUDIA.fill }}>{pct(totals['CLAUDIA'], grandTotal)} Claudia</span>
+              <span className="text-[9px]" style={{ color: CANDIDATOS_PRES2024.XOCHITL.fill }}>Xóchitl {pct(totals['XOCHITL'], grandTotal)}</span>
+            </div>
+            {votos_nulos_total > 0 && (
+              <div className="mt-2 pt-2 border-t border-slate-100 flex justify-between items-center">
+                <span className="text-[9px] text-slate-400 uppercase tracking-widest">Votos nulos</span>
+                <span className="text-[11px] font-bold tabular-nums text-slate-500">{fmt(votos_nulos_total)}</span>
+              </div>
+            )}
           </div>
         )}
 
@@ -2273,11 +2363,11 @@ const TableroBoard = ({ readOnly = false }) => {
 
         {/* Candidatos */}
         <div className="bg-white border border-slate-100 rounded-xl p-3 shadow-sm">
-          <SectionTitle>{isGub2023 ? 'Candidatos · Gubernatura Edomex 2023' : isSenado ? 'Candidatos · Senaduría 2024' : isDip ? 'Candidatos · Diputación Local 2024' : `Candidatos · Ayuntamiento ${is2024Any ? '2024' : '2021'}`}</SectionTitle>
+          <SectionTitle>{isPres2024 ? 'Candidatos · Presidencia 2024' : isGub2023 ? 'Candidatos · Gubernatura Edomex 2023' : isSenado ? 'Candidatos · Senaduría 2024' : isDip ? 'Candidatos · Diputación Local 2024' : `Candidatos · Ayuntamiento ${is2024Any ? '2024' : '2021'}`}</SectionTitle>
           <div className="divide-y divide-slate-50">
             {sorted.filter(([, v]) => v > 0).map(([party, votes]) => {
                 const cand = candTable[party];
-                const fill = isGub2023 ? (CANDIDATOS_GUB2023[party]?.fill ?? '#6B7280') : isSenado ? (CANDIDATOS_SENADO[party]?.fill ?? '#6B7280') : isDip ? (CANDIDATOS_DIP[party]?.fill ?? '#6B7280') : is2024Any ? (CANDIDATOS_2024[party]?.fill ?? '#6B7280') : (PARTY_FILL[party] ?? '#6B7280');
+                const fill = isPres2024 ? (CANDIDATOS_PRES2024[party]?.fill ?? '#6B7280') : isGub2023 ? (CANDIDATOS_GUB2023[party]?.fill ?? '#6B7280') : isSenado ? (CANDIDATOS_SENADO[party]?.fill ?? '#6B7280') : isDip ? (CANDIDATOS_DIP[party]?.fill ?? '#6B7280') : is2024Any ? (CANDIDATOS_2024[party]?.fill ?? '#6B7280') : (PARTY_FILL[party] ?? '#6B7280');
                 if (!cand) return null;
                 return (
                   <div key={party} className="flex items-center gap-2.5 py-2 first:pt-0 last:pb-0">
@@ -2304,7 +2394,9 @@ const TableroBoard = ({ readOnly = false }) => {
         {/* Nota metodológica */}
         <div className="rounded-xl border border-slate-100 bg-slate-50 px-3 py-2">
           <p className="text-[9px] text-slate-400 leading-relaxed">
-            {isGub2023
+            {isPres2024
+              ? <><strong className="text-slate-500">Fuente:</strong> Cómputos finales INE · Presidencia de la República 2024 (2 jun 2024). Claudia Sheinbaum Pardo (MORENA · PT · PVEM · NAEM) vs Xóchitl Gálvez Ruiz (PAN · PRI · PRD). Votos sumados por coalición a nivel sección. Filtrado municipio de Tecámac (Edomex), 197 secciones. Base: repositorio efrenzagal/current-affairs-mx-elections-pres-2024.</>
+              : isGub2023
               ? <><strong className="text-slate-500">Fuente:</strong> Cómputo oficial IEEM · Gubernatura Estado de México 2023. Delfina Gómez Álvarez (MORENA · PT · PVEM · Nueva Alianza) vs Alejandra del Moral (PRI · PAN · PRD). Filtrado municipio 82 (Tecámac), 186 secciones vigentes en 2023. Secciones 6857–6867 no existían en 2023 — se mapean a sección 4251.</>
               : isSenado
               ? <><strong className="text-slate-500">Fuente:</strong> PREP / Actas de cómputo IEEM · Senaduría · Estado de México 2024. Filtrado al municipio de Tecámac (82), 197 secciones. Secciones 7011–7017 y 7018–7024 agrupadas en secciones históricas 4213 y 4228 respectivamente.</>
@@ -2914,6 +3006,7 @@ const TableroBoard = ({ readOnly = false }) => {
                     electoralMode === 'dip_2024'          ? 'bg-slate-700' :
                     electoralMode === 'ayu_2024_ieem'     ? 'bg-emerald-700' :
                     electoralMode === 'senado_2024'       ? 'bg-rose-900' :
+                    electoralMode === 'pres_2024'         ? 'bg-rose-900' :
                     electoralMode === 'ayu_2021_ieem'     ? 'bg-emerald-700' :
                     electoralMode ? 'bg-red-800' :
                     currentLevel === 3 ? 'bg-violet-500' : currentLevel === 2 ? 'bg-emerald-500' :
@@ -2929,13 +3022,15 @@ const TableroBoard = ({ readOnly = false }) => {
                           ? 'Diputación Local 2024 · Interno'
                           : electoralMode === 'senado_2024'
                               ? 'Electoral 2024 · Senaduría'
-                              : electoralMode === 'ayu_2024_ieem'
-                                ? 'Electoral 2024 · IEEM oficial'
-                                : electoralMode === 'ayu_2021_ieem'
-                                    ? 'Electoral 2021 · IEEM oficial'
-                                    : electoralMode
-                                      ? 'Análisis electoral · Ayuntamiento 2021'
-                                      : (currentLevel === 3 ? `Sección ${selectedSeccion}` : currentLevel === 2 ? `Sector ${selectedSector}` : currentLevel === 1 ? `Distrito ${selectedDistrito}` : 'Vista general')
+                              : electoralMode === 'pres_2024'
+                                ? 'Electoral 2024 · Presidencia'
+                                : electoralMode === 'ayu_2024_ieem'
+                                  ? 'Electoral 2024 · IEEM oficial'
+                                  : electoralMode === 'ayu_2021_ieem'
+                                      ? 'Electoral 2021 · IEEM oficial'
+                                      : electoralMode
+                                        ? 'Análisis electoral · Ayuntamiento 2021'
+                                        : (currentLevel === 3 ? `Sección ${selectedSeccion}` : currentLevel === 2 ? `Sector ${selectedSector}` : currentLevel === 1 ? `Distrito ${selectedDistrito}` : 'Vista general')
                     }
                   </SectionTitle>
                   {electoralMode && (

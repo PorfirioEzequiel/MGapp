@@ -79,6 +79,13 @@ const PARTY_COLORS_GUB2023 = {
   OPOSICION: { fill: '#1460A8', stroke: '#093E78', label: 'Oposición' },
 };
 
+// Colores para Presidencia 2024 (Claudia=guinda, Xóchitl=azul, MC=ámbar)
+const PARTY_COLORS_PRES2024 = {
+  CLAUDIA: { fill: '#6B0B20', stroke: '#360008', label: 'Claudia Sheinbaum' },
+  XOCHITL: { fill: '#1460A8', stroke: '#093E78', label: 'Xóchitl Gálvez' },
+  MC:      { fill: '#F59E0B', stroke: '#B45309', label: 'MC' },
+};
+
 // ── Alias de secciones históricas (fallback) ──────────────────────────────────
 // Solo activa si la sección no tiene datos propios en el dataset.
 // 7011-7017 siempre caen a 4213; 6857-6867 caen a 4251.
@@ -862,6 +869,7 @@ const MapTerritorial = ({
   const [electoralDataSenado,    setElectoralDataSenado]    = useState({});
   const [electoralDataDip2024,   setElectoralDataDip2024]   = useState({});
   const [electoralDataGub2023,   setElectoralDataGub2023]   = useState({});
+  const [electoralDataPres2024,  setElectoralDataPres2024]  = useState({});
   // Controlled from parent if onElectoralModeChange is provided, uncontrolled otherwise
   const electoralMode = onElectoralModeChange ? electoralModeExternal : localElectoralMode;
   const handleSetElectoralMode = (mode) => {
@@ -1142,6 +1150,35 @@ const MapTerritorial = ({
       .catch(err => console.error('Error cargando gubernatura_2023_edomex.json', err));
   }, []);
 
+  // Dataset Presidencia 2024 — cómputos finales INE por sección
+  useEffect(() => {
+    const PRES_KEYS = ['claudia_morena','xochitl_oposicion','pres_mc','votos_nulos','casillas','lista_nominal','total_votos'];
+    fetch('/presidencia_2024.json')
+      .then(r => r.json())
+      .then(rows => {
+        const m = {};
+        rows.forEach(row => { m[row.seccion] = row; });
+        // Construir sección histórica 4251 agregando sus subsecciones fraccionadas (6857-6867)
+        const firstSub = m[Object.keys(IEEM_2024_GRUPOS).map(Number).find(s => IEEM_2024_GRUPOS[s] === 4251)];
+        const agg4251 = { seccion: 4251, distrito_federal: firstSub?.distrito_federal ?? 5 };
+        PRES_KEYS.forEach(k => { agg4251[k] = 0; });
+        Object.keys(IEEM_2024_GRUPOS).forEach(s => {
+          if (IEEM_2024_GRUPOS[s] !== 4251) return;
+          const r = m[Number(s)];
+          if (!r) return;
+          PRES_KEYS.forEach(k => { agg4251[k] += r[k] || 0; });
+        });
+        agg4251.claudia_vs_xochitl = agg4251.claudia_morena - agg4251.xochitl_oposicion;
+        const validos4251 = agg4251.total_votos - agg4251.votos_nulos;
+        agg4251.ganador = agg4251.claudia_morena >= agg4251.xochitl_oposicion ? 'CLAUDIA' : 'XOCHITL';
+        agg4251.diferencia_pct = validos4251 > 0
+          ? Math.abs((agg4251.claudia_vs_xochitl / validos4251) * 100).toFixed(2) : 0;
+        m[4251] = agg4251;
+        setElectoralDataPres2024(m);
+      })
+      .catch(err => console.error('Error cargando presidencia_2024.json', err));
+  }, []);
+
   const getElectoralResultGub2023 = useCallback((seccion) => {
     // 2023 usa límites pre-fraccionamiento: SECTION_ALIASES + IEEM_2024_GRUPOS como fallback
     const alias = SECTION_ALIASES[seccion] ?? IEEM_2024_GRUPOS[seccion];
@@ -1157,6 +1194,21 @@ const MapTerritorial = ({
     return { winner: ganador, votes, total: votos_calculado || total,
              diferencia_pct, lista_nominal, casillas, isGub2023: true };
   }, [electoralDataGub2023]);
+
+  const getElectoralResultPres2024 = useCallback((seccion) => {
+    const canonical = IEEM_2024_GRUPOS[seccion] ?? seccion;
+    const d = electoralDataPres2024[canonical] ?? electoralDataPres2024[SECTION_ALIASES[seccion]];
+    if (!d) return null;
+    const { ganador, claudia_morena = 0, xochitl_oposicion = 0, pres_mc = 0,
+            claudia_vs_xochitl = 0, votos_nulos = 0, total_votos = 0,
+            lista_nominal = 0, casillas = 0, diferencia_pct } = d;
+    const votes = {};
+    if (claudia_morena    > 0) votes.CLAUDIA = claudia_morena;
+    if (xochitl_oposicion > 0) votes.XOCHITL = xochitl_oposicion;
+    if (pres_mc           > 0) votes.MC       = pres_mc;
+    return { winner: ganador, votes, total: total_votos, diferencia_pct,
+             claudia_vs_xochitl, votos_nulos, lista_nominal, casillas, isPres2024: true };
+  }, [electoralDataPres2024]);
 
   // Color por sector
   useEffect(() => {
@@ -1727,6 +1779,15 @@ const MapTerritorial = ({
                   >
                     <BallotSvg /> Gubernatura 2023 - Delfina Gómez
                   </button>
+                  <button
+                    onClick={() => handleSetElectoralMode(electoralMode === 'pres_2024' ? null : 'pres_2024')}
+                    className={`w-full px-2.5 py-2 md:py-1 rounded-md text-xs font-medium transition-all text-left leading-tight ${
+                      electoralMode === 'pres_2024' ? 'bg-rose-900 text-white shadow-sm' : 'text-gray-600 hover:bg-gray-100'
+                    }`}
+                    title="Presidencia 2024 — Claudia Sheinbaum vs Xóchitl Gálvez · Cómputos INE"
+                  >
+                    <BallotSvg /> Presidencia 2024 - Claudia
+                  </button>
                 </>
               )}
 
@@ -1924,11 +1985,14 @@ const MapTerritorial = ({
                         ? getElectoralResultDip2024(sec.seccion)
                         : electoralMode === 'gubernatura_2023'
                           ? getElectoralResultGub2023(sec.seccion)
-                          : null;
+                          : electoralMode === 'pres_2024'
+                            ? getElectoralResultPres2024(sec.seccion)
+                            : null;
               const colorPalette = electoralMode === 'ayu_2024_ieem' ? PARTY_COLORS_2024
                                  : electoralMode === 'senado_2024'    ? PARTY_COLORS_SENADO
                                  : electoralMode === 'dip_2024'       ? PARTY_COLORS_DIP
                                  : electoralMode === 'gubernatura_2023' ? PARTY_COLORS_GUB2023
+                                 : electoralMode === 'pres_2024'       ? PARTY_COLORS_PRES2024
                                  : PARTY_COLORS;
               const color      = isSemaforo
                 ? (() => {
@@ -1981,10 +2045,14 @@ const MapTerritorial = ({
                             ? (IEEM_2024_GRUPOS[sec.seccion] !== undefined
                                || (electoralDataGub2023[sec.seccion] === undefined && _aliasTarget !== undefined
                                    && electoralDataGub2023[_aliasTarget] !== undefined))
-                            : false;
+                            : electoralMode === 'pres_2024'
+                              ? (IEEM_2024_GRUPOS[sec.seccion] !== undefined
+                                 || (electoralDataPres2024[sec.seccion] === undefined && _aliasTarget !== undefined
+                                     && electoralDataPres2024[_aliasTarget] !== undefined))
+                              : false;
 
               // Secciones agrupadas muestran borde normal en capas IEEM y resultados 2024+.
-              const showFadedBorder = isAliased && electoralMode !== 'ayu_2021_ieem' && electoralMode !== 'ayu_2024_ieem' && electoralMode !== 'senado_2024' && electoralMode !== 'dip_2024' && electoralMode !== 'gubernatura_2023';
+              const showFadedBorder = isAliased && electoralMode !== 'ayu_2021_ieem' && electoralMode !== 'ayu_2024_ieem' && electoralMode !== 'senado_2024' && electoralMode !== 'dip_2024' && electoralMode !== 'gubernatura_2023' && electoralMode !== 'pres_2024';
 
               return (
                 <React.Fragment key={sec.id ?? idx}>
