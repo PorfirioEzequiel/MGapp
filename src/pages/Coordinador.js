@@ -480,14 +480,14 @@ const Coordinador = () => {
 
   // ── Fetch ──────────────────────────────────────────────────────────────────
   useEffect(() => {
-    if (!user) return;
+    if (!user) { setLoading(false); return; }
     Promise.all([
       fetchPromotores(),
       fetchMapaSector(),
       fetchCatalogoFracciones(),
       fetchActividades(),
     ]).finally(() => setLoading(false));
-  }, []);
+  }, [user]);
 
   useEffect(() => {
     backendFetch('/api/comprobadas').then(data => {
