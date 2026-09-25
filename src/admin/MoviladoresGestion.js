@@ -42,7 +42,7 @@ function smMeta(sm) {
 function Field({ label, error, required, children, className = '' }) {
   return (
     <div className={className}>
-      <label className="block text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-1.5">
+      <label className="block text-[10px] font-bold uppercase tracking-widest text-slate-700 mb-1.5">
         {label}
         {required && <span className="text-red-400 ml-0.5">*</span>}
       </label>
@@ -402,11 +402,11 @@ export default function MoviladoresGestion() {
         <form onSubmit={handleSubmit(onSubmit)} noValidate className="space-y-4">
           {/* ── Asignación ── */}
           <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-5">
-            <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-4">
+            <p className="text-[10px] font-bold uppercase tracking-widest text-slate-700 mb-4">
               Asignación
             </p>
             <div>
-              <label className="block text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-1.5">
+              <label className="block text-[10px] font-bold uppercase tracking-widest text-slate-700 mb-1.5">
                 SM Responsable
                 <span className="text-red-400 ml-0.5">*</span>
               </label>
@@ -421,7 +421,7 @@ export default function MoviladoresGestion() {
 
           {/* ── Datos personales ── */}
           <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-5">
-            <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-4">
+            <p className="text-[10px] font-bold uppercase tracking-widest text-slate-700 mb-4">
               Datos personales
             </p>
 
@@ -495,14 +495,14 @@ export default function MoviladoresGestion() {
 
           {/* ── Domicilio ── */}
           <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-5">
-            <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-4">
+            <p className="text-[10px] font-bold uppercase tracking-widest text-slate-700 mb-4">
               Domicilio
             </p>
 
             <div className="space-y-4">
               {/* C.P. primero — dispara la búsqueda */}
               <div>
-                <label className="block text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-1.5">
+                <label className="block text-[10px] font-bold uppercase tracking-widest text-slate-700 mb-1.5">
                   Código Postal<span className="text-red-400 ml-0.5">*</span>
                 </label>
                 <input
@@ -524,7 +524,7 @@ export default function MoviladoresGestion() {
 
               <div className="grid grid-cols-12 gap-3">
                 <div className="col-span-12 sm:col-span-7">
-                  <label className="block text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-1.5">
+                  <label className="block text-[10px] font-bold uppercase tracking-widest text-slate-700 mb-1.5">
                     Colonia<span className="text-red-400 ml-0.5">*</span>
                   </label>
                   <input
@@ -576,7 +576,7 @@ export default function MoviladoresGestion() {
 
           {/* ── Observaciones ── */}
           <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-5 mt-2">
-            <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-4">
+            <p className="text-[10px] font-bold uppercase tracking-widest text-slate-700 mb-4">
               Observaciones <span className="normal-case font-normal text-slate-300">(opcional)</span>
             </p>
             <textarea
