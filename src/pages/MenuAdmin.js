@@ -54,8 +54,6 @@ const MenuAdmin = () => {
         <div className="flex flex-wrap -mb-4 -mx-2 mb-6">
           <MenuItem icon={LiaBlackTie} label="CIUDADANOS" onClick={() => navigate('/admin')} color="red" />
           <MenuItem icon={LiaUserFriendsSolid} label="MAPA TERRITORIAL" onClick={() => navigate('/tablero')} />
-          <MenuItem icon={LiaMapMarkedAltSolid} label="TERRITORIO" onClick={() => navigate('/territorio')} />
-          <MenuItem icon={LiaGlobeSolid} label="MAPA EDOMEX" onClick={() => navigate('/admin/mapa-edomex')} color="emerald" />
           <MenuItem icon={LiaDrawPolygonSolid} label="FRACCIONES" onClick={() => navigate('/admin/fracciones')} color="violet" />
           <MenuItem icon={LiaRunningSolid} label="MOVILIZADORES DE GESTIÓN" onClick={() => navigate('/admin/movilizadores')} color="sky" />
           <MenuItem icon={LiaChartPieSolid} label="CONTROL MGS" onClick={() => navigate('/admin/control-mgs')} color="emerald" />
@@ -79,7 +77,6 @@ const MenuAdmin = () => {
           <MenuItem icon={LiaUsersSolid} label="APOYOS" onClick={() => navigate('/admin/programas')} />
           <MenuItem icon={LiaTruckSolid} label="MERCADO SOLIDARIO" onClick={() => navigate('/admin/mercado')} color="emerald" />
           <MenuItem icon={LiaHandHoldingHeartSolid} label="SOLICITUDES APOYOS" onClick={() => navigate('/admin/solicitudes-apoyos')} color="emerald" />
-          <MenuItem icon={LiaUsersSolid} label="RECUPERAR APOYOS" onClick={() => navigate('/admin/recuperar-apoyos')} color="red" />
           <MenuItem icon={LiaChartBarSolid} label="REPORTE MS" onClick={() => navigate('/admin/reporte-mercado')} color="violet" />
           <MenuItem icon={LiaWalletSolid} label="BAJA DE INFO" disabled />
           <MenuItem icon={LiaWeixin} label="REDES SOCIALES" disabled />
