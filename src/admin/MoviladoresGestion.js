@@ -42,7 +42,7 @@ function smMeta(sm) {
 function Field({ label, error, required, children, className = '' }) {
   return (
     <div className={className}>
-      <label className="block text-[10px] font-bold uppercase tracking-widest text-slate-700 mb-1.5">
+      <label className="block text-[10px] font-bold uppercase tracking-widest text-slate-800 mb-1.5">
         {label}
         {required && <span className="text-red-400 ml-0.5">*</span>}
       </label>
@@ -55,11 +55,13 @@ function Field({ label, error, required, children, className = '' }) {
 }
 
 // ── Input class helper ─────────────────────────────────────────────────────
-const cx = (hasError) =>
-  `w-full border rounded-xl py-2.5 px-3 text-sm focus:outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-400/10 transition-colors placeholder:text-slate-300 ${
+const cx = (hasError, isFilled = false) =>
+  `w-full border rounded-xl py-2.5 px-3 text-sm focus:outline-none transition-all duration-200 placeholder:text-slate-300 ${
     hasError
-      ? 'border-red-300 bg-red-50 text-red-900'
-      : 'border-slate-200 bg-white text-slate-800'
+      ? 'border-red-300 bg-red-50 text-red-900 focus:border-red-400 focus:ring-2 focus:ring-red-400/10'
+      : isFilled
+      ? 'border-emerald-400 bg-white text-slate-800 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-400/15 input-complete'
+      : 'border-slate-200 bg-white text-slate-800 focus:border-blue-400 focus:ring-2 focus:ring-blue-400/10'
   }`;
 
 // ── SM Searcher component ──────────────────────────────────────────────────
@@ -244,6 +246,7 @@ export default function MoviladoresGestion() {
     formState: { errors, isSubmitting },
   } = useForm();
 
+  const values = watch();
 
   // ── SM loader ──────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -362,6 +365,16 @@ export default function MoviladoresGestion() {
 
   return (
     <div className="min-h-screen bg-slate-50">
+      <style>{`
+        @keyframes input-complete {
+          0%   { box-shadow: 0 0 0 0   rgba(52, 211, 153, 0.45); }
+          65%  { box-shadow: 0 0 0 6px rgba(52, 211, 153, 0.08); }
+          100% { box-shadow: 0 0 0 0   rgba(52, 211, 153, 0);    }
+        }
+        .input-complete {
+          animation: input-complete 0.45s cubic-bezier(0.22, 1, 0.36, 1);
+        }
+      `}</style>
       {/* Header */}
       <div className="bg-gradient-to-r from-blue-600 to-blue-700 px-4 py-5 mb-6 flex items-center gap-3">
         <button
@@ -402,11 +415,11 @@ export default function MoviladoresGestion() {
         <form onSubmit={handleSubmit(onSubmit)} noValidate className="space-y-4">
           {/* ── Asignación ── */}
           <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-5">
-            <p className="text-[10px] font-bold uppercase tracking-widest text-slate-700 mb-4">
+            <p className="text-[10px] font-bold uppercase tracking-widest text-slate-800 mb-4">
               Asignación
             </p>
             <div>
-              <label className="block text-[10px] font-bold uppercase tracking-widest text-slate-700 mb-1.5">
+              <label className="block text-[10px] font-bold uppercase tracking-widest text-slate-800 mb-1.5">
                 SM Responsable
                 <span className="text-red-400 ml-0.5">*</span>
               </label>
@@ -421,7 +434,7 @@ export default function MoviladoresGestion() {
 
           {/* ── Datos personales ── */}
           <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-5">
-            <p className="text-[10px] font-bold uppercase tracking-widest text-slate-700 mb-4">
+            <p className="text-[10px] font-bold uppercase tracking-widest text-slate-800 mb-4">
               Datos personales
             </p>
 
@@ -432,7 +445,7 @@ export default function MoviladoresGestion() {
                   type="text"
                   placeholder="JUAN PABLO"
                   autoComplete="given-name"
-                  className={`${cx(errors.nombre)} uppercase`}
+                  className={`${cx(errors.nombre, !!values.nombre)} uppercase`}
                 />
               </Field>
               <Field label="Apellido Paterno" error={errors.a_paterno} required>
@@ -441,7 +454,7 @@ export default function MoviladoresGestion() {
                   type="text"
                   placeholder="GARCÍA"
                   autoComplete="family-name"
-                  className={`${cx(errors.a_paterno)} uppercase`}
+                  className={`${cx(errors.a_paterno, !!values.a_paterno)} uppercase`}
                 />
               </Field>
               <Field label="Apellido Materno" error={errors.a_materno} required>
@@ -449,7 +462,7 @@ export default function MoviladoresGestion() {
                   {...register('a_materno', { required: 'Campo requerido' })}
                   type="text"
                   placeholder="LÓPEZ"
-                  className={`${cx(errors.a_materno)} uppercase`}
+                  className={`${cx(errors.a_materno, !!values.a_materno)} uppercase`}
                 />
               </Field>
             </div>
@@ -470,7 +483,7 @@ export default function MoviladoresGestion() {
                     maxLength={18}
                     placeholder="GALO800101HMCRZN09"
                     autoComplete="off"
-                    className={`${cx(errors.curp)} uppercase tracking-wider`}
+                    className={`${cx(errors.curp, !!values.curp)} uppercase tracking-wider`}
                   />
                 </Field>
               </div>
@@ -487,7 +500,7 @@ export default function MoviladoresGestion() {
                   maxLength={10}
                   placeholder="5512345678"
                   autoComplete="tel"
-                  className={cx(errors.telefono_1)}
+                  className={cx(errors.telefono_1, !!values.telefono_1)}
                 />
               </Field>
             </div>
@@ -495,14 +508,14 @@ export default function MoviladoresGestion() {
 
           {/* ── Domicilio ── */}
           <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-5">
-            <p className="text-[10px] font-bold uppercase tracking-widest text-slate-700 mb-4">
+            <p className="text-[10px] font-bold uppercase tracking-widest text-slate-800 mb-4">
               Domicilio
             </p>
 
             <div className="space-y-4">
               {/* C.P. primero — dispara la búsqueda */}
               <div>
-                <label className="block text-[10px] font-bold uppercase tracking-widest text-slate-700 mb-1.5">
+                <label className="block text-[10px] font-bold uppercase tracking-widest text-slate-800 mb-1.5">
                   Código Postal<span className="text-red-400 ml-0.5">*</span>
                 </label>
                 <input
@@ -515,7 +528,7 @@ export default function MoviladoresGestion() {
                   maxLength={5}
                   placeholder="55000"
                   autoComplete="postal-code"
-                  className={`w-36 ${cx(errors.c_p)}`}
+                  className={`w-36 ${cx(errors.c_p, !!values.c_p)}`}
                 />
                 {errors.c_p && (
                   <p className="text-red-500 text-xs mt-1 pl-0.5">{errors.c_p.message}</p>
@@ -524,7 +537,7 @@ export default function MoviladoresGestion() {
 
               <div className="grid grid-cols-12 gap-3">
                 <div className="col-span-12 sm:col-span-7">
-                  <label className="block text-[10px] font-bold uppercase tracking-widest text-slate-700 mb-1.5">
+                  <label className="block text-[10px] font-bold uppercase tracking-widest text-slate-800 mb-1.5">
                     Colonia<span className="text-red-400 ml-0.5">*</span>
                   </label>
                   <input
@@ -532,7 +545,7 @@ export default function MoviladoresGestion() {
                     type="text"
                     placeholder="CENTRO"
                     autoComplete="address-level3"
-                    className={`${cx(errors.col_loc)} uppercase`}
+                    className={`${cx(errors.col_loc, !!values.col_loc)} uppercase`}
                   />
                   {errors.col_loc && (
                     <p className="text-red-500 text-xs mt-1 pl-0.5">{errors.col_loc.message}</p>
@@ -545,7 +558,7 @@ export default function MoviladoresGestion() {
                       {...register('n_ext_mz', { required: 'Requerido' })}
                       type="text"
                       placeholder="12"
-                      className={`${cx(errors.n_ext_mz)} uppercase`}
+                      className={`${cx(errors.n_ext_mz, !!values.n_ext_mz)} uppercase`}
                     />
                   </Field>
                 </div>
@@ -555,7 +568,7 @@ export default function MoviladoresGestion() {
                       {...register('n_int_lt')}
                       type="text"
                       placeholder="A2"
-                      className={`${cx(false)} uppercase`}
+                      className={`${cx(false, !!values.n_int_lt)} uppercase`}
                     />
                   </Field>
                 </div>
@@ -568,7 +581,7 @@ export default function MoviladoresGestion() {
                   type="text"
                   placeholder="AV. PRINCIPAL"
                   autoComplete="street-address"
-                  className={`${cx(errors.calle)} uppercase`}
+                  className={`${cx(errors.calle, !!values.calle)} uppercase`}
                 />
               </Field>
             </div>
@@ -576,14 +589,18 @@ export default function MoviladoresGestion() {
 
           {/* ── Observaciones ── */}
           <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-5 mt-2">
-            <p className="text-[10px] font-bold uppercase tracking-widest text-slate-700 mb-4">
+            <p className="text-[10px] font-bold uppercase tracking-widest text-slate-800 mb-4">
               Observaciones <span className="normal-case font-normal text-slate-300">(opcional)</span>
             </p>
             <textarea
               {...register('observaciones')}
               rows={3}
               placeholder="Notas adicionales sobre la movilizadora…"
-              className="w-full border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm text-slate-800 placeholder:text-slate-300 focus:outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-400/10 transition-colors resize-none"
+              className={`w-full border rounded-xl px-3.5 py-2.5 text-sm text-slate-800 placeholder:text-slate-300 focus:outline-none transition-all duration-200 resize-none ${
+                values.observaciones
+                  ? 'border-emerald-400 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-400/15 input-complete'
+                  : 'border-slate-200 focus:border-blue-400 focus:ring-2 focus:ring-blue-400/10'
+              }`}
             />
           </div>
 
