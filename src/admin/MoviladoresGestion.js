@@ -2,7 +2,7 @@ import React, { useEffect, useState, useRef, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
 import { LiaArrowLeftSolid } from 'react-icons/lia';
-import supabase from '../supabase/client';
+import supabase, { supabaseStorage } from '../supabase/client';
 
 const CURP_REGEX = /^[A-Z]{1}[AEIOUX]{1}[A-Z]{2}\d{2}(0[1-9]|1[0-2])(0[1-9]|[12]\d|3[01])[HM]{1}[A-Z]{2}[B-DF-HJ-NP-TV-Z]{3}[A-Z0-9]{1}\d{1}$/;
 
@@ -270,17 +270,22 @@ export default function MoviladoresGestion() {
     const nombreNorm = data.nombre.toUpperCase();
     const apNorm = data.a_paterno.toUpperCase();
 
-    // Verificar si la CURP ya existe en ciudadania
-    const { data: existing } = await supabase
+    // Verificar si la CURP ya existe en ciudadania (service role para bypassar RLS)
+    const { data: existing, error: lookupError } = await supabaseStorage
       .from('ciudadania')
       .select('id, puesto')
       .eq('curp', curpNorm)
       .maybeSingle();
 
+    if (lookupError) {
+      setServerError(`Error al verificar CURP: ${lookupError.message}`);
+      return;
+    }
+
     if (existing) {
-      if (existing.puesto === 'BENEFICIARIO') {
+      if (existing.puesto?.toUpperCase() === 'BENEFICIARIO') {
         // Convertir de Beneficiario a Movilizador en lugar de duplicar
-        const { error: updateError } = await supabase
+        const { data: updated, error: updateError } = await supabaseStorage
           .from('ciudadania')
           .update({
             puesto:      'MOVILIZADOR',
@@ -291,10 +296,16 @@ export default function MoviladoresGestion() {
             status:      'ACTIVO',
             observaciones: data.observaciones?.trim() || null,
           })
-          .eq('id', existing.id);
+          .eq('id', existing.id)
+          .select('id');
 
         if (updateError) {
           setServerError(`Error al actualizar: ${updateError.message}`);
+          return;
+        }
+
+        if (!updated || updated.length === 0) {
+          setServerError('No se pudo actualizar el registro. Intenta de nuevo.');
           return;
         }
 
