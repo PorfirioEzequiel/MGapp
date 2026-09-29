@@ -526,6 +526,24 @@ import { useLocation, useNavigate } from "react-router-dom";
 import supabase, { supabaseStorage } from "../supabase/client";
 import MapTerritorial from "../map/MapTerritorial";
 
+const fieldClass =
+  "w-full px-3 py-2 rounded-xl border border-slate-200 text-sm font-medium text-slate-800 bg-white focus:outline-none focus:border-blue-400";
+const labelClass =
+  "block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1";
+
+const Field = ({ label, children }) => (
+  <div>
+    <label className={labelClass}>{label}</label>
+    {children}
+  </div>
+);
+
+const fotoLabels = {
+  url_foto_perfil: "Foto de perfil",
+  url_foto_ine1:   "INE frente",
+  url_foto_ine2:   "INE reverso",
+};
+
 export default function AgregarCiudadanoCP() {
   const navigate = useNavigate();
   const { state } = useLocation();
@@ -825,146 +843,221 @@ const handleSubmit = async (e) => {
 
   // ==================== RENDER ====================
   return (
-    <div className="p-4 mx-auto max-w-4xl">
-      <h1 className="text-xl font-bold mb-4">Agregar Ciudadano</h1>
-
-      {step === 1 && (
-        <div className="space-y-4">
-          <label className="block">
-            CURP:
-            <input
-              type="text"
-              value={nuevoCiudadano.curp}
-              onChange={(e) =>
-                setNuevoCiudadano({
-                  ...nuevoCiudadano,
-                  curp: e.target.value.trim().toUpperCase(),
-                })
-              }
-              className="border p-2 w-full"
-              placeholder="Ingresa el CURP"
-            />
-          </label>
+    <div className="min-h-screen bg-slate-50">
+      {/* Header */}
+      <header className="bg-blue-800 text-white px-4 py-5 shadow-md">
+        <div className="max-w-2xl mx-auto flex items-center gap-3">
           <button
-            onClick={validarCurp}
-            disabled={loading}
-            className="bg-blue-600 text-white px-4 py-2 rounded"
+            type="button"
+            onClick={() => navigate(-1)}
+            className="text-blue-200 hover:text-white transition-colors"
           >
-            {loading ? "Validando..." : "Validar CURP"}
+            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5" />
+            </svg>
           </button>
+          <div>
+            <p className="text-[10px] font-bold uppercase tracking-widest text-blue-300">Coordinador</p>
+            <h1 className="text-xl font-black tracking-tight">Alta de SM</h1>
+          </div>
         </div>
-      )}
+      </header>
 
-      {step === 2 && (
-        <form onSubmit={handleSubmit} className="space-y-4 mt-6">
-          {/* =================== IMÁGENES =================== */}
-          <div className="grid grid-cols-3 gap-4">
-            {["url_foto_perfil", "url_foto_ine1", "url_foto_ine2"].map((f) => (
-              <div key={f}>
-                <img
-                  src={nuevoCiudadano[f]}
-                  alt={f}
-                  className="w-full h-48 object-cover rounded border"
-                />
-                <input
-                  type="file"
-                  onChange={(e) => handleFileUpload(e, f)}
-                  className="mt-2 block w-full text-sm"
-                  required={!nuevoCiudadano[f]}
+      <main className="max-w-2xl mx-auto px-4 py-6 space-y-4">
+
+        {/* ── PASO 1: CURP ── */}
+        {step === 1 && (
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5 space-y-4">
+            <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Validar CURP</p>
+            <Field label="CURP">
+              <input
+                type="text"
+                value={nuevoCiudadano.curp}
+                onChange={(e) =>
+                  setNuevoCiudadano({ ...nuevoCiudadano, curp: e.target.value.trim().toUpperCase() })
+                }
+                className={fieldClass}
+                placeholder="Ingresa el CURP"
+                maxLength={18}
+              />
+            </Field>
+            <button
+              onClick={validarCurp}
+              disabled={loading}
+              className="w-full py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold transition-colors disabled:opacity-50"
+            >
+              {loading ? "Validando..." : "Validar CURP"}
+            </button>
+          </div>
+        )}
+
+        {/* ── PASO 2: FORMULARIO COMPLETO ── */}
+        {step === 2 && (
+          <form onSubmit={handleSubmit} className="space-y-4">
+
+            {/* Fotos */}
+            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5">
+              <p className={`${labelClass} mb-3`}>Fotografías</p>
+              <div className="grid grid-cols-3 gap-3">
+                {["url_foto_perfil", "url_foto_ine1", "url_foto_ine2"].map((f) => (
+                  <div key={f} className="space-y-2">
+                    <p className="text-[10px] font-semibold text-slate-500 text-center">{fotoLabels[f]}</p>
+                    <img
+                      src={nuevoCiudadano[f]}
+                      alt={fotoLabels[f]}
+                      className="w-full h-36 object-cover rounded-xl border border-slate-200 bg-slate-100"
+                    />
+                    <input
+                      type="file"
+                      onChange={(e) => handleFileUpload(e, f)}
+                      className="block w-full text-xs text-slate-500 file:mr-2 file:py-1 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-blue-600 file:text-white hover:file:bg-blue-700"
+                      required={!nuevoCiudadano[f]}
+                    />
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Territorio */}
+            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5 space-y-3">
+              <p className={`${labelClass} mb-1`}>Territorio</p>
+              <Field label="Sección">
+                <select
+                  value={nuevoCiudadano.seccion}
+                  onChange={(e) => handleSeccionChange(e.target.value)}
+                  className={fieldClass}
+                  required
+                >
+                  <option value="">Seleccionar</option>
+                  {secciones.map((sec) => <option key={sec} value={sec}>{sec}</option>)}
+                </select>
+              </Field>
+              {ubts.length > 0 && (
+                <Field label="Fracción">
+                  <select
+                    value={nuevoCiudadano.ubt}
+                    onChange={(e) => setNuevoCiudadano((p) => ({ ...p, ubt: e.target.value }))}
+                    className={fieldClass}
+                    required
+                  >
+                    <option value="">Seleccionar</option>
+                    {ubts.map((u) => <option key={u} value={u}>{u}</option>)}
+                  </select>
+                </Field>
+              )}
+              <Field label="Puesto">
+                <p className="px-3 py-2 rounded-xl border border-slate-200 text-sm font-medium text-slate-500 bg-slate-50">SM</p>
+              </Field>
+            </div>
+
+            {/* Datos personales */}
+            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5 space-y-3">
+              <p className={`${labelClass} mb-1`}>Datos personales</p>
+              <Field label="Nombre">
+                <input type="text" value={nuevoCiudadano.nombre} onChange={(e) => setNuevoCiudadano((p) => ({ ...p, nombre: e.target.value.toUpperCase() }))} className={fieldClass} required />
+              </Field>
+              <div className="grid grid-cols-2 gap-3">
+                <Field label="Apellido paterno">
+                  <input type="text" value={nuevoCiudadano.a_paterno} onChange={(e) => setNuevoCiudadano({ ...nuevoCiudadano, a_paterno: e.target.value.toUpperCase() })} className={fieldClass} required />
+                </Field>
+                <Field label="Apellido materno">
+                  <input type="text" value={nuevoCiudadano.a_materno} onChange={(e) => setNuevoCiudadano({ ...nuevoCiudadano, a_materno: e.target.value.toUpperCase() })} className={fieldClass} required />
+                </Field>
+              </div>
+              <Field label="CURP">
+                <input type="text" value={nuevoCiudadano.curp} onChange={(e) => setNuevoCiudadano({ ...nuevoCiudadano, curp: e.target.value.trim().toUpperCase() })} className={fieldClass} required />
+              </Field>
+            </div>
+
+            {/* Domicilio */}
+            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5 space-y-3">
+              <p className={`${labelClass} mb-1`}>Domicilio</p>
+              <Field label="Calle">
+                <input type="text" value={nuevoCiudadano.calle} onChange={(e) => setNuevoCiudadano({ ...nuevoCiudadano, calle: e.target.value.toUpperCase() })} className={fieldClass} required />
+              </Field>
+              <div className="grid grid-cols-3 gap-3">
+                <Field label="N° Ext (MZ)">
+                  <input type="text" value={nuevoCiudadano.n_ext_mz} onChange={(e) => setNuevoCiudadano({ ...nuevoCiudadano, n_ext_mz: e.target.value.toUpperCase() })} className={fieldClass} required />
+                </Field>
+                <Field label="N° Int (LT)">
+                  <input type="text" value={nuevoCiudadano.n_int_lt} onChange={(e) => setNuevoCiudadano({ ...nuevoCiudadano, n_int_lt: e.target.value.toUpperCase() })} className={fieldClass} />
+                </Field>
+                <Field label="N° Casa">
+                  <input type="text" value={nuevoCiudadano.n_casa} onChange={(e) => setNuevoCiudadano({ ...nuevoCiudadano, n_casa: e.target.value.toUpperCase() })} className={fieldClass} />
+                </Field>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <Field label="Código postal">
+                  <input type="number" value={nuevoCiudadano.c_p} onChange={(e) => setNuevoCiudadano({ ...nuevoCiudadano, c_p: e.target.value })} className={fieldClass} required />
+                </Field>
+                <Field label="Colonia">
+                  <input type="text" value={nuevoCiudadano.col_loc} onChange={(e) => setNuevoCiudadano({ ...nuevoCiudadano, col_loc: e.target.value })} className={fieldClass} required />
+                </Field>
+              </div>
+            </div>
+
+            {/* Mapa */}
+            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5">
+              <p className={`${labelClass} mb-3`}>Ubicación</p>
+              <div style={{ height: "420px" }} className="rounded-xl overflow-hidden border border-slate-200">
+                <MapTerritorial
+                  secciones={seccionGeoAlta ? [seccionGeoAlta] : []}
+                  fraccionesGeo={fraccionesAlta}
+                  selectedSeccion={seccionGeoAlta?.seccion}
+                  editableLocation={
+                    nuevoCiudadano.latitud && nuevoCiudadano.longitud
+                      ? { lat: Number(nuevoCiudadano.latitud), lng: Number(nuevoCiudadano.longitud) }
+                      : null
+                  }
+                  onEditableLocationChange={(lat, lng) =>
+                    setNuevoCiudadano((p) => ({ ...p, latitud: lat, longitud: lng }))
+                  }
                 />
               </div>
-            ))}
-          </div>
+              <button
+                type="button"
+                onClick={handleObtenerUbicacion}
+                className="mt-3 px-4 py-2 rounded-xl bg-slate-600 hover:bg-slate-700 text-white text-sm font-semibold transition-colors"
+              >
+                Usar mi ubicación actual
+              </button>
+            </div>
 
-          {/* =================== DATOS =================== */}
+            {/* Contacto */}
+            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5 space-y-3">
+              <p className={`${labelClass} mb-1`}>Contacto y redes sociales</p>
+              <div className="grid grid-cols-2 gap-3">
+                <Field label="Teléfono 1">
+                  <input type="text" value={nuevoCiudadano.telefono_1} onChange={(e) => setNuevoCiudadano({ ...nuevoCiudadano, telefono_1: e.target.value })} className={fieldClass} required />
+                </Field>
+                <Field label="Teléfono 2">
+                  <input type="text" value={nuevoCiudadano.telefono_2} onChange={(e) => setNuevoCiudadano({ ...nuevoCiudadano, telefono_2: e.target.value })} className={fieldClass} />
+                </Field>
+              </div>
+              <div className="grid grid-cols-3 gap-3">
+                <Field label="Instagram">
+                  <input type="text" value={nuevoCiudadano.cuenta_inst} onChange={(e) => setNuevoCiudadano({ ...nuevoCiudadano, cuenta_inst: e.target.value })} className={fieldClass} />
+                </Field>
+                <Field label="Facebook">
+                  <input type="text" value={nuevoCiudadano.cuenta_fb} onChange={(e) => setNuevoCiudadano({ ...nuevoCiudadano, cuenta_fb: e.target.value })} className={fieldClass} />
+                </Field>
+                <Field label="X">
+                  <input type="text" value={nuevoCiudadano.cuenta_x} onChange={(e) => setNuevoCiudadano({ ...nuevoCiudadano, cuenta_x: e.target.value })} className={fieldClass} />
+                </Field>
+              </div>
+            </div>
 
-          <label>Sección:
-            <select value={nuevoCiudadano.seccion} onChange={(e) => handleSeccionChange(e.target.value)} className="border p-2 w-full" required>
-              <option value="">Seleccionar</option>
-              {secciones.map((sec) => <option key={sec} value={sec}>{sec}</option>)}
-            </select>
-          </label>
-
-          {ubts.length > 0 && (
-            <label>Fracción:
-              <select value={nuevoCiudadano.ubt} onChange={(e) => setNuevoCiudadano((p) => ({ ...p, ubt: e.target.value }))} className="border p-2 w-full" required>
-                <option value="">Seleccionar</option>
-                {ubts.map((u) => <option key={u} value={u}>{u}</option>)}
-              </select>
-            </label>
-          )}
-
-          {/* Puesto fijo: SM (a la espera de nuevos puestos) */}
-         <div>
-           <label className="block text-sm font-medium">Puesto</label>
-           <p className="w-full border rounded-lg p-2 bg-gray-50 text-gray-600">SM</p>
-        </div>
-
-          <label>
-            Nombre:
-            <input
-              type="text"
-              value={nuevoCiudadano.nombre}
-              onChange={(e) =>
-                setNuevoCiudadano((p) => ({
-                  ...p,
-                  nombre: e.target.value.toUpperCase(),
-                }))
-              }
-              className="border p-2 w-full"
-              required
-            />
-          </label>
-         <label>Apellido Paterno: <input type="text" value={nuevoCiudadano.a_paterno} onChange={(e) => setNuevoCiudadano({ ...nuevoCiudadano, a_paterno: e.target.value.toUpperCase() })} className="border p-2 w-full" required/></label>
-         <label>Apellido Materno: <input type="text" value={nuevoCiudadano.a_materno} onChange={(e) => setNuevoCiudadano({ ...nuevoCiudadano, a_materno: e.target.value.toUpperCase() })} className="border p-2 w-full" required/></label>
-         <label>CURP: <input type="text" value={nuevoCiudadano.curp} onChange={(e) => setNuevoCiudadano({ ...nuevoCiudadano, curp: e.target.value.trim().toUpperCase() })} className="border p-2 w-full" required/></label>
-         <label>Calle: <input type="text" value={nuevoCiudadano.calle} onChange={(e) => setNuevoCiudadano({ ...nuevoCiudadano, calle: e.target.value.toUpperCase() })} className="border p-2 w-full" required/></label>
-         <label>N° Ext (MZ): <input type="text" value={nuevoCiudadano.n_ext_mz} onChange={(e) => setNuevoCiudadano({ ...nuevoCiudadano, n_ext_mz: e.target.value.toUpperCase() })} className="border p-2 w-full" required/></label>
-         <label>N° Int (LT): <input type="text" value={nuevoCiudadano.n_int_lt} onChange={(e) => setNuevoCiudadano({ ...nuevoCiudadano, n_int_lt: e.target.value.toUpperCase() })} className="border p-2 w-full" required/></label>
-         <label>N° Casa: <input type="text" value={nuevoCiudadano.n_casa} onChange={(e) => setNuevoCiudadano({ ...nuevoCiudadano, n_casa: e.target.value.toUpperCase() })} className="border p-2 w-full" required/></label>
-         <label>Código Postal: <input type="number" value={nuevoCiudadano.c_p} onChange={(e) => setNuevoCiudadano({ ...nuevoCiudadano, c_p: e.target.value})} className="border p-2 w-full" required/></label>
-         <label>Colonia: <input type="text" value={nuevoCiudadano.col_loc} onChange={(e) => setNuevoCiudadano({ ...nuevoCiudadano, col_loc: e.target.value})} className="border p-2 w-full" required/></label>
-
-         <div>
-           <p className="text-sm font-medium mb-1">Ubicación (haz clic en el mapa para posicionar a la SM):</p>
-           <div style={{ height: "420px" }} className="rounded-lg overflow-hidden border">
-             <MapTerritorial
-               secciones={seccionGeoAlta ? [seccionGeoAlta] : []}
-               fraccionesGeo={fraccionesAlta}
-               selectedSeccion={seccionGeoAlta?.seccion}
-               editableLocation={
-                 nuevoCiudadano.latitud && nuevoCiudadano.longitud
-                   ? { lat: Number(nuevoCiudadano.latitud), lng: Number(nuevoCiudadano.longitud) }
-                   : null
-               }
-               onEditableLocationChange={(lat, lng) =>
-                 setNuevoCiudadano((p) => ({ ...p, latitud: lat, longitud: lng }))
-               }
-             />
-           </div>
-         </div>
-         <div className="flex items-end">
-           <button type="button" onClick={handleObtenerUbicacion} className="bg-slate-600 hover:bg-slate-700 text-white px-4 py-2 rounded text-sm">
-             📍 Usar mi ubicación actual
-           </button>
-         </div>
-
-         <label>Teléfono 1: <input type="text" value={nuevoCiudadano.telefono_1} onChange={(e) => setNuevoCiudadano({ ...nuevoCiudadano, telefono_1: e.target.value })} className="border p-2 w-full" required/></label>
-         <label>Teléfono 2: <input type="text" value={nuevoCiudadano.telefono_2} onChange={(e) => setNuevoCiudadano({ ...nuevoCiudadano, telefono_2: e.target.value })} className="border p-2 w-full" required/></label>
-         <label>INSTAGRAM: <input type="text" value={nuevoCiudadano.cuenta_inst} onChange={(e) => setNuevoCiudadano({ ...nuevoCiudadano, cuenta_inst: e.target.value })} className="border p-2 w-full" required/></label>
-         <label>FACEBOOK 1: <input type="text" value={nuevoCiudadano.cuenta_fb} onChange={(e) => setNuevoCiudadano({ ...nuevoCiudadano, cuenta_fb: e.target.value })} className="border p-2 w-full" required/></label>
-         <label>X: <input type="text" value={nuevoCiudadano.cuenta_x} onChange={(e) => setNuevoCiudadano({ ...nuevoCiudadano, cuenta_x: e.target.value })} className="border p-2 w-full" required/></label>
-          {/* ... 🔑 Aquí puedes mantener el resto de inputs igual que en tu código original ... */}
-
-          <button
-            type="submit"
-            disabled={loading}
-            className="bg-green-600 text-white px-4 py-2 rounded"
-          >
-            {loading ? "Guardando..." : "Guardar Ciudadano"}
-          </button>
-        </form>
-      )}
+            {/* Guardar */}
+            <button
+              type="submit"
+              disabled={loading}
+              className="w-full py-3 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-bold tracking-wide transition-colors disabled:opacity-50 shadow-sm"
+            >
+              {loading ? "Guardando..." : "Guardar solicitud de alta"}
+            </button>
+          </form>
+        )}
+      </main>
     </div>
   );
 }
