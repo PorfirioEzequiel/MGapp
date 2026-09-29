@@ -39,6 +39,7 @@ const Login = () => {
         'sm': `/reporte/${data.usuario}`,
         enlace: `/enlace/${data.usuario}`,
         consultor: '/visor',
+        captura: '/captura',
       };
 
       const ruta = rutas[data.puesto.toLowerCase()] || null;

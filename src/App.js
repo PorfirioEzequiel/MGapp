@@ -1,6 +1,6 @@
 
 import React from 'react';
-import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import Login from './pages/Login';
 import Perfil from './pages/Perfil';
 import Admin from './pages/Admin';
@@ -44,8 +44,24 @@ import RecuperarApoyos from './admin/RecuperarApoyos';
 
 // Componente para proteger rutas privadas
 const PrivateRoute = ({ children }) => {
-  const user = sessionStorage.getItem('user');
-  return user ? children : <Navigate to="/" />;
+  const userStr = sessionStorage.getItem('user');
+  const location = useLocation();
+
+  if (!userStr) return <Navigate to="/" />;
+
+  try {
+    const user = JSON.parse(userStr);
+    const puesto = user?.puesto?.toLowerCase();
+    // Rol captura: acceso exclusivo al formulario de movilizadores
+    if (puesto === 'captura' && location.pathname !== '/captura') {
+      return <Navigate to="/captura" replace />;
+    }
+  } catch (_) {
+    // sesión corrupta → forzar login
+    return <Navigate to="/" />;
+  }
+
+  return children;
 };
 
 function App() {
@@ -88,6 +104,7 @@ function App() {
         <Route path="/admin/fracciones" element={<PrivateRoute><EditorFracciones /></PrivateRoute>} />
         <Route path="/admin/mensajeria" element={<PrivateRoute><Mensajeria /></PrivateRoute>} />
         <Route path="/admin/movilizadores" element={<PrivateRoute><MoviladoresGestion /></PrivateRoute>} />
+        <Route path="/captura" element={<PrivateRoute><MoviladoresGestion /></PrivateRoute>} />
         <Route path="/admin/control-mgs" element={<PrivateRoute><ControlMGS /></PrivateRoute>} />
         <Route path="/admin/recuperar-apoyos" element={<PrivateRoute><RecuperarApoyos /></PrivateRoute>} />
         <Route path="/apoyos/:usuario" element={<PrivateRoute><Apoyos /></PrivateRoute>} />

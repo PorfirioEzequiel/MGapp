@@ -237,6 +237,21 @@ export default function MoviladoresGestion() {
   const [serverError, setServerError] = useState(null);
   const [success, setSuccess] = useState(null);
 
+  // Rol captura: sin páginas previas → el botón "atrás" cierra sesión.
+  const sessionUser = (() => {
+    try { return JSON.parse(sessionStorage.getItem('user') || 'null'); }
+    catch { return null; }
+  })();
+  const isCaptura = sessionUser?.puesto?.toLowerCase() === 'captura';
+  const handleExit = () => {
+    if (isCaptura) {
+      sessionStorage.removeItem('user');
+      navigate('/', { replace: true });
+    } else {
+      navigate(-1);
+    }
+  };
+
   const {
     register,
     handleSubmit,
@@ -378,9 +393,10 @@ export default function MoviladoresGestion() {
       {/* Header */}
       <div className="bg-gradient-to-r from-blue-600 to-blue-700 px-4 py-5 mb-6 flex items-center gap-3">
         <button
-          onClick={() => navigate(-1)}
+          onClick={handleExit}
           className="text-white/70 hover:text-white transition-colors cursor-pointer"
-          aria-label="Regresar"
+          aria-label={isCaptura ? 'Cerrar sesión' : 'Regresar'}
+          title={isCaptura ? 'Cerrar sesión' : 'Regresar'}
         >
           <LiaArrowLeftSolid size={22} />
         </button>
@@ -608,10 +624,10 @@ export default function MoviladoresGestion() {
           <div className="flex gap-3 pt-1">
             <button
               type="button"
-              onClick={() => navigate(-1)}
+              onClick={handleExit}
               className="flex-1 py-3 rounded-xl border border-slate-200 text-slate-600 text-sm font-semibold hover:bg-slate-100 transition-colors cursor-pointer"
             >
-              Cancelar
+              {isCaptura ? 'Cerrar sesión' : 'Cancelar'}
             </button>
             <button
               type="submit"
