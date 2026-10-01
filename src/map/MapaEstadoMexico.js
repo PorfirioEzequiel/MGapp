@@ -1,3 +1,5 @@
+import { installPolygonMousePan } from './polygonMousePan';
+import TerritorialLoading, { TerritorialSkeleton } from '../componentes/TerritorialLoading';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { GoogleMap, useJsApiLoader, Polygon, OverlayView } from '@react-google-maps/api';
 import supabase from '../supabase/client';
@@ -910,10 +912,13 @@ const RegionHoverCard = ({ info, pos, containerRef }) => {
 const MapaEstadoMexico = () => {
   const { isLoaded } = useJsApiLoader({ googleMapsApiKey: GOOGLE_MAPS_API_KEY, libraries: GOOGLE_MAPS_LIBRARIES });
   const mapRef = useRef(null);
+  const polygonPanRef = useRef(null);
+  useEffect(() => () => polygonPanRef.current?.cleanup(), []);
   const containerRef = useRef(null);
   const [tooltipPos, setTooltipPos] = useState({ x: 0, y: 0 });
   const [currentStyle, setCurrentStyle] = useState('claro');
   const styleDef = MAP_STYLE_DEFS[currentStyle];
+  const [controlsOpen, setControlsOpen] = useState(() => window.innerWidth >= 768);
 
   // ── Datos de fronteras (cargados una vez) ────────────────────────────────
   const [estado, setEstado] = useState(null);
@@ -1548,14 +1553,14 @@ const MapaEstadoMexico = () => {
   }, [electoralActive, distritos]);
 
   return (
-    <div className="flex flex-col lg:flex-row" style={{ height: 'calc(100vh - 56px)' }}>
+    <div className="territorial-map-layout flex flex-col lg:flex-row" style={{ height: 'calc(100dvh - 56px)' }}>
       <style>{`
         @keyframes comboIn { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: translateY(0); } }
         @keyframes panelIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
         .mex-panel-in { animation: panelIn 0.22s ease-out; }
       `}</style>
       {/* ── Sidebar ───────────────────────────────────────────────────────── */}
-      <aside className="w-full lg:w-72 xl:w-80 flex-shrink-0 bg-white border-b lg:border-b-0 lg:border-r border-slate-100 overflow-y-auto">
+      <aside className="territorial-sidebar w-full lg:w-72 xl:w-80 flex-shrink-0 bg-white border-b lg:border-b-0 lg:border-r border-slate-100 overflow-y-auto">
         {/* Stepper de nivel */}
         <div className="px-4 pt-4 pb-3 border-b border-slate-50">
           <p className="text-[9px] font-bold uppercase tracking-[0.15em] text-slate-400 mb-3">Nivel de análisis</p>
@@ -1910,10 +1915,7 @@ const MapaEstadoMexico = () => {
           {currentLevel >= 2 && (
             <div className="space-y-3">
               {loadingSecciones ? (
-                <div className="flex items-center gap-2 text-xs text-slate-400 px-1 py-2">
-                  <div className="w-3.5 h-3.5 border-2 rounded-full animate-spin flex-shrink-0" style={{ borderColor: '#F0C6D0', borderTopColor: GUINDA }} />
-                  Cargando secciones…
-                </div>
+                <TerritorialSkeleton />
               ) : seccionesError ? (
                 <p className="text-xs text-red-500 px-1">{seccionesError}</p>
               ) : (
@@ -1981,19 +1983,28 @@ const MapaEstadoMexico = () => {
       </aside>
 
       {/* ── Mapa ──────────────────────────────────────────────────────────── */}
-      <main ref={containerRef} onMouseMove={handleContainerMouseMove} className="flex-1 min-w-0 relative">
+      <main ref={containerRef} onMouseMove={handleContainerMouseMove} className="flex-1 min-w-0 min-h-0 relative">
         {!isLoaded ? (
-          <div className="flex items-center justify-center h-full bg-slate-100">
-            <p className="text-slate-400 text-sm">Cargando mapa…</p>
-          </div>
+          <TerritorialLoading label="Preparando Estado de México" detail="Cargando la base cartográfica" />
         ) : (
           <GoogleMap
+            mapContainerClassName="territorial-map-reveal"
             mapContainerStyle={{ width: '100%', height: '100%' }}
             center={EDOMEX_CENTER}
             zoom={8}
-            onLoad={map => { mapRef.current = map; }}
+            onLoad={map => {
+              mapRef.current = map;
+              polygonPanRef.current?.cleanup();
+              polygonPanRef.current = installPolygonMousePan(map);
+            }}
             options={{
               mapTypeId: styleDef.mapTypeId,
+              mapTypeControl: false,
+              zoomControl: true,
+              zoomControlOptions: { position: window.google.maps.ControlPosition.RIGHT_CENTER },
+              scaleControl: true,
+              gestureHandling: 'greedy',
+              clickableIcons: false,
               streetViewControl: false,
               fullscreenControl: false,
               styles: styleDef.styles,
@@ -2191,12 +2202,18 @@ const MapaEstadoMexico = () => {
 
         {/* Selector de capa (igual que en Tecámac) + capas electorales */}
         {isLoaded && (
-          <div className="no-print absolute top-3 left-3 z-10 flex flex-col gap-1 max-w-xs bg-white/90 backdrop-blur-sm rounded-lg shadow-md p-1 border border-gray-200">
+          <div className="territorial-map-controls no-print absolute top-3 left-3 z-10 flex flex-col gap-1 max-w-xs bg-white/90 backdrop-blur-sm rounded-lg shadow-md p-1 border border-gray-200">
+            <button type="button" onClick={() => setControlsOpen(open => !open)} aria-expanded={controlsOpen}
+              className="px-3 py-2 text-xs font-semibold text-left text-slate-600 rounded-md hover:bg-slate-100">
+              {controlsOpen ? '✕ Ocultar capas' : '≡ Capas del mapa'}
+            </button>
+            {controlsOpen && <>
             <div className="flex flex-wrap gap-1">
-              {Object.entries(MAP_STYLE_DEFS).map(([key, def]) => (
+              {Object.entries(MAP_STYLE_DEFS).filter(([key]) => key !== 'oscuro').map(([key, def]) => (
                 <button
                   key={key}
                   onClick={() => setCurrentStyle(key)}
+                  aria-pressed={currentStyle === key}
                   className="px-2.5 py-1 rounded-md text-xs font-medium transition-all"
                   style={currentStyle === key ? { backgroundColor: GUINDA, color: '#fff' } : { color: '#4B5563' }}
                 >
@@ -2205,16 +2222,6 @@ const MapaEstadoMexico = () => {
               ))}
             </div>
             <div className="w-full h-px bg-gray-200" />
-            <button
-              onClick={() => setElectoralLayer('senado_2024')}
-              disabled={senadoLoading}
-              className="w-full px-2.5 py-1 rounded-md text-xs font-medium transition-all text-left leading-tight disabled:opacity-60"
-              style={electoralMode === 'senado_2024' ? { backgroundColor: GUINDA, color: '#fff' } : { color: '#4B5563' }}
-              title="Resultados internos — Senaduría 2024"
-            >
-              {senadoLoading ? 'Cargando…' : '🗳 Senaduría 2024 · Mariela Gutiérrez'}
-            </button>
-            {senadoError && <p className="text-[10px] text-red-500 px-1">{senadoError}</p>}
             <button
               onClick={() => setElectoralLayer('gubernatura_2023')}
               disabled={gubernaturaLoading}
@@ -2225,6 +2232,16 @@ const MapaEstadoMexico = () => {
               {gubernaturaLoading ? 'Cargando…' : '🗳 Gubernatura 2023 · Delfina Gómez'}
             </button>
             {gubernaturaError && <p className="text-[10px] text-red-500 px-1">{gubernaturaError}</p>}
+            <button
+              onClick={() => setElectoralLayer('senado_2024')}
+              disabled={senadoLoading}
+              className="w-full px-2.5 py-1 rounded-md text-xs font-medium transition-all text-left leading-tight disabled:opacity-60"
+              style={electoralMode === 'senado_2024' ? { backgroundColor: GUINDA, color: '#fff' } : { color: '#4B5563' }}
+              title="Resultados internos — Senaduría 2024"
+            >
+              {senadoLoading ? 'Cargando…' : '🗳 Senaduría 2024 · Mariela Gutiérrez'}
+            </button>
+            {senadoError && <p className="text-[10px] text-red-500 px-1">{senadoError}</p>}
             <button
               onClick={() => setElectoralLayer('dip_local_2024')}
               disabled={dipLocalLoading}
@@ -2264,6 +2281,7 @@ const MapaEstadoMexico = () => {
               {crimenLoading ? 'Cargando…' : '🚨 Incidencia delictiva · SESNSP'}
             </button>
             {crimenError && <p className="text-[10px] text-red-500 px-1">{crimenError}</p>}
+            </>}
           </div>
         )}
 

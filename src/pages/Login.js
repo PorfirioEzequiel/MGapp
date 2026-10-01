@@ -34,6 +34,7 @@ const Login = () => {
 
       const rutas = {
         administrador: `/menu/${data.usuario}`,
+        master: `/menu/${data.usuario}`,
         'sp': `/coordinador/${data.usuario}`,
         seccional: `/perfil/${data.usuario}`,
         'sm': `/reporte/${data.usuario}`,

@@ -39,6 +39,14 @@ export const MAP_STYLE_DEFS = {
       { featureType: 'administrative.locality', elementType: 'labels.text.fill', stylers: [{ color: '#9999cc' }] },
     ],
   },
+  relieve: {
+    label: 'Relieve',
+    mapTypeId: 'terrain',
+    styles: [
+      { featureType: 'poi', stylers: [{ visibility: 'off' }] },
+      { featureType: 'transit', stylers: [{ visibility: 'off' }] },
+    ],
+  },
   minimal: {
     label: 'Mínimo',
     mapTypeId: 'roadmap',

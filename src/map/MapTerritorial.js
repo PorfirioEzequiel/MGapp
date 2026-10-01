@@ -1,3 +1,5 @@
+import { installPolygonMousePan } from './polygonMousePan';
+import TerritorialLoading from '../componentes/TerritorialLoading';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { GoogleMap, useJsApiLoader, Polygon, Marker, InfoWindow, OverlayView, Autocomplete } from '@react-google-maps/api';
 
@@ -235,6 +237,14 @@ const MAP_STYLE_DEFS = {
       { featureType: 'road.arterial', elementType: 'geometry', stylers: [{ color: '#353575' }] },
       { featureType: 'administrative', elementType: 'geometry.stroke', stylers: [{ color: '#2a2a6a' }] },
       { featureType: 'administrative.locality', elementType: 'labels.text.fill', stylers: [{ color: '#9999cc' }] },
+    ],
+  },
+  relieve: {
+    label: 'Relieve',
+    mapTypeId: 'terrain',
+    styles: [
+      { featureType: 'poi', stylers: [{ visibility: 'off' }] },
+      { featureType: 'transit', stylers: [{ visibility: 'off' }] },
     ],
   },
   minimal: {
@@ -1272,44 +1282,8 @@ const MapTerritorial = ({
     mapRef.current = map;
     setCurrentZoom(map.getZoom());
 
-    // Desktop pan fix: SVG polygon fills (clickable:false) intercept mousedown and block
-    // Google Maps' native drag handler. We intercept mousedown at capture phase on SVG
-    // targets only, then translate mouse drag into map.panBy() calls — same mechanism
-    // Google Maps uses internally for touch pan on mobile.
-    // Click events on SVG still bubble normally so section selection (handleMapClick) works.
-    if (window.innerWidth >= 768) {
-      const mapDiv = map.getDiv();
-      if (mapDiv) {
-        let lastX = 0, lastY = 0, dragging = false;
-
-        const onDown = (e) => {
-          if (e.button !== 0 || !(e.target instanceof SVGElement)) return;
-          dragging = true;
-          lastX = e.clientX;
-          lastY = e.clientY;
-        };
-        const onMove = (e) => {
-          if (!dragging) return;
-          map.panBy(-(e.clientX - lastX), -(e.clientY - lastY));
-          lastX = e.clientX;
-          lastY = e.clientY;
-        };
-        const onUp = () => { dragging = false; };
-
-        const doc = mapDiv.ownerDocument;
-        mapDiv.addEventListener('mousedown', onDown, { capture: true });
-        doc.addEventListener('mousemove', onMove);
-        doc.addEventListener('mouseup', onUp);
-
-        panFixOverlayRef.current = {
-          cleanup: () => {
-            mapDiv.removeEventListener('mousedown', onDown, { capture: true });
-            doc.removeEventListener('mousemove', onMove);
-            doc.removeEventListener('mouseup', onUp);
-          },
-        };
-      }
-    }
+    panFixOverlayRef.current?.cleanup();
+    panFixOverlayRef.current = installPolygonMousePan(map);
 
     // Fit bounds inmediato al montar (los datos ya pueden estar cargados)
     const allSecs = seccionesRef.current;
@@ -1650,9 +1624,7 @@ const MapTerritorial = ({
   }, [isDark]);
 
   if (!isLoaded) return (
-    <div className="flex items-center justify-center bg-gray-100 rounded-xl h-full min-h-[400px]">
-      <p className="text-gray-400 text-sm">Cargando mapa...</p>
-    </div>
+    <TerritorialLoading label="Preparando el mapa" detail="Cargando la base cartográfica" />
   );
 
   const markers = ciudadanos.filter(c =>
@@ -1675,7 +1647,7 @@ const MapTerritorial = ({
   };
 
   return (
-    <div className="mp-root flex flex-col h-full">
+    <div className="mp-root territorial-map-reveal flex flex-col h-full">
       <PrintHeader ctx={printContext} />
 
       <div className="flex flex-col flex-1 rounded-xl shadow-lg border border-gray-200">
@@ -1684,22 +1656,23 @@ const MapTerritorial = ({
       <div
         ref={containerRef}
         className="relative flex-1 min-h-[400px] overflow-hidden"
-        style={{ touchAction: isMobileMap ? 'none' : 'auto' }}
+        style={{ touchAction: 'auto' }}
         onMouseMove={isMobileMap ? undefined : handleContainerMouseMove}
         onMouseLeave={isMobileMap ? undefined : () => { hoveredRef.current = null; setHovered(null); }}
       >
         {/* Panel de control flotante */}
         <div
-          className="no-print absolute top-3 z-10 bg-white/90 backdrop-blur-sm rounded-lg shadow-md p-1 border border-gray-200"
+          className="territorial-map-controls no-print absolute top-3 z-10 bg-white/90 backdrop-blur-sm rounded-lg shadow-md p-1 border border-gray-200"
           style={{ maxWidth: 220, left: controlsLeftOffset ? `calc(${typeof controlsLeftOffset === 'number' ? controlsLeftOffset + 'px' : controlsLeftOffset} + 12px)` : 12, transition: 'left 0.3s ease-out' }}
         >
 
           {/* ── Fila de estilos de mapa + botón ocultar ── siempre visible */}
           <div className="flex flex-wrap gap-1 items-center">
-            {Object.entries(MAP_STYLE_DEFS).map(([key, def]) => (
+            {Object.entries(MAP_STYLE_DEFS).filter(([key]) => key !== 'oscuro').map(([key, def]) => (
               <button
                 key={key}
                 onClick={() => setCurrentStyle(key)}
+                aria-pressed={currentStyle === key}
                 className={`px-2.5 py-1 rounded-md text-xs font-medium transition-all ${
                   !ctrlsOpen ? 'hidden md:inline-flex' : ''
                 } ${
@@ -1714,6 +1687,7 @@ const MapTerritorial = ({
             {/* Ocultar / Mostrar menú */}
             <button
               onClick={() => setCtrlsOpen(v => !v)}
+              aria-expanded={ctrlsOpen}
               className="px-3 py-2 md:px-2 md:py-1 rounded-md text-xs font-medium transition-all text-gray-400 hover:bg-gray-100 hover:text-gray-600 border border-gray-200"
               title={ctrlsOpen ? 'Ocultar menú' : 'Mostrar menú'}
             >
@@ -1744,6 +1718,15 @@ const MapTerritorial = ({
                     <BallotSvg /> Ayuntamiento 2021 - IEEM
                   </button>
                   <button
+                    onClick={() => handleSetElectoralMode(electoralMode === 'gubernatura_2023' ? null : 'gubernatura_2023')}
+                    className={`w-full px-2.5 py-2 md:py-1 rounded-md text-xs font-medium transition-all text-left leading-tight ${
+                      electoralMode === 'gubernatura_2023' ? 'bg-rose-900 text-white shadow-sm' : 'text-gray-600 hover:bg-gray-100'
+                    }`}
+                    title="Gubernatura Edomex 2023 — Delfina Gómez vs Oposición · IEEM"
+                  >
+                    <BallotSvg /> Gubernatura 2023 - Delfina Gómez
+                  </button>
+                  <button
                     onClick={() => handleSetElectoralMode(electoralMode === 'ayu_2024_ieem' ? null : 'ayu_2024_ieem')}
                     className={`w-full px-2.5 py-2 md:py-1 rounded-md text-xs font-medium transition-all text-left leading-tight ${
                       electoralMode === 'ayu_2024_ieem' ? 'bg-emerald-700 text-white shadow-sm' : 'text-gray-600 hover:bg-gray-100'
@@ -1769,15 +1752,6 @@ const MapTerritorial = ({
                     title="Diputación Local 2024 — datos internos"
                   >
                     <BallotSvg /> Diputación Local 2024 - Interno
-                  </button>
-                  <button
-                    onClick={() => handleSetElectoralMode(electoralMode === 'gubernatura_2023' ? null : 'gubernatura_2023')}
-                    className={`w-full px-2.5 py-2 md:py-1 rounded-md text-xs font-medium transition-all text-left leading-tight ${
-                      electoralMode === 'gubernatura_2023' ? 'bg-rose-900 text-white shadow-sm' : 'text-gray-600 hover:bg-gray-100'
-                    }`}
-                    title="Gubernatura Edomex 2023 — Delfina Gómez vs Oposición · IEEM"
-                  >
-                    <BallotSvg /> Gubernatura 2023 - Delfina Gómez
                   </button>
                   <button
                     onClick={() => handleSetElectoralMode(electoralMode === 'pres_2024' ? null : 'pres_2024')}
@@ -1942,7 +1916,7 @@ const MapTerritorial = ({
         )}
 
         <GoogleMap
-          mapContainerStyle={{ width: '100%', height: '100%' }}
+          mapContainerStyle={{ width: '100%', height: '100%', touchAction: gestureHandling === 'cooperative' ? 'auto' : 'none' }}
           center={DEFAULT_CENTER}
           zoom={11}
           onLoad={onLoad}
@@ -1955,12 +1929,14 @@ const MapTerritorial = ({
             mapTypeControl: false,
             streetViewControl: false,
             fullscreenControl: false,
-            zoomControl: false,
+            zoomControl: true,
+            zoomControlOptions: { position: window.google.maps.ControlPosition.RIGHT_CENTER },
+            scaleControl: true,
             rotateControl: false,
             clickableIcons: false,
-            gestureHandling: isMobileMap ? 'greedy' : gestureHandling,
+            gestureHandling,
             tilt: 0,
-            minZoom: isMobileMap ? 11 : 9,
+            minZoom: 9,
             maxZoom: 19,
           }}
         >

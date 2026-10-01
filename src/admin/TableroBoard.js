@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import * as XLSX from 'xlsx';
 import supabase, { supabaseStorage as supabaseAdmin } from '../supabase/client';
 import MapTerritorial from '../map/MapTerritorial';
+import TerritorialLoading, { TerritorialSkeleton } from '../componentes/TerritorialLoading';
 import MapaEstadoMexico from '../map/MapaEstadoMexico';
 import afiliacionLocalData from '../data/afiliacion.json';
 import { backendFetch } from '../utils/backendFetch';
@@ -2417,9 +2418,7 @@ const TableroBoard = ({ readOnly = false }) => {
   // ── Info panel ────────────────────────────────────────────────────────────
   const renderInfoPanel = () => {
     if (loadingInfo) return (
-      <div className="space-y-2">
-        {[1,2,3].map(i => <div key={i} className="h-10 bg-slate-100 rounded-xl animate-pulse" />)}
-      </div>
+      <TerritorialSkeleton />
     );
 
     // SECCIÓN
@@ -2807,7 +2806,7 @@ const TableroBoard = ({ readOnly = false }) => {
   }, [allSecciones, globalSMs, globalFracciones]);
 
   return (
-    <div className="min-h-screen bg-slate-50 font-sans">
+    <div className="territorial-board min-h-screen bg-slate-50 font-sans">
       <header className="bg-white border-b border-slate-100 shadow-sm">
         <div className="px-4 md:px-6 h-14 flex items-center gap-3">
           <button onClick={goBack} className="flex items-center justify-center w-8 h-8 rounded-lg border border-slate-200 text-slate-500 hover:bg-slate-50 hover:text-slate-700 hover:border-slate-300 transition-all flex-shrink-0" title="Volver">
@@ -2923,11 +2922,20 @@ const TableroBoard = ({ readOnly = false }) => {
         </div>
       </header>
 
+      <div className="sm:hidden flex gap-2 px-4 py-2 bg-white border-b border-slate-100" aria-label="Territorio">
+        {[['tecamac', 'Tecámac'], ['edomex', 'Estado de México']].map(([scope, label]) => (
+          <button key={scope} onClick={() => setMapScope(scope)} aria-pressed={mapScope === scope}
+            className={`flex-1 min-h-[44px] rounded-lg text-xs font-semibold ${mapScope === scope ? 'bg-rose-900 text-white' : 'bg-slate-100 text-slate-600'}`}>
+            {label}
+          </button>
+        ))}
+      </div>
+
       {mapScope === 'edomex' ? (
         <MapaEstadoMexico />
       ) : (
-      <div className="flex flex-col lg:flex-row" style={{ height: 'calc(100vh - 56px)' }}>
-        <aside className="w-full lg:w-72 xl:w-80 flex-shrink-0 bg-white border-b lg:border-b-0 lg:border-r border-slate-100 overflow-y-auto">
+      <div className="territorial-map-layout flex flex-col lg:flex-row" style={{ height: 'calc(100dvh - 56px)' }}>
+        <aside className="territorial-sidebar w-full lg:w-72 xl:w-80 flex-shrink-0 bg-white border-b lg:border-b-0 lg:border-r border-slate-100 overflow-y-auto">
           <div className="px-4 pt-4 pb-3 border-b border-slate-50">
             <p className="text-[9px] font-bold uppercase tracking-[0.15em] text-slate-400 mb-3">Nivel de análisis</p>
             <div className="flex items-center gap-0">
@@ -3044,7 +3052,7 @@ const TableroBoard = ({ readOnly = false }) => {
                 </div>
 
                 {/* Panel con efecto fade + slide al cambiar de modo */}
-                <div style={{
+                <div className="territorial-panel-reveal" style={{
                   opacity:   panelFade ? 1 : 0,
                   transform: panelFade ? 'translateY(0)' : 'translateY(6px)',
                   transition: 'opacity 0.25s ease, transform 0.25s ease',
@@ -3066,12 +3074,9 @@ const TableroBoard = ({ readOnly = false }) => {
 
         <main className="flex-1 min-w-0 relative">
           {loadingMap ? (
-            <div className="flex flex-col items-center justify-center h-full bg-slate-100 gap-3">
-              <div className="w-8 h-8 border-2 border-blue-300 border-t-blue-600 rounded-full animate-spin" />
-              <p className="text-slate-400 text-sm font-medium">Cargando datos territoriales…</p>
-            </div>
+            <TerritorialLoading label="Cargando territorio" detail="Consultando secciones de Tecámac" />
           ) : (
-            <div className="h-full">
+            <div className="territorial-map-reveal h-full">
               <MapTerritorial
                 secciones={mapSecciones}
                 ciudadanos={ciudadanosGeo}
