@@ -372,7 +372,7 @@ const TableroBoard = ({ readOnly = false }) => {
   useEffect(() => {
     Promise.all([
       supabaseAdmin.from('ubt_catalogo').select('seccion'),
-      supabaseAdmin.from('ciudadania').select('seccion, usuario').eq('puesto', 'SM'),
+      supabaseAdmin.from('ciudadania').select('seccion, usuario').eq('puesto', 'SM').eq('status', 'ACTIVO'),
       supabaseAdmin.from('ciudadania').select('seccion, movilizador').eq('puesto', 'MOVILIZADOR').eq('status', 'ACTIVO'),
     ]).then(([fracRes, smRes, movRes]) => {
       const fracBySec = {};
