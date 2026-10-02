@@ -3,7 +3,7 @@ import { Navigate, useNavigate } from 'react-router-dom';
 import TerritorialLoading from './TerritorialLoading';
 import './territorialExperience.css';
 
-const TERRITORIAL_PIN = '2105';
+const TERRITORIAL_PIN = '2027';
 const ALLOWED_ROLES = new Set(['administrador', 'master']);
 
 const TerritorialPinGate = ({ children }) => {

@@ -8,12 +8,16 @@ const BACKEND_URLS = [...new Set([
   'http://localhost:3003',
 ].filter(Boolean))];
 
-export async function backendFetch(path) {
+export async function backendFetch(path, { timeoutMs = 10000 } = {}) {
   for (const base of BACKEND_URLS) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
     try {
-      const r = await fetch(`${base}${path}`);
-      if (r.ok) return r.json();
-    } catch {}
+      const r = await fetch(`${base.replace(/\/$/, '')}${path}`, { signal: controller.signal });
+      if (r.ok) return await r.json();
+    } catch {} finally {
+      clearTimeout(timer);
+    }
   }
   return null;
 }

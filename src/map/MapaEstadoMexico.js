@@ -1,3 +1,4 @@
+import { loadMapJson } from '../utils/loadMapJson';
 import { installPolygonMousePan } from './polygonMousePan';
 import TerritorialLoading, { TerritorialSkeleton } from '../componentes/TerritorialLoading';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -716,13 +717,13 @@ const PromotorList = ({ names }) => {
 };
 
 const SeccionDetail = ({ data, senado, promotores, marginacion, crimen, gubernatura, dipLocal, onClose }) => (
-  <div className="rounded-xl border border-slate-200 bg-white p-3 mex-panel-in">
+  <div className="territorial-section-card rounded-xl border border-slate-200 bg-white p-3 mex-panel-in">
     <div className="flex items-start justify-between gap-2 mb-2 pb-2 border-b border-slate-100">
       <div>
         <p className="text-lg font-extrabold text-slate-900 leading-tight tracking-tight">Sección {data.SECCION}</p>
         <p className="text-xs text-slate-400 mt-0.5">{fixEncoding(data.NOMBRE_MUNICIPIO)}</p>
       </div>
-      <button onClick={onClose} className="text-slate-300 hover:text-slate-500 transition-colors flex-shrink-0" title="Cerrar">
+      <button onClick={onClose} aria-label="Cerrar detalle de la sección" className="territorial-sm-close text-slate-300 hover:text-slate-500 transition-colors flex-shrink-0" title="Cerrar">
         <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M2 2L12 12M12 2L2 12" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/></svg>
       </button>
     </div>
@@ -913,7 +914,17 @@ const MapaEstadoMexico = () => {
   const { isLoaded } = useJsApiLoader({ googleMapsApiKey: GOOGLE_MAPS_API_KEY, libraries: GOOGLE_MAPS_LIBRARIES });
   const mapRef = useRef(null);
   const polygonPanRef = useRef(null);
-  useEffect(() => () => polygonPanRef.current?.cleanup(), []);
+  useEffect(() => {
+    // Restore drag listeners when effects replay on an existing map instance.
+    if (mapRef.current) {
+      polygonPanRef.current?.cleanup();
+      polygonPanRef.current = installPolygonMousePan(mapRef.current);
+    }
+    return () => {
+      polygonPanRef.current?.cleanup();
+      polygonPanRef.current = null;
+    };
+  }, []);
   const containerRef = useRef(null);
   const [tooltipPos, setTooltipPos] = useState({ x: 0, y: 0 });
   const [currentStyle, setCurrentStyle] = useState('claro');
@@ -947,6 +958,8 @@ const MapaEstadoMexico = () => {
   // ── Secciones reales del municipio activo ────────────────────────────────
   const [secciones, setSecciones] = useState([]);
   const [loadingSecciones, setLoadingSecciones] = useState(false);
+  const municipioRequestRef = useRef(0);
+  useEffect(() => () => { municipioRequestRef.current += 1; }, []);
   const [seccionesError, setSeccionesError] = useState(null);
 
   // ── Capa electoral (Senaduría 2024) — se carga solo al activarla ─────────
@@ -987,12 +1000,12 @@ const MapaEstadoMexico = () => {
 
   useEffect(() => {
     Promise.all([
-      fetch('/edomex_estado.json').then(r => r.json()),
-      fetch('/edomex_distritos.json').then(r => r.json()),
-      fetch('/edomex_distrito_municipios.json').then(r => r.json()),
-      fetch('/edomex_regiones.json').then(r => r.json()),
-      fetch('/edomex_municipios.json').then(r => r.json()),
-      fetch('/municipios_edomex.json').then(r => r.json()),
+      loadMapJson('/edomex_estado.json'),
+      loadMapJson('/edomex_distritos.json'),
+      loadMapJson('/edomex_distrito_municipios.json'),
+      loadMapJson('/edomex_regiones.json'),
+      loadMapJson('/edomex_municipios.json'),
+      loadMapJson('/municipios_edomex.json'),
     ])
       .then(([e, d, dm, rg, ma, m]) => {
         setEstado(e); setDistritos(d); setDistritoMunicipios(dm);
@@ -1002,16 +1015,20 @@ const MapaEstadoMexico = () => {
   }, []);
 
   const setElectoralLayer = useCallback((mode) => {
+    if (mode === 'senado_2024' || mode === 'participacion') setSenadoError(null);
+    if (mode === 'gubernatura_2023') setGubernaturaError(null);
+    if (mode === 'dip_local_2024') setDipLocalError(null);
+    if (mode === 'marginacion') setMarginacionError(null);
+    if (mode === 'crimen') setCrimenError(null);
     setElectoralMode(prev => prev === mode ? null : mode);
   }, []);
 
   useEffect(() => {
     // 'participacion' reusa este mismo fetch — participación se deriva de
     // votos_calculado / lista_nominal, ambos ya vienen en este archivo.
-    if ((electoralMode !== 'senado_2024' && electoralMode !== 'participacion') || senadoRows || senadoLoading) return;
+    if ((electoralMode !== 'senado_2024' && electoralMode !== 'participacion') || senadoRows || senadoLoading || senadoError) return;
     setSenadoLoading(true);
-    fetch('/senado_2024_edomex.json')
-      .then(r => r.json())
+    loadMapJson('/senado_2024_edomex.json')
       .then(rows => {
         const m = {};
         rows.forEach(row => { m[row.seccion] = row; });
@@ -1019,21 +1036,19 @@ const MapaEstadoMexico = () => {
       })
       .catch(err => { console.error('Error cargando senado_2024_edomex.json', err); setSenadoError('No se pudo cargar la capa de Senaduría 2024.'); })
       .finally(() => setSenadoLoading(false));
-  }, [electoralMode, senadoRows, senadoLoading]);
+  }, [electoralMode, senadoRows, senadoLoading, senadoError]);
 
   useEffect(() => {
     if (electoralMode !== 'senado_2024' || promotoresRows) return;
-    fetch('/promotores_edomex.json')
-      .then(r => r.json())
+    loadMapJson('/promotores_edomex.json')
       .then(setPromotoresRows)
       .catch(err => console.error('Error cargando promotores_edomex.json', err));
   }, [electoralMode, promotoresRows]);
 
   useEffect(() => {
-    if (electoralMode !== 'marginacion' || marginacionRows || marginacionLoading) return;
+    if (electoralMode !== 'marginacion' || marginacionRows || marginacionLoading || marginacionError) return;
     setMarginacionLoading(true);
-    fetch('/marginacion_edomex.json')
-      .then(r => r.json())
+    loadMapJson('/marginacion_edomex.json')
       .then(rows => {
         const m = {};
         rows.forEach(row => { m[row.municipio] = row; });
@@ -1041,13 +1056,12 @@ const MapaEstadoMexico = () => {
       })
       .catch(err => { console.error('Error cargando marginacion_edomex.json', err); setMarginacionError('No se pudo cargar la capa de marginación.'); })
       .finally(() => setMarginacionLoading(false));
-  }, [electoralMode, marginacionRows, marginacionLoading]);
+  }, [electoralMode, marginacionRows, marginacionLoading, marginacionError]);
 
   useEffect(() => {
-    if (electoralMode !== 'crimen' || crimenRows || crimenLoading) return;
+    if (electoralMode !== 'crimen' || crimenRows || crimenLoading || crimenError) return;
     setCrimenLoading(true);
-    fetch('/crimen_edomex.json')
-      .then(r => r.json())
+    loadMapJson('/crimen_edomex.json')
       .then(rows => {
         const m = {};
         rows.forEach(row => { m[row.municipio] = row; });
@@ -1055,21 +1069,19 @@ const MapaEstadoMexico = () => {
       })
       .catch(err => { console.error('Error cargando crimen_edomex.json', err); setCrimenError('No se pudo cargar la capa de incidencia delictiva.'); })
       .finally(() => setCrimenLoading(false));
-  }, [electoralMode, crimenRows, crimenLoading]);
+  }, [electoralMode, crimenRows, crimenLoading, crimenError]);
 
   useEffect(() => {
     if ((electoralMode !== 'senado_2024' && electoralMode !== 'gubernatura_2023' && electoralMode !== 'dip_local_2024') || seccionesIndex) return;
-    fetch('/secciones_index_edomex.json')
-      .then(r => r.json())
+    loadMapJson('/secciones_index_edomex.json')
       .then(setSeccionesIndex)
       .catch(err => console.error('Error cargando secciones_index_edomex.json', err));
   }, [electoralMode, seccionesIndex]);
 
   useEffect(() => {
-    if (electoralMode !== 'gubernatura_2023' || gubernaturaRows || gubernaturaLoading) return;
+    if (electoralMode !== 'gubernatura_2023' || gubernaturaRows || gubernaturaLoading || gubernaturaError) return;
     setGubernaturaLoading(true);
-    fetch('/gubernatura_2023_edomex.json')
-      .then(r => r.json())
+    loadMapJson('/gubernatura_2023_edomex.json')
       .then(rows => {
         const m = {};
         rows.forEach(row => { m[row.seccion] = row; });
@@ -1077,13 +1089,12 @@ const MapaEstadoMexico = () => {
       })
       .catch(err => { console.error('Error cargando gubernatura_2023_edomex.json', err); setGubernaturaError('No se pudo cargar la capa de Gubernatura 2023.'); })
       .finally(() => setGubernaturaLoading(false));
-  }, [electoralMode, gubernaturaRows, gubernaturaLoading]);
+  }, [electoralMode, gubernaturaRows, gubernaturaLoading, gubernaturaError]);
 
   useEffect(() => {
-    if (electoralMode !== 'dip_local_2024' || dipLocalRows || dipLocalLoading) return;
+    if (electoralMode !== 'dip_local_2024' || dipLocalRows || dipLocalLoading || dipLocalError) return;
     setDipLocalLoading(true);
-    fetch('/dip_local_2024_dl33_edomex.json')
-      .then(r => r.json())
+    loadMapJson('/dip_local_2024_dl33_edomex.json')
       .then(rows => {
         const m = {};
         rows.forEach(row => { m[row.seccion] = row; });
@@ -1091,12 +1102,11 @@ const MapaEstadoMexico = () => {
       })
       .catch(err => { console.error('Error cargando dip_local_2024_dl33_edomex.json', err); setDipLocalError('No se pudo cargar la capa de Diputación Local 2024.'); })
       .finally(() => setDipLocalLoading(false));
-  }, [electoralMode, dipLocalRows, dipLocalLoading]);
+  }, [electoralMode, dipLocalRows, dipLocalLoading, dipLocalError]);
 
   useEffect(() => {
     if (electoralMode !== 'dip_local_2024' || dl33Boundary) return;
-    fetch('/dl33_boundary.json')
-      .then(r => r.json())
+    loadMapJson('/dl33_boundary.json')
       .then(setDl33Boundary)
       .catch(err => console.error('Error cargando dl33_boundary.json', err));
   }, [electoralMode, dl33Boundary]);
@@ -1180,17 +1190,22 @@ const MapaEstadoMexico = () => {
     if (distritoFederal != null) setSelectedDistrito(distritoFederal);
     setLoadingSecciones(true);
     setSeccionesError(null);
-    const { data, error } = await supabase.from('secciones_edomex').select('*').eq('MUNICIPIO', municipio);
-    if (error) {
-      console.error('Error cargando secciones_edomex', error);
-      setSeccionesError('No se pudieron cargar las secciones de este municipio.');
-      setSecciones([]);
-    } else {
+    const requestId = ++municipioRequestRef.current;
+    setSecciones([]);
+    try {
+      const { data, error } = await supabase.from('secciones_edomex').select('*').eq('MUNICIPIO', municipio);
+      if (requestId !== municipioRequestRef.current) return;
+      if (error) throw error;
       setSecciones(data || []);
       if (distritoFederal == null && data && data[0]) setSelectedDistrito(data[0].DISTRITO_FEDERAL);
+      setSearch('');
+    } catch (error) {
+      if (requestId !== municipioRequestRef.current) return;
+      console.error('Error cargando secciones_edomex', error);
+      setSeccionesError('No se pudieron cargar las secciones de este municipio.');
+    } finally {
+      if (requestId === municipioRequestRef.current) setLoadingSecciones(false);
     }
-    setLoadingSecciones(false);
-    setSearch('');
   }, []);
 
   // Atajo del buscador rápido: entra directo a un municipio sin pasar por
@@ -1203,7 +1218,7 @@ const MapaEstadoMexico = () => {
 
   const goToDistrito = useCallback((d) => {
     setSelectedDistrito(prev => prev === d ? null : d);
-    setSelectedMunicipio(null);
+    municipioRequestRef.current += 1; setSelectedMunicipio(null); setLoadingSecciones(false);
     setSelectedSeccion(null);
     setSelectedDistritoLocal(null);
     setSecciones([]);
@@ -1223,7 +1238,7 @@ const MapaEstadoMexico = () => {
 
   const goToRegion = useCallback((r) => {
     setSelectedRegion(prev => prev === r ? null : r);
-    setSelectedMunicipio(null);
+    municipioRequestRef.current += 1; setSelectedMunicipio(null); setLoadingSecciones(false);
     setSelectedSeccion(null);
     setSelectedDistritoLocal(null);
     setSecciones([]);
@@ -1234,7 +1249,7 @@ const MapaEstadoMexico = () => {
     setViewMode(mode);
     setSelectedDistrito(null);
     setSelectedRegion(null);
-    setSelectedMunicipio(null);
+    municipioRequestRef.current += 1; setSelectedMunicipio(null); setLoadingSecciones(false);
     setSelectedSeccion(null);
     setSelectedDistritoLocal(null);
     setSecciones([]);
@@ -1244,7 +1259,7 @@ const MapaEstadoMexico = () => {
   const resetToEstado = useCallback(() => {
     setSelectedDistrito(null);
     setSelectedRegion(null);
-    setSelectedMunicipio(null);
+    municipioRequestRef.current += 1; setSelectedMunicipio(null); setLoadingSecciones(false);
     setSelectedSeccion(null);
     setSelectedDistritoLocal(null);
     setSecciones([]);
@@ -1253,7 +1268,7 @@ const MapaEstadoMexico = () => {
 
   const backOneLevel = useCallback(() => {
     if (selectedSeccion != null) { setSelectedSeccion(null); return; }
-    if (selectedMunicipio != null) { setSelectedMunicipio(null); setSelectedDistritoLocal(null); setSecciones([]); return; }
+    if (selectedMunicipio != null) { municipioRequestRef.current += 1; setSelectedMunicipio(null); setLoadingSecciones(false); setSelectedDistritoLocal(null); setSecciones([]); return; }
     if (viewMode === 'region') { if (selectedRegion != null) setSelectedRegion(null); return; }
     if (selectedDistrito != null) { setSelectedDistrito(null); return; }
   }, [selectedSeccion, selectedMunicipio, selectedDistrito, selectedRegion, viewMode]);
@@ -1570,7 +1585,7 @@ const MapaEstadoMexico = () => {
                 <button
                   onClick={() => {
                     if (i === 0) resetToEstado();
-                    if (i === 1 && level1Active) { setSelectedMunicipio(null); setSelectedSeccion(null); setSecciones([]); }
+                    if (i === 1 && level1Active) { municipioRequestRef.current += 1; setSelectedMunicipio(null); setLoadingSecciones(false); setSelectedSeccion(null); setSecciones([]); }
                     if (i === 2 && selectedMunicipio != null) setSelectedSeccion(null);
                   }}
                   disabled={i > currentLevel}
@@ -1598,7 +1613,7 @@ const MapaEstadoMexico = () => {
         </div>
 
         <div className="p-4 space-y-4">
-          {boundariesError && <p className="text-xs text-red-500">{boundariesError}</p>}
+          {boundariesError && <p role="alert" className="territorial-notice territorial-notice-error text-xs text-red-500">{boundariesError}</p>}
 
           {/* Controles de la capa de marginación: vista + filtro por grado.
               Vive fuera de los paneles por nivel para que no desaparezca al
@@ -1917,7 +1932,7 @@ const MapaEstadoMexico = () => {
               {loadingSecciones ? (
                 <TerritorialSkeleton />
               ) : seccionesError ? (
-                <p className="text-xs text-red-500 px-1">{seccionesError}</p>
+                <p role="alert" className="territorial-notice territorial-notice-error text-xs text-red-500 px-1">{seccionesError}</p>
               ) : (
                 <>
                   {distritosLocalesDelMunicipio.length > 1 && (
@@ -1983,7 +1998,7 @@ const MapaEstadoMexico = () => {
       </aside>
 
       {/* ── Mapa ──────────────────────────────────────────────────────────── */}
-      <main ref={containerRef} onMouseMove={handleContainerMouseMove} className="flex-1 min-w-0 min-h-0 relative">
+      <main ref={containerRef} onMouseMove={handleContainerMouseMove} className="territorial-edomex-map flex-1 min-w-0 min-h-0 relative">
         {!isLoaded ? (
           <TerritorialLoading label="Preparando Estado de México" detail="Cargando la base cartográfica" />
         ) : (
@@ -2182,7 +2197,7 @@ const MapaEstadoMexico = () => {
                   onHoverId={handleHoverSeccion}
                   fillColor={isSelected ? SELECTED_COLOR.fill : color.fill}
                   strokeColor={isSelected ? SELECTED_COLOR.stroke : color.stroke}
-                  strokeWeight={isSelected ? 3 : isHovered ? 2 : 1}
+                  strokeWeight={isSelected ? 4 : isHovered ? 2 : 1}
                   fillOpacity={(isFilteredOutLocal || isFilteredOutGrado || isFilteredOutDipLocal) ? 0.04 : baseOpacity}
                   zIndex={isSelected ? 3 : 2}
                 />
@@ -2202,13 +2217,14 @@ const MapaEstadoMexico = () => {
 
         {/* Selector de capa (igual que en Tecámac) + capas electorales */}
         {isLoaded && (
-          <div className="territorial-map-controls no-print absolute top-3 left-3 z-10 flex flex-col gap-1 max-w-xs bg-white/90 backdrop-blur-sm rounded-lg shadow-md p-1 border border-gray-200">
+          <div className="territorial-map-controls territorial-layer-panel no-print absolute top-3 left-3 z-10 flex flex-col gap-1 max-w-xs bg-white/90 backdrop-blur-sm rounded-lg shadow-md p-1 border border-gray-200">
             <button type="button" onClick={() => setControlsOpen(open => !open)} aria-expanded={controlsOpen}
-              className="px-3 py-2 text-xs font-semibold text-left text-slate-600 rounded-md hover:bg-slate-100">
+              className="territorial-layer-menu px-3 py-2 text-xs font-semibold text-left text-slate-600 rounded-md hover:bg-slate-100">
               {controlsOpen ? '✕ Ocultar capas' : '≡ Capas del mapa'}
             </button>
             {controlsOpen && <>
-            <div className="flex flex-wrap gap-1">
+            <p className="territorial-layer-heading">Mapa base</p>
+            <div className="territorial-base-grid flex flex-wrap gap-1">
               {Object.entries(MAP_STYLE_DEFS).filter(([key]) => key !== 'oscuro').map(([key, def]) => (
                 <button
                   key={key}
@@ -2221,9 +2237,11 @@ const MapaEstadoMexico = () => {
                 </button>
               ))}
             </div>
-            <div className="w-full h-px bg-gray-200" />
+            <section className="territorial-layer-group" aria-label="Elecciones">
+            <p className="territorial-layer-heading">Elecciones</p>
             <button
               onClick={() => setElectoralLayer('gubernatura_2023')}
+              aria-pressed={electoralMode === 'gubernatura_2023'}
               disabled={gubernaturaLoading}
               className="w-full px-2.5 py-1 rounded-md text-xs font-medium transition-all text-left leading-tight disabled:opacity-60"
               style={electoralMode === 'gubernatura_2023' ? { backgroundColor: PARTY_COLORS_GUBERNATURA_2023.DELFINA.stroke, color: '#fff' } : { color: '#4B5563' }}
@@ -2231,9 +2249,10 @@ const MapaEstadoMexico = () => {
             >
               {gubernaturaLoading ? 'Cargando…' : '🗳 Gubernatura 2023 · Delfina Gómez'}
             </button>
-            {gubernaturaError && <p className="text-[10px] text-red-500 px-1">{gubernaturaError}</p>}
+            {gubernaturaError && <p role="alert" className="territorial-notice territorial-notice-error text-[10px] text-red-500 px-1">{gubernaturaError}</p>}
             <button
               onClick={() => setElectoralLayer('senado_2024')}
+              aria-pressed={electoralMode === 'senado_2024'}
               disabled={senadoLoading}
               className="w-full px-2.5 py-1 rounded-md text-xs font-medium transition-all text-left leading-tight disabled:opacity-60"
               style={electoralMode === 'senado_2024' ? { backgroundColor: GUINDA, color: '#fff' } : { color: '#4B5563' }}
@@ -2241,9 +2260,10 @@ const MapaEstadoMexico = () => {
             >
               {senadoLoading ? 'Cargando…' : '🗳 Senaduría 2024 · Mariela Gutiérrez'}
             </button>
-            {senadoError && <p className="text-[10px] text-red-500 px-1">{senadoError}</p>}
+            {senadoError && <p role="alert" className="territorial-notice territorial-notice-error text-[10px] text-red-500 px-1">{senadoError}</p>}
             <button
               onClick={() => setElectoralLayer('dip_local_2024')}
+              aria-pressed={electoralMode === 'dip_local_2024'}
               disabled={dipLocalLoading}
               className="w-full px-2.5 py-1 rounded-md text-xs font-medium transition-all text-left leading-tight disabled:opacity-60"
               style={electoralMode === 'dip_local_2024' ? { backgroundColor: PARTY_COLORS_DIP_LOCAL_2024.SAMUEL.stroke, color: '#fff' } : { color: '#4B5563' }}
@@ -2251,9 +2271,13 @@ const MapaEstadoMexico = () => {
             >
               {dipLocalLoading ? 'Cargando…' : '🗳 Diputación Local 2024 · Distrito 33'}
             </button>
-            {dipLocalError && <p className="text-[10px] text-red-500 px-1">{dipLocalError}</p>}
+            {dipLocalError && <p role="alert" className="territorial-notice territorial-notice-error text-[10px] text-red-500 px-1">{dipLocalError}</p>}
+            </section>
+            <section className="territorial-layer-group" aria-label="Indicadores territoriales">
+            <p className="territorial-layer-heading">Indicadores territoriales</p>
             <button
               onClick={() => setElectoralLayer('marginacion')}
+              aria-pressed={electoralMode === 'marginacion'}
               disabled={marginacionLoading}
               className="w-full px-2.5 py-1 rounded-md text-xs font-medium transition-all text-left leading-tight disabled:opacity-60"
               style={electoralMode === 'marginacion' ? { backgroundColor: '#B45309', color: '#fff' } : { color: '#4B5563' }}
@@ -2261,9 +2285,10 @@ const MapaEstadoMexico = () => {
             >
               {marginacionLoading ? 'Cargando…' : '📊 Marginación social · CONAPO 2020'}
             </button>
-            {marginacionError && <p className="text-[10px] text-red-500 px-1">{marginacionError}</p>}
+            {marginacionError && <p role="alert" className="territorial-notice territorial-notice-error text-[10px] text-red-500 px-1">{marginacionError}</p>}
             <button
               onClick={() => setElectoralLayer('participacion')}
+              aria-pressed={electoralMode === 'participacion'}
               disabled={senadoLoading}
               className="w-full px-2.5 py-1 rounded-md text-xs font-medium transition-all text-left leading-tight disabled:opacity-60"
               style={electoralMode === 'participacion' ? { backgroundColor: '#0D9488', color: '#fff' } : { color: '#4B5563' }}
@@ -2273,6 +2298,7 @@ const MapaEstadoMexico = () => {
             </button>
             <button
               onClick={() => setElectoralLayer('crimen')}
+              aria-pressed={electoralMode === 'crimen'}
               disabled={crimenLoading}
               className="w-full px-2.5 py-1 rounded-md text-xs font-medium transition-all text-left leading-tight disabled:opacity-60"
               style={electoralMode === 'crimen' ? { backgroundColor: '#B91C1C', color: '#fff' } : { color: '#4B5563' }}
@@ -2280,7 +2306,8 @@ const MapaEstadoMexico = () => {
             >
               {crimenLoading ? 'Cargando…' : '🚨 Incidencia delictiva · SESNSP'}
             </button>
-            {crimenError && <p className="text-[10px] text-red-500 px-1">{crimenError}</p>}
+            {crimenError && <p role="alert" className="territorial-notice territorial-notice-error text-[10px] text-red-500 px-1">{crimenError}</p>}
+            </section>
             </>}
           </div>
         )}
@@ -2288,7 +2315,7 @@ const MapaEstadoMexico = () => {
         {/* Capa de marginación activa: gradiente continuo, misma leyenda sin
             importar el nivel — reemplaza a las demás leyendas de color. */}
         {marginacionActive && (
-          <div className="absolute bottom-3 left-3 bg-white/95 backdrop-blur rounded-lg shadow-md border border-slate-200 px-3 py-2 max-w-[240px]">
+          <div role="region" tabIndex={0} aria-label="Leyenda del mapa" className="territorial-floating-legend absolute bottom-3 left-3 bg-white/95 backdrop-blur rounded-lg shadow-md border border-slate-200 px-3 py-2 max-w-[240px]">
             <p className="text-[9px] font-bold uppercase tracking-wide text-slate-400 mb-1">Marginación social · CONAPO 2020</p>
             <p className="text-[10px] text-slate-500 leading-snug mb-1.5">Mide el rezago en vivienda (agua, drenaje, hacinamiento), educación e ingreso de cada municipio.</p>
             <div className="flex items-center gap-1">
@@ -2302,7 +2329,7 @@ const MapaEstadoMexico = () => {
 
         {/* Capa de participación activa: escala divergente rojo→verde. */}
         {participacionActive && (
-          <div className="absolute bottom-3 left-3 bg-white/95 backdrop-blur rounded-lg shadow-md border border-slate-200 px-3 py-2 max-w-[240px]">
+          <div role="region" tabIndex={0} aria-label="Leyenda del mapa" className="territorial-floating-legend absolute bottom-3 left-3 bg-white/95 backdrop-blur rounded-lg shadow-md border border-slate-200 px-3 py-2 max-w-[240px]">
             <p className="text-[9px] font-bold uppercase tracking-wide text-slate-400 mb-1">Participación electoral · Senaduría 2024</p>
             <p className="text-[10px] text-slate-500 leading-snug mb-1.5">Votos computados sobre la lista nominal de cada zona — estimación, no el dato oficial de participación del INE.</p>
             <div className="flex items-center gap-1">
@@ -2316,7 +2343,7 @@ const MapaEstadoMexico = () => {
 
         {/* Capa de incidencia delictiva activa: cuartiles de la tasa estatal. */}
         {crimenActive && (
-          <div className="absolute bottom-3 left-3 bg-white/95 backdrop-blur rounded-lg shadow-md border border-slate-200 px-3 py-2 max-w-[240px]">
+          <div role="region" tabIndex={0} aria-label="Leyenda del mapa" className="territorial-floating-legend absolute bottom-3 left-3 bg-white/95 backdrop-blur rounded-lg shadow-md border border-slate-200 px-3 py-2 max-w-[240px]">
             <p className="text-[9px] font-bold uppercase tracking-wide text-slate-400 mb-1">Incidencia delictiva · SESNSP, dic. 2025</p>
             <p className="text-[10px] text-slate-500 leading-snug mb-1.5">Carpetas de investigación del fuero común <span className="font-semibold text-slate-700">por cada 100 mil habitantes</span>, no el conteo absoluto — un municipio con más población y más delitos en números totales puede tener una tasa per cápita más baja que uno chico.</p>
             <div className="flex items-center gap-1">
@@ -2333,7 +2360,7 @@ const MapaEstadoMexico = () => {
             Excepción: Gubernatura 2023 sí colorea la región por resultado
             (ver aggregateThematicColor), así que ahí no aplica esta leyenda. */}
         {!anyThematicActive && !gubernaturaActive && !dipLocalActive && currentLevel === 0 && viewMode === 'region' && (
-          <div className="absolute bottom-3 left-3 bg-white/95 backdrop-blur rounded-lg shadow-md border border-slate-200 px-3 py-2 max-w-[280px]">
+          <div role="region" tabIndex={0} aria-label="Leyenda del mapa" className="territorial-floating-legend absolute bottom-3 left-3 bg-white/95 backdrop-blur rounded-lg shadow-md border border-slate-200 px-3 py-2 max-w-[280px]">
             <p className="text-[9px] font-bold uppercase tracking-wide text-slate-400 mb-1.5">Región MG</p>
             <div className="flex flex-wrap gap-x-3 gap-y-1">
               {regiones.map(r => {
@@ -2350,7 +2377,7 @@ const MapaEstadoMexico = () => {
         )}
 
         {!anyThematicActive && electoralActive && !(currentLevel === 0 && viewMode === 'region') && (currentLevel === 0 || currentLevel === 1) && (
-          <div className="absolute bottom-3 left-3 bg-white/95 backdrop-blur rounded-lg shadow-md border border-slate-200 px-3 py-1.5 flex items-center gap-3">
+          <div role="region" tabIndex={0} aria-label="Leyenda del mapa" className="territorial-floating-legend absolute bottom-3 left-3 bg-white/95 backdrop-blur rounded-lg shadow-md border border-slate-200 px-3 py-1.5 flex items-center gap-3">
             <span className="flex items-center gap-1.5">
               <span className="w-2.5 h-2.5 rounded-sm inline-block" style={{ backgroundColor: PARTY_COLORS_SENADO_EDOMEX.MARIELA.fill, border: `1px solid ${PARTY_COLORS_SENADO_EDOMEX.MARIELA.stroke}` }} />
               <span className="text-[10px] text-slate-600">{PARTY_COLORS_SENADO_EDOMEX.MARIELA.label}</span>
@@ -2363,7 +2390,7 @@ const MapaEstadoMexico = () => {
         )}
 
         {!anyThematicActive && gubernaturaActive && (currentLevel === 0 || currentLevel === 1) && (
-          <div className="absolute bottom-3 left-3 bg-white/95 backdrop-blur rounded-lg shadow-md border border-slate-200 px-3 py-1.5 flex items-center gap-3">
+          <div role="region" tabIndex={0} aria-label="Leyenda del mapa" className="territorial-floating-legend absolute bottom-3 left-3 bg-white/95 backdrop-blur rounded-lg shadow-md border border-slate-200 px-3 py-1.5 flex items-center gap-3">
             <span className="flex items-center gap-1.5">
               <span className="w-2.5 h-2.5 rounded-sm inline-block" style={{ backgroundColor: PARTY_COLORS_GUBERNATURA_2023.DELFINA.fill, border: `1px solid ${PARTY_COLORS_GUBERNATURA_2023.DELFINA.stroke}` }} />
               <span className="text-[10px] text-slate-600">{PARTY_COLORS_GUBERNATURA_2023.DELFINA.label}</span>
@@ -2376,7 +2403,7 @@ const MapaEstadoMexico = () => {
         )}
 
         {!anyThematicActive && dipLocalActive && (currentLevel === 0 || currentLevel === 1) && (
-          <div className="absolute bottom-3 left-3 bg-white/95 backdrop-blur rounded-lg shadow-md border border-slate-200 px-3 py-2 max-w-[260px]">
+          <div role="region" tabIndex={0} aria-label="Leyenda del mapa" className="territorial-floating-legend absolute bottom-3 left-3 bg-white/95 backdrop-blur rounded-lg shadow-md border border-slate-200 px-3 py-2 max-w-[260px]">
             <div className="flex items-center gap-3 mb-1">
               <span className="flex items-center gap-1.5">
                 <span className="w-2.5 h-2.5 rounded-sm inline-block" style={{ backgroundColor: PARTY_COLORS_DIP_LOCAL_2024.SAMUEL.fill, border: `1px solid ${PARTY_COLORS_DIP_LOCAL_2024.SAMUEL.stroke}` }} />
@@ -2392,7 +2419,7 @@ const MapaEstadoMexico = () => {
         )}
 
         {!anyThematicActive && !anyPartyActive && currentLevel >= 2 && !loadingSecciones && !seccionesError && Object.keys(distritoColorMapLocal).length > 0 && (
-          <div className="absolute bottom-3 left-3 bg-white/95 backdrop-blur rounded-lg shadow-md border border-slate-200 px-3 py-1.5 flex items-center gap-2">
+          <div role="region" tabIndex={0} aria-label="Leyenda del mapa" className="territorial-floating-legend absolute bottom-3 left-3 bg-white/95 backdrop-blur rounded-lg shadow-md border border-slate-200 px-3 py-1.5 flex items-center gap-2">
             <span className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Distrito local</span>
             <div className="flex items-center gap-2">
               {Object.entries(distritoColorMapLocal).map(([d, c]) => (

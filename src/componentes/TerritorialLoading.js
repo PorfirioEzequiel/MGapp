@@ -10,6 +10,10 @@ export const TerritorialSpinner = () => (
 
 export const TerritorialSkeleton = () => (
   <div className="territorial-skeleton" role="status" aria-label="Cargando información territorial">
+    <div className="territorial-skeleton-summary" aria-hidden="true">
+      <i />
+      <div>{[0, 1, 2, 3].map(i => <span key={i}><b /><i /></span>)}</div>
+    </div>
     {[0, 1, 2].map(i => <div key={i} className="territorial-skeleton-row" style={{ animationDelay: `${i * 70}ms` }}><span /><div><i /><i /></div></div>)}
     <span className="sr-only">Cargando información territorial</span>
   </div>

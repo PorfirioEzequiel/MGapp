@@ -1,3 +1,5 @@
+import { FiCheckCircle, FiAlertCircle, FiMapPin, FiPhone, FiX } from 'react-icons/fi';
+import { loadMapJson } from '../utils/loadMapJson';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import * as XLSX from 'xlsx';
@@ -123,7 +125,7 @@ const IEEM_2024_GRUPOS = {
 // ── UI primitives ─────────────────────────────────────────────────────────────
 
 const StatCard = ({ label, value, sub, accent, wide }) => (
-  <div className={`rounded-xl p-3 flex flex-col gap-1 ${wide ? 'col-span-2' : ''} ${
+  <div className={`territorial-stat-card ${accent ? 'territorial-stat-accent' : ''} rounded-xl p-3 flex flex-col gap-1 ${wide ? 'col-span-2' : ''} ${
     accent
       ? 'bg-gradient-to-br from-blue-600 to-blue-700 text-white shadow-md shadow-blue-200/50'
       : 'bg-white border border-slate-100 shadow-sm'
@@ -135,7 +137,7 @@ const StatCard = ({ label, value, sub, accent, wide }) => (
 );
 
 const DataRow = ({ label, value, highlight }) => value != null ? (
-  <div className="flex justify-between items-center py-1 border-b border-slate-50 last:border-0">
+  <div className="territorial-data-row flex justify-between items-center py-1 border-b border-slate-50 last:border-0">
     <span className="text-[11px] text-slate-500 font-medium">{label}</span>
     <span className={`text-xs font-bold tabular-nums ${highlight ? 'text-blue-600' : 'text-slate-800'}`}>{value}</span>
   </div>
@@ -170,7 +172,7 @@ const InitialAvatar = ({ name, colorClass = 'bg-slate-100 text-slate-500' }) => 
 };
 
 const ResponsableRow = ({ role, name, roleColor, avatarColor }) => (
-  <div className="flex items-center gap-2 py-1">
+  <div className="territorial-responsible-row flex items-center gap-2 py-1">
     <InitialAvatar name={name} colorClass={avatarColor} />
     <div className="min-w-0 flex-1">
       <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500 leading-none mb-0.5">{role}</p>
@@ -282,18 +284,18 @@ const Pill = ({ label, active, color = 'blue', onClick }) => {
     green:  active ? 'bg-emerald-600 text-white border-emerald-600 shadow-sm' : 'bg-white text-emerald-600 border-emerald-200 hover:bg-emerald-50',
     violet: active ? 'bg-violet-600 text-white border-violet-600 shadow-sm' : 'bg-white text-violet-600 border-violet-200 hover:bg-violet-50',
   };
-  return <button className={`${base} ${styles[color]}`} onClick={onClick}>{label}</button>;
+  return <button className={`${base} ${styles[color]} territorial-filter-button`} aria-pressed={active} onClick={onClick}>{label}</button>;
 };
 
 const SectionTitle = ({ children, accent }) => (
-  <div className="flex items-center gap-1.5 mb-2">
+  <div className="territorial-section-title flex items-center gap-1.5 mb-2">
     <div className={`w-0.5 h-3.5 rounded-full flex-shrink-0 ${accent ?? 'bg-blue-500'}`} />
     <p className="text-[9px] font-bold uppercase tracking-[0.14em] text-slate-400">{children}</p>
   </div>
 );
 
 const EmptyGuide = ({ children }) => (
-  <div className="rounded-xl border border-dashed border-slate-200 p-3.5 text-center">
+  <div className="territorial-empty-state rounded-xl border border-dashed border-slate-200 p-3.5 text-center">
     <p className="text-xs text-slate-400 leading-relaxed">{children}</p>
   </div>
 );
@@ -319,6 +321,8 @@ const TableroBoard = ({ readOnly = false }) => {
   const [regCount,      setRegCount]     = useState(null);
   const [ciudadanosGeo, setCiudadanosGeo] = useState([]);
   const [loadingInfo,   setLoadingInfo]  = useState(false);
+  const [infoError, setInfoError] = useState(null);
+  const [sectorError, setSectorError] = useState(null);
   const [selectedSM,       setSelectedSM]      = useState(null);
   const [focusCoords,      setFocusCoords]     = useState(null);
   const [expandedMovFrac,  setExpandedMovFrac] = useState(null);
@@ -353,6 +357,8 @@ const TableroBoard = ({ readOnly = false }) => {
 
   // ── Afiliación dinámica desde MongoDB ────────────────────────────────────
   const [afiliacionData, setAfiliacionData] = useState(afiliacionLocalData);
+  const [afiliacionOffline, setAfiliacionOffline] = useState(false);
+  const [comprobadasOffline, setComprobadasOffline] = useState(false);
 
   useEffect(() => {
     // Usa supabaseAdmin (service role) para evitar el deadlock de GoTrueClient
@@ -398,8 +404,7 @@ const TableroBoard = ({ readOnly = false }) => {
   }, []);
 
   useEffect(() => {
-    fetch('/electoral_2021.json')
-      .then(r => r.json())
+    loadMapJson('/electoral_2021.json')
       .then(rows => {
         const m = {};
         rows.forEach(row => { m[row.seccion] = row; });
@@ -409,8 +414,7 @@ const TableroBoard = ({ readOnly = false }) => {
   }, []);
 
   useEffect(() => {
-    fetch('/electoral_2021_ieem.json')
-      .then(r => r.json())
+    loadMapJson('/electoral_2021_ieem.json')
       .then(rows => {
         const m = {};
         rows.forEach(row => { m[row.seccion] = row; });
@@ -420,8 +424,7 @@ const TableroBoard = ({ readOnly = false }) => {
   }, []);
 
   useEffect(() => {
-    fetch('/electoral_2024_ieem.json')
-      .then(r => r.json())
+    loadMapJson('/electoral_2024_ieem.json')
       .then(rows => {
         const m = {};
         rows.forEach(row => { m[row.seccion] = row; });
@@ -448,8 +451,7 @@ const TableroBoard = ({ readOnly = false }) => {
   }, []);
 
   useEffect(() => {
-    fetch('/electoral_senado_2024.json')
-      .then(r => r.json())
+    loadMapJson('/electoral_senado_2024.json')
       .then(rows => {
         const m = {};
         rows.forEach(row => { m[row.seccion] = row; });
@@ -475,8 +477,7 @@ const TableroBoard = ({ readOnly = false }) => {
 
   useEffect(() => {
     const DIP_KEYS = ['morena', 'pri', 'mc', 'total', 'nulos', 'lista_nominal'];
-    fetch('/dip_2024.json')
-      .then(r => r.json())
+    loadMapJson('/dip_2024.json')
       .then(rows => {
         const m = {};
         rows.forEach(row => { m[row.seccion] = row; });
@@ -493,8 +494,7 @@ const TableroBoard = ({ readOnly = false }) => {
   }, []);
 
   useEffect(() => {
-    fetch('/gubernatura_2023_edomex.json')
-      .then(r => r.json())
+    loadMapJson('/gubernatura_2023_edomex.json')
       .then(rows => {
         const m = {};
         rows.forEach(row => { m[row.seccion] = row; });
@@ -505,8 +505,7 @@ const TableroBoard = ({ readOnly = false }) => {
 
   useEffect(() => {
     const PRES_KEYS = ['claudia_morena','xochitl_oposicion','pres_mc','votos_nulos','casillas','lista_nominal','total_votos'];
-    fetch('/presidencia_2024.json')
-      .then(r => r.json())
+    loadMapJson('/presidencia_2024.json')
       .then(rows => {
         const m = {};
         rows.forEach(row => { m[row.seccion] = row; });
@@ -532,7 +531,7 @@ const TableroBoard = ({ readOnly = false }) => {
 
   useEffect(() => {
     backendFetch('/api/comprobadas').then(data => {
-      if (!data) return;
+      if (!data || !Array.isArray(data.bySec)) { setComprobadasOffline(true); return; }
       const map = {};
       for (const row of (data.bySec ?? [])) { if (row.seccion != null) map[row.seccion] = row.comprobadas; }
       setComprobadasMongo(map);
@@ -542,6 +541,7 @@ const TableroBoard = ({ readOnly = false }) => {
 
   useEffect(() => {
     backendFetch('/api/afiliacion').then(data => {
+      setAfiliacionOffline(!Array.isArray(data) || data.length === 0);
       setAfiliacionData(Array.isArray(data) && data.length > 0 ? data : afiliacionLocalData);
     });
   }, []);
@@ -918,42 +918,75 @@ const TableroBoard = ({ readOnly = false }) => {
 
   // ── Fetch sector ──────────────────────────────────────────────────────────
   useEffect(() => {
-    if (!selectedSector) { setSp(null); setCiudadanosGeo([]); return; }
-    const run = async () => {
-      const [spRes, geoRes] = await Promise.all([
-        supabase.from('ciudadania').select('nombre, a_paterno, a_materno')
-          .eq('puesto', 'SP').eq('poligono', selectedSector).eq('status', 'ACTIVO').maybeSingle(),
-        supabase.from('ciudadania').select('id, nombre, a_paterno, a_materno, latitud, longitud, puesto, ubt, seccion, url_foto_perfil, telefono_1')
-          .eq('poligono', selectedSector).eq('status', 'ACTIVO').not('latitud', 'is', null),
-      ]);
-      setSp(spRes.data ?? null);
-      setCiudadanosGeo(geoRes.data ?? []);
-    };
-    run();
+    let active = true;
+    const controller = new AbortController();
+    setSectorError(null);
+    setSp(null);
+    if (!selectedSector) return;
+    supabase.from('ciudadania').select('nombre, a_paterno, a_materno')
+      .eq('puesto', 'SP').eq('poligono', selectedSector).eq('status', 'ACTIVO').maybeSingle().abortSignal(controller.signal)
+      .then(({ data, error }) => {
+        if (!active) return;
+        if (error) throw error;
+        setSp(data ?? null);
+      }).catch(error => {
+        if (!active) return;
+        console.error('[TableroBoard] sector:', error.message);
+        setSectorError('No se pudo cargar el responsable del sector.');
+      });
+    return () => { active = false; controller.abort(); };
   }, [selectedSector]);
+
+  // Sector pins must not overwrite the pins of a selected section.
+  useEffect(() => {
+    let active = true;
+    const controller = new AbortController();
+    if (selectedSeccion != null) return;
+    setCiudadanosGeo([]);
+    if (!selectedSector) return;
+    supabase.from('ciudadania').select('id, nombre, a_paterno, a_materno, latitud, longitud, puesto, ubt, seccion, url_foto_perfil, telefono_1')
+      .eq('poligono', selectedSector).eq('status', 'ACTIVO').not('latitud', 'is', null).abortSignal(controller.signal)
+      .then(({ data, error }) => {
+        if (!active) return;
+        if (error) throw error;
+        setCiudadanosGeo(data ?? []);
+      }).catch(error => {
+        if (!active) return;
+        console.error('[TableroBoard] ubicaciones del sector:', error.message);
+        setSectorError('No se pudieron cargar las ubicaciones del sector.');
+      });
+    return () => { active = false; controller.abort(); };
+  }, [selectedSector, selectedSeccion]);
 
   // ── Fetch sección ─────────────────────────────────────────────────────────
   useEffect(() => {
+    let active = true;
+    const controller = new AbortController();
+    setInfoError(null);
+    setSelectedSM(null); setFocusCoords(null); setExpandedMovFrac(null);
+    setSeccional(null); setPromotores([]); setFracciones([]); setRegCount(null); setMovDetailSec([]);
     if (!selectedSeccion) {
-      setSeccional(null); setPromotores([]); setFracciones([]); setRegCount(null);
-      setSelectedSM(null); setFocusCoords(null); setExpandedMovFrac(null);
-      setMovDetailSec([]);
+      setLoadingInfo(false);
       return;
     }
     const run = async () => {
       setLoadingInfo(true);
+      setCiudadanosGeo([]);
       const [rsRes, smRes, fracRes, regRes, geoRes, fracGeoRes] = await Promise.all([
         supabase.from('ciudadania').select('nombre, a_paterno, a_materno')
-          .eq('puesto', 'SECCIONAL').eq('seccion', selectedSeccion).eq('status', 'ACTIVO').maybeSingle(),
+          .eq('puesto', 'SECCIONAL').eq('seccion', selectedSeccion).eq('status', 'ACTIVO').maybeSingle().abortSignal(controller.signal),
         supabaseAdmin.from('ciudadania').select('nombre, a_paterno, a_materno, ubt, usuario, telefono_1, latitud, longitud, url_foto_perfil')
-          .eq('puesto', 'SM').eq('seccion', selectedSeccion).eq('status', 'ACTIVO').order('ubt', { ascending: true }),
-        supabase.from('ubt_catalogo').select('fraccion').eq('seccion', selectedSeccion).order('fraccion', { ascending: true }),
+          .eq('puesto', 'SM').eq('seccion', selectedSeccion).eq('status', 'ACTIVO').order('ubt', { ascending: true }).abortSignal(controller.signal),
+        supabase.from('ubt_catalogo').select('fraccion').eq('seccion', selectedSeccion).order('fraccion', { ascending: true }).abortSignal(controller.signal),
         supabase.from('ciudadania').select('id', { count: 'exact', head: true })
-          .eq('seccion', selectedSeccion).eq('status', 'ACTIVO'),
+          .eq('seccion', selectedSeccion).eq('status', 'ACTIVO').abortSignal(controller.signal),
         supabase.from('ciudadania').select('id, nombre, a_paterno, a_materno, latitud, longitud, puesto, ubt, seccion, url_foto_perfil, telefono_1')
-          .eq('seccion', selectedSeccion).eq('status', 'ACTIVO').not('latitud', 'is', null),
-        supabase.from('fracciones').select('fraccion, seccion, geometry').eq('seccion', selectedSeccion),
+          .eq('seccion', selectedSeccion).eq('status', 'ACTIVO').not('latitud', 'is', null).abortSignal(controller.signal),
+        supabase.from('fracciones').select('fraccion, seccion, geometry').eq('seccion', selectedSeccion).abortSignal(controller.signal),
       ]);
+      if (!active) return;
+      const error = [rsRes, smRes, fracRes, regRes, geoRes, fracGeoRes].find(response => response.error)?.error;
+      if (error) throw error;
       setSeccional(rsRes.data ?? null);
       const smList = smRes.data ?? [];
       setPromotores(smList);
@@ -969,17 +1002,23 @@ const TableroBoard = ({ readOnly = false }) => {
       // Buscar movilizadores por usuarios de SMs de esta sección — cubre casos donde seccion=null en el registro
       const smUsuarios = smList.map(p => p.usuario).filter(Boolean);
       if (smUsuarios.length > 0) {
-        const { data: movData } = await supabaseAdmin.from('ciudadania')
+        const { data: movData, error: movError } = await supabaseAdmin.from('ciudadania')
           .select('nombre, a_paterno, a_materno, movilizador')
           .eq('puesto', 'MOVILIZADOR').eq('status', 'ACTIVO')
-          .in('movilizador', smUsuarios);
+          .in('movilizador', smUsuarios).abortSignal(controller.signal);
+        if (!active) return;
+        if (movError) throw movError;
         setMovDetailSec(movData ?? []);
       } else {
         setMovDetailSec([]);
       }
-      setLoadingInfo(false);
     };
-    run();
+    run().catch(error => {
+      if (!active) return;
+      console.error('[TableroBoard] sección:', error.message);
+      setInfoError('No se pudo completar la carga de esta sección.');
+    }).finally(() => { if (active) setLoadingInfo(false); });
+    return () => { active = false; controller.abort(); };
   }, [selectedSeccion]);
 
   // ── Handlers ──────────────────────────────────────────────────────────────
@@ -2479,7 +2518,7 @@ const TableroBoard = ({ readOnly = false }) => {
             <div>
               <SectionTitle>Fracciones y promotores SM</SectionTitle>
               <div className="rounded-xl border border-slate-200 overflow-hidden shadow-sm">
-                <table className="w-full text-sm">
+                <table className="territorial-detail-table w-full text-sm">
                   <thead className="bg-slate-50 border-b border-slate-100">
                     <tr>
                       <th className="text-left px-2.5 py-2 text-[9px] font-bold uppercase tracking-widest text-slate-400">Fracc.</th>
@@ -2499,12 +2538,15 @@ const TableroBoard = ({ readOnly = false }) => {
                         <React.Fragment key={f.fraccion}>
                           <tr
                             onClick={() => sm && handleSelectSM(sm)}
-                            className={`transition-colors ${sm ? 'cursor-pointer' : ''} ${isSelected ? 'bg-blue-50 ring-1 ring-inset ring-blue-200' : movOpen ? 'bg-sky-50/40' : 'hover:bg-slate-50'}`}
+                            aria-current={isSelected ? 'true' : undefined}
+                            data-selected={isSelected}
+                            className={`territorial-sm-row transition-colors ${sm ? 'cursor-pointer' : ''} ${isSelected ? 'bg-blue-50 ring-1 ring-inset ring-blue-200' : movOpen ? 'bg-sky-50/40' : 'hover:bg-slate-50'}`}
                           >
                             <td className={`px-2.5 py-2 font-bold text-[11px] ${isSelected ? 'text-blue-700' : 'text-slate-600'}`}>
                               <div className="flex items-center gap-1.5">
                                 <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${dot}`} />
                                 {f.fraccion}
+                                {isSelected && <FiCheckCircle className="territorial-selection-check" aria-label="SM seleccionado" />}
                               </div>
                             </td>
                             <td className={`px-2.5 py-2 text-[11px] ${isSelected ? 'text-blue-600 font-semibold' : 'text-slate-600'}`}>
@@ -2566,28 +2608,28 @@ const TableroBoard = ({ readOnly = false }) => {
                   </tbody>
                 </table>
               </div>
-              <div className="flex gap-3 mt-1.5 px-1">
+              <div className="territorial-assignment-key flex gap-3 mt-1.5 px-1">
                 <span className="flex items-center gap-1 text-[9px] text-slate-400"><span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />Con ubicación</span>
                 <span className="flex items-center gap-1 text-[9px] text-slate-400"><span className="w-1.5 h-1.5 rounded-full bg-blue-400" />Sin ubicación</span>
                 <span className="flex items-center gap-1 text-[9px] text-slate-400"><span className="w-1.5 h-1.5 rounded-full bg-slate-200" />Sin SM</span>
               </div>
               {selectedSM && (
-                <div className={`mt-2.5 rounded-xl border p-3 ${focusCoords ? 'bg-emerald-50 border-emerald-200' : 'bg-amber-50 border-amber-200'}`}>
-                  <div className="flex items-start justify-between gap-2 mb-1.5">
-                    <div className="flex items-center gap-2">
+                <div className={`territorial-sm-card mt-2.5 rounded-xl border p-3 ${focusCoords ? 'bg-emerald-50 border-emerald-200' : 'bg-amber-50 border-amber-200'}`}>
+                  <div className="territorial-sm-card-heading flex items-start justify-between gap-2 mb-1.5">
+                    <div className="flex items-center gap-2 min-w-0">
                       <InitialAvatar name={fullName(selectedSM)} colorClass={focusCoords ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'} />
                       <div>
-                        <p className="text-xs font-bold text-slate-800 leading-tight">{fullName(selectedSM)}</p>
+                        <p className="territorial-sm-name text-xs font-bold text-slate-800 leading-tight">{fullName(selectedSM)}</p>
                         <p className="text-[10px] text-slate-500 mt-0.5">Fracción <strong>{selectedSM.ubt}</strong></p>
                       </div>
                     </div>
-                    <button onClick={() => { setSelectedSM(null); setFocusCoords(null); }} className="text-slate-400 hover:text-slate-600 text-lg leading-none flex-shrink-0">×</button>
+                    <button onClick={() => { setSelectedSM(null); setFocusCoords(null); }} aria-label="Cerrar ficha del SM" title="Cerrar ficha del SM" className="territorial-sm-close text-slate-400 hover:text-slate-600 text-lg leading-none flex-shrink-0"><FiX aria-hidden="true" /></button>
                   </div>
                   {selectedSM.telefono_1 && (
-                    <a href={`tel:${selectedSM.telefono_1}`} className="block text-[11px] text-slate-600 mb-1.5 hover:text-blue-600 transition-colors">📞 {selectedSM.telefono_1}</a>
+                    <a href={`tel:${selectedSM.telefono_1}`} className="territorial-sm-phone block text-[11px] text-slate-600 mb-1.5 hover:text-blue-600 transition-colors"><FiPhone aria-hidden="true" /> {selectedSM.telefono_1}</a>
                   )}
-                  <div className={`flex items-center gap-1 text-[11px] font-semibold ${focusCoords ? 'text-emerald-600' : 'text-amber-600'}`}>
-                    {focusCoords ? <>📍 Ubicación marcada en el mapa</> : <>⚠ Sin coordenadas registradas</>}
+                  <div className={`territorial-sm-location flex items-center gap-1 text-[11px] font-semibold ${focusCoords ? 'text-emerald-600' : 'text-amber-600'}`}>
+                    {focusCoords ? <><FiMapPin aria-hidden="true" /> Ubicación marcada en el mapa</> : <><FiAlertCircle aria-hidden="true" /> Sin coordenadas registradas</>}
                   </div>
                 </div>
               )}
@@ -2817,10 +2859,10 @@ const TableroBoard = ({ readOnly = false }) => {
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2">
               <h1 className="text-sm font-bold tracking-tight text-slate-900 whitespace-nowrap">Tablero Territorial</h1>
-              <span className="hidden sm:block text-slate-200 text-xs">·</span>
-              <span className="hidden sm:block text-xs text-slate-400 truncate">{levelLabel}</span>
+              <span className="territorial-header-context hidden sm:block text-slate-200 text-xs">·</span>
+              <span className="territorial-header-context hidden sm:block text-xs text-slate-400 truncate">{levelLabel}</span>
             </div>
-            <nav className="flex items-center gap-1 mt-0.5">
+            <nav aria-label="Ubicación territorial" className="territorial-breadcrumb flex items-center gap-1 mt-0.5">
               {crumbs.map((c, i) => (
                 <React.Fragment key={i}>
                   {i > 0 && <span className="text-slate-200 text-[10px]">›</span>}
@@ -2833,14 +2875,14 @@ const TableroBoard = ({ readOnly = false }) => {
             </nav>
           </div>
 
-          <div className="hidden sm:flex items-center gap-0.5 bg-slate-100 rounded-lg p-0.5 flex-shrink-0">
+          <div className="territorial-scope-switch hidden sm:flex items-center gap-0.5 bg-slate-100 rounded-lg p-0.5 flex-shrink-0">
             <button
               onClick={() => setMapScope('tecamac')}
               className={`px-3 py-1.5 rounded-md text-xs font-semibold whitespace-nowrap transition-all ${
                 mapScope === 'tecamac' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'
               }`}
             >
-              Tablero Territorial Tecámac
+              <span className="2xl:hidden">Tecámac</span><span className="hidden 2xl:inline">Tablero Territorial Tecámac</span>
             </button>
             <button
               onClick={() => setMapScope('edomex')}
@@ -2848,14 +2890,14 @@ const TableroBoard = ({ readOnly = false }) => {
                 mapScope === 'edomex' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'
               }`}
             >
-              Mapa Territorial Estado de México
+              <span className="2xl:hidden">Estado de México</span><span className="hidden 2xl:inline">Mapa Territorial Estado de México</span>
             </button>
           </div>
 
           {!loadingMap && mapScope === 'tecamac' && (
-            <div className="flex items-center gap-4 ml-auto flex-shrink-0">
+            <div className="territorial-header-actions flex items-center gap-4 ml-auto flex-shrink-0">
               {isAdmin && (
-                <div className="hidden sm:flex items-center gap-2">
+                <div className="territorial-header-exports hidden sm:flex items-center gap-2">
                   <button
                     onClick={downloadEstructuraExcel}
                     disabled={!allSecciones.length}
@@ -2890,7 +2932,7 @@ const TableroBoard = ({ readOnly = false }) => {
                   </button>
                 </div>
               )}
-              <div className="hidden md:flex items-center gap-4">
+              <div className="territorial-header-metrics hidden md:flex items-center gap-4">
                 <div className="text-right">
                   <p className="text-[9px] font-bold uppercase tracking-widest text-slate-400 leading-none">Secciones</p>
                   <p className="text-base font-bold tabular-nums text-slate-800 leading-none mt-0.5">{mapStats.secciones}</p>
@@ -2936,7 +2978,7 @@ const TableroBoard = ({ readOnly = false }) => {
       ) : (
       <div className="territorial-map-layout flex flex-col lg:flex-row" style={{ height: 'calc(100dvh - 56px)' }}>
         <aside className="territorial-sidebar w-full lg:w-72 xl:w-80 flex-shrink-0 bg-white border-b lg:border-b-0 lg:border-r border-slate-100 overflow-y-auto">
-          <div className="px-4 pt-4 pb-3 border-b border-slate-50">
+          <div className="territorial-route px-4 pt-4 pb-3 border-b border-slate-50">
             <p className="text-[9px] font-bold uppercase tracking-[0.15em] text-slate-400 mb-3">Nivel de análisis</p>
             <div className="flex items-center gap-0">
               {['Municipio','Distrito','Sector','Sección'].map((lbl, i) => (
@@ -2948,42 +2990,51 @@ const TableroBoard = ({ readOnly = false }) => {
                       if (i === 2 && selectedSector) setSelectedSeccion(null);
                     }}
                     disabled={i > currentLevel}
-                    className={`flex flex-col items-center gap-1 px-1 transition-all ${i > currentLevel ? 'opacity-25 cursor-default' : 'cursor-pointer'}`}
+                    aria-current={i === currentLevel ? 'step' : undefined}
+                    className={`territorial-route-step flex flex-col items-center gap-1 px-1 transition-all ${i > currentLevel ? 'opacity-25 cursor-default' : 'cursor-pointer'}`}
                   >
                     <div className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold transition-all ${
-                      i === currentLevel ? 'bg-blue-600 text-white shadow-sm shadow-blue-200' :
-                      i < currentLevel ? 'bg-blue-100 text-blue-600' : 'bg-slate-100 text-slate-400'
+                      i === currentLevel ? 'bg-rose-900 text-white shadow-sm' :
+                      i < currentLevel ? 'bg-rose-50 text-rose-900' : 'bg-slate-100 text-slate-400'
                     }`}>
                       {i < currentLevel ? '✓' : i + 1}
                     </div>
-                    <span className={`text-[9px] font-semibold whitespace-nowrap ${i === currentLevel ? 'text-blue-600' : i < currentLevel ? 'text-slate-500' : 'text-slate-300'}`}>{lbl}</span>
+                    <span className={`text-[9px] font-semibold whitespace-nowrap ${i === currentLevel ? 'text-rose-900' : i < currentLevel ? 'text-slate-500' : 'text-slate-300'}`}>{lbl}</span>
                   </button>
-                  {i < 3 && <div className={`flex-1 h-px mt-[-14px] mb-4 transition-all ${i < currentLevel ? 'bg-blue-200' : 'bg-slate-100'}`} />}
+                  {i < 3 && <div className={`flex-1 h-px mt-[-14px] mb-4 transition-all ${i < currentLevel ? 'bg-rose-200' : 'bg-slate-100'}`} />}
                 </React.Fragment>
               ))}
             </div>
           </div>
 
           <div className="p-4 space-y-4">
-            <div>
+            {(infoError || sectorError) && <p role="alert" className="territorial-notice territorial-notice-error text-xs text-red-600"><FiAlertCircle aria-hidden="true" />{infoError || sectorError}</p>}
+            {(afiliacionOffline || comprobadasOffline) && (
+              <p role="status" className="territorial-notice territorial-notice-warning text-xs text-amber-700">
+                <FiAlertCircle aria-hidden="true" />
+                <span>{afiliacionOffline && 'Afiliación: usando respaldo local. '}
+                {comprobadasOffline && 'Comprobadas: no se pudo actualizar el conteo.'}</span>
+              </p>
+            )}
+            <div className="territorial-filter-group">
               <SectionTitle accent="bg-blue-500">Distrito Federal</SectionTitle>
               {loadingMap
                 ? <div className="flex flex-wrap gap-2">{[1,2,3].map(i => <div key={i} className="h-7 w-16 bg-slate-100 rounded-lg animate-pulse" />)}</div>
-                : <div className="flex flex-wrap gap-1.5">{distritos.map(d => <Pill key={d} label={`Dto. ${d}`} active={selectedDistrito === d} color="blue" onClick={() => selectDistrito(d)} />)}</div>
+                : <div className="territorial-filter-grid">{distritos.map(d => <Pill key={d} label={`Dto. ${d}`} active={selectedDistrito === d} color="blue" onClick={() => selectDistrito(d)} />)}</div>
               }
             </div>
             {selectedDistrito && (
-              <div>
+              <div className="territorial-filter-group">
                 <SectionTitle accent="bg-emerald-500">Sectores</SectionTitle>
-                <div className="flex flex-wrap gap-1.5">
+                <div className="territorial-filter-grid">
                   {sectores.map(s => <Pill key={s} label={`Sector ${s}`} active={selectedSector === s} color="green" onClick={() => selectSector(s)} />)}
                 </div>
               </div>
             )}
             {selectedSector && (
-              <div>
+              <div className="territorial-filter-group territorial-filter-sections">
                 <SectionTitle accent="bg-violet-500">Secciones</SectionTitle>
-                <div className="flex flex-wrap gap-1.5">
+                <div className="territorial-filter-grid">
                   {seccionesDeNivel.map(s => <Pill key={s} label={`${s}`} active={selectedSeccion === s} color="violet" onClick={() => selectSeccion(s)} />)}
                 </div>
               </div>

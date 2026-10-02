@@ -1,3 +1,4 @@
+import { loadMapJson } from '../utils/loadMapJson';
 import { installPolygonMousePan } from './polygonMousePan';
 import TerritorialLoading from '../componentes/TerritorialLoading';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -952,11 +953,18 @@ const MapTerritorial = ({
     return () => window.removeEventListener('resize', onResize);
   }, []);
   useEffect(() => {
-    return () => { panFixOverlayRef.current?.cleanup?.(); };
+    // Fast Refresh can replay effects while keeping the Google map instance.
+    if (mapRef.current) {
+      panFixOverlayRef.current?.cleanup();
+      panFixOverlayRef.current = installPolygonMousePan(mapRef.current);
+    }
+    return () => {
+      panFixOverlayRef.current?.cleanup();
+      panFixOverlayRef.current = null;
+    };
   }, []);
   useEffect(() => {
-    fetch('/tecamac_casillas_pjem.json')
-      .then(r => r.json())
+    loadMapJson('/tecamac_casillas_pjem.json')
       .then(setCasillasPjem)
       .catch(() => {});
   }, []);
@@ -983,8 +991,7 @@ const MapTerritorial = ({
 
   // Dataset electoral interno (Ayuntamiento 2021)
   useEffect(() => {
-    fetch('/electoral_2021.json')
-      .then(r => r.json())
+    loadMapJson('/electoral_2021.json')
       .then(rows => {
         const m = {};
         rows.forEach(row => { m[row.seccion] = row; });
@@ -995,8 +1002,7 @@ const MapTerritorial = ({
 
   // Dataset electoral oficial IEEM (Ayuntamiento 2021)
   useEffect(() => {
-    fetch('/electoral_2021_ieem.json')
-      .then(r => r.json())
+    loadMapJson('/electoral_2021_ieem.json')
       .then(rows => {
         const m = {};
         rows.forEach(row => { m[row.seccion] = row; });
@@ -1007,8 +1013,7 @@ const MapTerritorial = ({
 
   // Dataset electoral Ayuntamiento 2024 — cómputo oficial IEEM
   useEffect(() => {
-    fetch('/electoral_2024_ieem.json')
-      .then(r => r.json())
+    loadMapJson('/electoral_2024_ieem.json')
       .then(rows => {
         const m = {};
         rows.forEach(row => { m[row.seccion] = row; });
@@ -1033,8 +1038,7 @@ const MapTerritorial = ({
 
   // Dataset electoral Senaduría 2024
   useEffect(() => {
-    fetch('/electoral_senado_2024.json')
-      .then(r => r.json())
+    loadMapJson('/electoral_senado_2024.json')
       .then(rows => {
         const m = {};
         rows.forEach(row => { m[row.seccion] = row; });
@@ -1061,8 +1065,7 @@ const MapTerritorial = ({
   // Dataset Diputación Local 2024
   useEffect(() => {
     const DIP_KEYS = ['morena', 'pri', 'mc', 'total', 'nulos', 'lista_nominal'];
-    fetch('/dip_2024.json')
-      .then(r => r.json())
+    loadMapJson('/dip_2024.json')
       .then(rows => {
         const m = {};
         rows.forEach(row => { m[row.seccion] = row; });
@@ -1150,8 +1153,7 @@ const MapTerritorial = ({
   }, [electoralDataDip2024]);
 
   useEffect(() => {
-    fetch('/gubernatura_2023_edomex.json')
-      .then(r => r.json())
+    loadMapJson('/gubernatura_2023_edomex.json')
       .then(rows => {
         const m = {};
         rows.forEach(row => { m[row.seccion] = row; });
@@ -1163,8 +1165,7 @@ const MapTerritorial = ({
   // Dataset Presidencia 2024 — cómputos finales INE por sección
   useEffect(() => {
     const PRES_KEYS = ['claudia_morena','xochitl_oposicion','pres_mc','votos_nulos','casillas','lista_nominal','total_votos'];
-    fetch('/presidencia_2024.json')
-      .then(r => r.json())
+    loadMapJson('/presidencia_2024.json')
       .then(rows => {
         const m = {};
         rows.forEach(row => { m[row.seccion] = row; });
@@ -1662,12 +1663,13 @@ const MapTerritorial = ({
       >
         {/* Panel de control flotante */}
         <div
-          className="territorial-map-controls no-print absolute top-3 z-10 bg-white/90 backdrop-blur-sm rounded-lg shadow-md p-1 border border-gray-200"
-          style={{ maxWidth: 220, left: controlsLeftOffset ? `calc(${typeof controlsLeftOffset === 'number' ? controlsLeftOffset + 'px' : controlsLeftOffset} + 12px)` : 12, transition: 'left 0.3s ease-out' }}
+          className="territorial-map-controls territorial-layer-panel no-print absolute top-3 z-10 bg-white/90 backdrop-blur-sm rounded-lg shadow-md p-1 border border-gray-200"
+          style={{ maxWidth: 264, left: controlsLeftOffset ? `calc(${typeof controlsLeftOffset === 'number' ? controlsLeftOffset + 'px' : controlsLeftOffset} + 12px)` : 12, transition: 'left 0.3s ease-out' }}
         >
 
           {/* ── Fila de estilos de mapa + botón ocultar ── siempre visible */}
-          <div className="flex flex-wrap gap-1 items-center">
+          <p className={`territorial-layer-heading ${!ctrlsOpen ? 'hidden md:block' : ''}`}>Mapa base</p>
+          <div className="territorial-base-grid flex flex-wrap gap-1 items-center">
             {Object.entries(MAP_STYLE_DEFS).filter(([key]) => key !== 'oscuro').map(([key, def]) => (
               <button
                 key={key}
@@ -1686,9 +1688,9 @@ const MapTerritorial = ({
             ))}
             {/* Ocultar / Mostrar menú */}
             <button
+              className="territorial-layer-menu px-3 py-2 md:px-2 md:py-1 rounded-md text-xs font-medium transition-all text-gray-400 hover:bg-gray-100 hover:text-gray-600 border border-gray-200"
               onClick={() => setCtrlsOpen(v => !v)}
               aria-expanded={ctrlsOpen}
-              className="px-3 py-2 md:px-2 md:py-1 rounded-md text-xs font-medium transition-all text-gray-400 hover:bg-gray-100 hover:text-gray-600 border border-gray-200"
               title={ctrlsOpen ? 'Ocultar menú' : 'Mostrar menú'}
             >
               {ctrlsOpen ? '✕ Ocultar' : '≡ Menú'}
@@ -1699,10 +1701,11 @@ const MapTerritorial = ({
           {ctrlsOpen && (
             <>
               {Object.keys(electoralData).length > 0 && (
-                <>
-                  <div className="w-full h-px bg-gray-200 my-0.5" />
+                <section className="territorial-layer-group" aria-label="Elecciones">
+                  <p className="territorial-layer-heading">Elecciones</p>
                   <button
                     onClick={() => handleSetElectoralMode(electoralMode === 'ayu_2021' ? null : 'ayu_2021')}
+                    aria-pressed={electoralMode === 'ayu_2021'}
                     className="hidden"
                     title="Datos internos — Ayuntamiento 2021"
                   >
@@ -1710,6 +1713,7 @@ const MapTerritorial = ({
                   </button>
                   <button
                     onClick={() => handleSetElectoralMode(electoralMode === 'ayu_2021_ieem' ? null : 'ayu_2021_ieem')}
+                    aria-pressed={electoralMode === 'ayu_2021_ieem'}
                     className={`w-full px-2.5 py-2 md:py-1 rounded-md text-xs font-medium transition-all text-left leading-tight ${
                       electoralMode === 'ayu_2021_ieem' ? 'bg-rose-900 text-white shadow-sm' : 'text-gray-600 hover:bg-gray-100'
                     }`}
@@ -1719,6 +1723,7 @@ const MapTerritorial = ({
                   </button>
                   <button
                     onClick={() => handleSetElectoralMode(electoralMode === 'gubernatura_2023' ? null : 'gubernatura_2023')}
+                    aria-pressed={electoralMode === 'gubernatura_2023'}
                     className={`w-full px-2.5 py-2 md:py-1 rounded-md text-xs font-medium transition-all text-left leading-tight ${
                       electoralMode === 'gubernatura_2023' ? 'bg-rose-900 text-white shadow-sm' : 'text-gray-600 hover:bg-gray-100'
                     }`}
@@ -1728,6 +1733,7 @@ const MapTerritorial = ({
                   </button>
                   <button
                     onClick={() => handleSetElectoralMode(electoralMode === 'ayu_2024_ieem' ? null : 'ayu_2024_ieem')}
+                    aria-pressed={electoralMode === 'ayu_2024_ieem'}
                     className={`w-full px-2.5 py-2 md:py-1 rounded-md text-xs font-medium transition-all text-left leading-tight ${
                       electoralMode === 'ayu_2024_ieem' ? 'bg-emerald-700 text-white shadow-sm' : 'text-gray-600 hover:bg-gray-100'
                     }`}
@@ -1737,6 +1743,7 @@ const MapTerritorial = ({
                   </button>
                   <button
                     onClick={() => handleSetElectoralMode(electoralMode === 'senado_2024' ? null : 'senado_2024')}
+                    aria-pressed={electoralMode === 'senado_2024'}
                     className={`w-full px-2.5 py-2 md:py-1 rounded-md text-xs font-medium transition-all text-left leading-tight ${
                       electoralMode === 'senado_2024' ? 'bg-rose-900 text-white shadow-sm' : 'text-gray-600 hover:bg-gray-100'
                     }`}
@@ -1746,6 +1753,7 @@ const MapTerritorial = ({
                   </button>
                   <button
                     onClick={() => handleSetElectoralMode(electoralMode === 'dip_2024' ? null : 'dip_2024')}
+                    aria-pressed={electoralMode === 'dip_2024'}
                     className={`w-full px-2.5 py-2 md:py-1 rounded-md text-xs font-medium transition-all text-left leading-tight ${
                       electoralMode === 'dip_2024' ? 'bg-slate-700 text-white shadow-sm' : 'text-gray-600 hover:bg-gray-100'
                     }`}
@@ -1755,6 +1763,7 @@ const MapTerritorial = ({
                   </button>
                   <button
                     onClick={() => handleSetElectoralMode(electoralMode === 'pres_2024' ? null : 'pres_2024')}
+                    aria-pressed={electoralMode === 'pres_2024'}
                     className={`w-full px-2.5 py-2 md:py-1 rounded-md text-xs font-medium transition-all text-left leading-tight ${
                       electoralMode === 'pres_2024' ? 'bg-rose-900 text-white shadow-sm' : 'text-gray-600 hover:bg-gray-100'
                     }`}
@@ -1762,15 +1771,18 @@ const MapTerritorial = ({
                   >
                     <BallotSvg /> Presidencia 2024 - Claudia
                   </button>
-                </>
+                </section>
               )}
 
+              <section className="territorial-layer-group" aria-label="Actividad territorial">
+              <p className="territorial-layer-heading">Actividad territorial</p>
               {/* ── Capa de actividades ─────────────────────────── */}
               {Object.keys(afiliacionBySec).length > 0 && (
                 <>
                   <div className="w-full h-px bg-gray-200 my-0.5" />
                   <button
                     onClick={() => handleSetElectoralMode(electoralMode === 'semaforo_cred' ? null : 'semaforo_cred')}
+                    aria-pressed={electoralMode === 'semaforo_cred'}
                     className={`w-full px-2.5 py-2 md:py-1 rounded-md text-xs font-medium transition-all text-left leading-tight flex items-center gap-1 ${
                       electoralMode === 'semaforo_cred' ? 'text-white shadow-sm' : 'text-gray-600 hover:bg-gray-100'
                     }`}
@@ -1788,6 +1800,7 @@ const MapTerritorial = ({
                   <div className="w-full h-px bg-gray-200 my-0.5" />
                   <button
                     onClick={() => handleSetElectoralMode(electoralMode === 'semaforo_mercado' ? null : 'semaforo_mercado')}
+                    aria-pressed={electoralMode === 'semaforo_mercado'}
                     className={`w-full px-2.5 py-2 md:py-1 rounded-md text-xs font-medium transition-all text-left leading-tight flex items-center gap-1 ${
                       electoralMode === 'semaforo_mercado' ? 'text-white shadow-sm' : 'text-gray-600 hover:bg-gray-100'
                     }`}
@@ -1804,6 +1817,7 @@ const MapTerritorial = ({
                 <div className="w-full h-px bg-gray-200 my-0.5" />
                 <button
                   onClick={() => handleSetElectoralMode(electoralMode === 'semaforo_mov' ? null : 'semaforo_mov')}
+                    aria-pressed={electoralMode === 'semaforo_mov'}
                   className={`w-full px-2.5 py-2 md:py-1 rounded-md text-xs font-medium transition-all text-left leading-tight flex items-center gap-1 ${
                     electoralMode === 'semaforo_mov' ? 'text-white shadow-sm' : 'text-gray-600 hover:bg-gray-100'
                   }`}
@@ -1814,11 +1828,15 @@ const MapTerritorial = ({
                 </button>
               </>
 
+              </section>
+              <section className="territorial-layer-group" aria-label="Ubicaciones">
+              <p className="territorial-layer-heading">Ubicaciones</p>
               {casillasPjem.length > 0 && (
                 <>
                   <div className="w-full h-px bg-gray-200 my-0.5" />
                   <button
                     onClick={() => setShowCasillasPjem(v => !v)}
+                    aria-pressed={showCasillasPjem}
                     className={`w-full px-2.5 py-2 md:py-1 rounded-md text-xs font-medium transition-all text-left leading-tight ${
                       showCasillasPjem ? 'bg-amber-700 text-white shadow-sm' : 'text-gray-600 hover:bg-gray-100'
                     }`}
@@ -1834,6 +1852,7 @@ const MapTerritorial = ({
                 <div className="w-full h-px bg-gray-200 my-0.5" />
                 <button
                   onClick={() => setShowCiudadanos(v => !v)}
+                  aria-pressed={showCiudadanos}
                   className={`w-full px-2.5 py-2 md:py-1 rounded-md text-xs font-medium transition-all text-left leading-tight ${
                     showCiudadanos ? 'bg-teal-600 text-white shadow-sm' : 'text-gray-600 hover:bg-gray-100'
                   }`}
@@ -1842,13 +1861,14 @@ const MapTerritorial = ({
                   ● Colaboradores
                 </button>
               </>
+              </section>
             </>
           )}
         </div>
 
         {/* Botones de exportación (solo cuando no hay modo editable y no es visor readOnly) */}
         {!onEditableLocationChange && !readOnly && (
-          <div className="no-print absolute top-3 right-3 z-10 flex items-center gap-1.5">
+          <div className="territorial-export-tools no-print absolute top-3 right-3 z-10 flex items-center gap-1.5">
             <button
               onClick={() => window.print()}
               className="flex items-center gap-1.5 px-2.5 py-1.5 bg-white/90 backdrop-blur-sm rounded-lg shadow-md border border-gray-200 text-xs font-semibold text-gray-600 hover:bg-gray-50 hover:border-gray-300 transition-all"
@@ -2038,9 +2058,9 @@ const MapTerritorial = ({
                       paths={ring}
                       options={{
                         fillColor:    isSelected && !electoralMode ? '#FBBF24' : color.fill,
-                        strokeColor:  isSelected && !electoralMode ? '#B45309' : isHovered ? '#1e1e1e' : showFadedBorder ? color.fill : color.stroke,
+                        strokeColor:  isSelected ? '#7B1528' : isHovered ? '#1e1e1e' : showFadedBorder ? color.fill : color.stroke,
                         fillOpacity:  isBg ? 0.05 : isDipNeutral ? 0.12 : isSelected ? 0.75 : isHovered ? 0.65 : electoralMode ? 0.60 : isDark ? 0.50 : 0.38,
-                        strokeWeight: isBg ? 3 : isSelected ? 3 : isHovered ? 2.5 : isDipNeutral ? 0.8 : showFadedBorder ? 1 : 1.5,
+                        strokeWeight: isBg ? 3 : isSelected ? 4 : isHovered ? 2.5 : isDipNeutral ? 0.8 : showFadedBorder ? 1 : 1.5,
                         strokeOpacity: showFadedBorder ? 0.15 : isDipNeutral ? 0.35 : 0.85,
                         zIndex:       isBg ? 1 : isSelected ? 20 : isHovered ? 10 : isDipNeutral ? 1 : showFadedBorder ? 5 : 2,
                         clickable:    false,
@@ -2094,7 +2114,7 @@ const MapTerritorial = ({
               >
                 <div style={{ position: 'absolute', transform: 'translate(-50%,-50%)', pointerEvents: 'none', userSelect: 'none' }}>
                   {isSelected ? (
-                    // Selected: amber pill with stronger glow
+                    // Selected: institutional label, separate from thematic fill colors
                     <span style={{
                       display: 'inline-block',
                       fontSize,
@@ -2105,12 +2125,12 @@ const MapTerritorial = ({
                       letterSpacing: '0.02em',
                       padding: '3px 9px',
                       borderRadius: 7,
-                      color: '#7c2d12',
-                      background: 'rgba(251,191,36,0.98)',
-                      border: '1.5px solid rgba(180,83,9,0.45)',
-                      boxShadow: '0 2px 8px rgba(180,83,9,0.28), 0 0 0 2.5px rgba(251,191,36,0.22)',
+                      color: '#fff',
+                      background: '#7B1528',
+                      border: '1.5px solid #fff',
+                      boxShadow: '0 2px 8px #30272a28',
                     }}>
-                      {sec.seccion}
+                      Sección {sec.seccion}
                     </span>
                   ) : (
                     // Normal/compact: crisp pill — minimal at low zoom, full at high zoom
@@ -2265,9 +2285,9 @@ const MapTerritorial = ({
                     paths={ring}
                     options={{
                       fillColor:    isAssigned ? '#DC2626' : fill,
-                      strokeColor:  isAssigned ? '#7F1D1D' : isFocused ? '#92400E' : isHovered ? '#111827' : isMobileMap ? '#1a1a1a' : stroke,
+                      strokeColor:  isAssigned ? '#7F1D1D' : isFocused ? '#7B1528' : isHovered ? '#111827' : isMobileMap ? '#1a1a1a' : stroke,
                       fillOpacity:  isAssigned ? 0.55 : isFocused ? 0.65 : isHovered ? 0.70 : isMobileMap ? 0.45 : 0.48,
-                      strokeWeight: isAssigned ? 4    : isFocused ? 3.5  : isHovered ? 3    : isMobileMap ? 2.5 : 2.2,
+                      strokeWeight: isAssigned ? 4    : isFocused ? 4  : isHovered ? 3    : isMobileMap ? 2.5 : 2.2,
                       strokeOpacity: isAssigned || isFocused || isHovered ? 1 : isMobileMap ? 0.8 : 1,
                       zIndex:       isAssigned ? 35   : isFocused ? 30   : isHovered ? 25   : 12,
                       clickable:    false,
@@ -2302,7 +2322,7 @@ const MapTerritorial = ({
                     alignItems: 'center',
                     gap: 1,
                   }}>
-                    <span style={{
+                    <span className="territorial-fraccion-label" data-focused={focusCoords?.ubt === f.fraccion} style={{
                       fontSize: 10,
                       fontWeight: 800,
                       fontFamily: 'system-ui,-apple-system,sans-serif',
@@ -2736,7 +2756,7 @@ const MapTerritorial = ({
       </div>
 
       {/* ── Pie: leyenda ────────────────────────────────────────────────── */}
-      <div className={`no-print flex-shrink-0 px-4 py-2.5 border-t hidden md:flex flex-wrap items-center gap-x-4 gap-y-1.5 ${
+      <div role="region" tabIndex={0} aria-label="Leyenda del mapa territorial" className={`territorial-map-legend no-print flex-shrink-0 px-4 py-2.5 border-t flex flex-wrap items-center gap-x-4 gap-y-1.5 ${
         isDark ? 'bg-gray-900 border-gray-700' : 'bg-white border-gray-100'
       }`}>
         {onEditableLocationChange && (
