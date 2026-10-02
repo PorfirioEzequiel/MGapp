@@ -30,6 +30,11 @@ function smFullName(sm) {
   return [sm.nombre, sm.a_paterno, sm.a_materno].filter(Boolean).join(' ');
 }
 
+function normalizeSearch(value = '') {
+  return String(value).normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase().trim().replace(/\s+/g, ' ');
+}
+
 function smMeta(sm) {
   return [
     sm.seccion ? `Sección ${sm.seccion}` : null,
@@ -81,13 +86,14 @@ function SMSearcher({ sms, selected, onSelect, error }) {
   }, []);
 
   const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase();
+    const q = normalizeSearch(query);
     if (!q) return sms.slice(0, 20);
+    const terms = q.split(' ');
     return sms
       .filter((sm) => {
-        const name = smFullName(sm).toLowerCase();
+        const name = normalizeSearch(smFullName(sm));
         return (
-          name.includes(q) ||
+          terms.every(term => name.includes(term)) ||
           String(sm.seccion ?? '').includes(q) ||
           String(sm.poligono ?? '').toLowerCase().includes(q)
         );

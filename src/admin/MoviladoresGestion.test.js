@@ -8,6 +8,7 @@ const mockFilters = jest.fn();
 let mockExisting;
 let mockUpdateResult;
 const mockSM = { usuario: 'sm-prueba', nombre: 'SM PRUEBA', poligono: 2, seccion: 4251, ubt: 17 };
+let mockSms;
 const mockClient = { from: () => {
   const query = { operation: 'load' };
   query.select = query.ilike = query.order = () => query;
@@ -18,7 +19,7 @@ const mockClient = { from: () => {
   query.then = (resolve, reject) => Promise.resolve(
     query.operation === 'lookup' ? { data: mockExisting, error: null } :
     query.operation === 'update' ? mockUpdateResult :
-    query.operation === 'insert' ? { error: null } : { data: [mockSM], error: null }
+    query.operation === 'insert' ? { error: null } : { data: mockSms, error: null }
   ).then(resolve, reject);
   return query;
 } };
@@ -29,6 +30,39 @@ beforeEach(() => {
   jest.clearAllMocks();
   mockExisting = { id: 42, puesto: 'BENEFICIARIO' };
   mockUpdateResult = { data: [{ id: 42 }], error: null };
+  mockSms = [mockSM];
+});
+
+test.each([
+  'Maria Elena Lopez Garcia',
+  '  MARÍA   ELENA  LÓPEZ  GARCÍA  ',
+  'Lopez Garcia Maria Elena',
+  '4251',
+  '2',
+])('el buscador encuentra a la SM con "%s" pese a espacios, acentos u orden', async query => {
+  mockSms = [
+    { ...mockSM, nombre: '  MARÍA  ELENA ', a_paterno: ' LÓPEZ ', a_materno: ' GARCÍA ' },
+    { usuario: 'otra-sm', nombre: 'JUANA', a_paterno: 'HERNÁNDEZ', poligono: 8, seccion: 4190 },
+  ];
+  render(<MemoryRouter><MoviladoresGestion /></MemoryRouter>);
+  const input = screen.getByPlaceholderText('Buscar por nombre, sección o sector…');
+  fireEvent.focus(input);
+  await screen.findByRole('button', { name: /MARÍA/ });
+  fireEvent.change(input, { target: { value: query } });
+  expect(screen.getByRole('button', { name: /MARÍA/ })).toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: /JUANA/ })).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: /MARÍA/ }));
+  expect(screen.getByRole('button', { name: 'Cambiar SM' })).toBeInTheDocument();
+});
+
+test('la búsqueda exige todas las palabras del nombre', async () => {
+  render(<MemoryRouter><MoviladoresGestion /></MemoryRouter>);
+  const input = screen.getByPlaceholderText('Buscar por nombre, sección o sector…');
+  fireEvent.focus(input);
+  await screen.findByRole('button', { name: /SM PRUEBA/ });
+  fireEvent.change(input, { target: { value: 'SM inexistente' } });
+  expect(screen.queryByRole('button', { name: /SM PRUEBA/ })).not.toBeInTheDocument();
+  expect(screen.getByText(/Sin resultados para/)).toBeInTheDocument();
 });
 
 async function submitForm(interior = 'a2', capturista = 'Karina') {
