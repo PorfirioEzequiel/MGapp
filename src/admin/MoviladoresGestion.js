@@ -5,6 +5,7 @@ import { LiaArrowLeftSolid } from 'react-icons/lia';
 import supabase, { supabaseStorage } from '../supabase/client';
 
 const CURP_REGEX = /^[A-Z]{1}[AEIOUX]{1}[A-Z]{2}\d{2}(0[1-9]|1[0-2])(0[1-9]|[12]\d|3[01])[HM]{1}[A-Z]{2}[B-DF-HJ-NP-TV-Z]{3}[A-Z0-9]{1}\d{1}$/;
+const CAPTURISTAS = ['Mauricio', 'Porfirio', 'Karina', 'Paola', 'Lorena', 'Otro'];
 
 const BADGE_COLORS = [
   'bg-blue-100 text-blue-700',
@@ -306,6 +307,16 @@ export default function MoviladoresGestion() {
         const { data: updated, error: updateError } = await supabaseStorage
           .from('ciudadania')
           .update({
+            nombre: nombreNorm,
+            a_paterno: apNorm,
+            a_materno: data.a_materno.toUpperCase(),
+            telefono_1: data.telefono_1,
+            calle: data.calle.toUpperCase(),
+            col_loc: data.col_loc.toUpperCase(),
+            c_p: data.c_p,
+            n_ext_mz: data.n_ext_mz.toUpperCase(),
+            n_int_lt: data.n_int_lt ? data.n_int_lt.toUpperCase() : '',
+            capturista: data.capturista,
             puesto:      'MOVILIZADOR',
             movilizador: selectedSM.usuario,
             poligono:    selectedSM.poligono ?? null,
@@ -315,6 +326,7 @@ export default function MoviladoresGestion() {
             observaciones: data.observaciones?.trim() || null,
           })
           .eq('id', existing.id)
+          .eq('puesto', existing.puesto)
           .select('id');
 
         if (updateError) {
@@ -330,6 +342,7 @@ export default function MoviladoresGestion() {
         setSuccess(`${nombreNorm} ${apNorm} actualizado de Beneficiario a Movilizador correctamente`);
         const smToKeep = selectedSM;
         reset();
+        setValue('capturista', data.capturista);
         setSelectedSM(smToKeep);
         return;
       }
@@ -353,6 +366,8 @@ export default function MoviladoresGestion() {
       n_int_lt: data.n_int_lt ? data.n_int_lt.toUpperCase() : '',
       usuario: curpNorm,
       puesto: 'MOVILIZADOR',
+      ingreso_estructura: new Date().toISOString(),
+      capturista: data.capturista,
       movilizador: selectedSM.usuario,
       poligono: selectedSM.poligono ?? null,
       seccion: selectedSM.seccion  ?? null,
@@ -375,6 +390,7 @@ export default function MoviladoresGestion() {
     setSuccess(`${record.nombre} ${record.a_paterno} registrado correctamente`);
     const smToKeep = selectedSM;
     reset();
+    setValue('capturista', data.capturista);
     setSelectedSM(smToKeep);
   };
 
@@ -429,6 +445,30 @@ export default function MoviladoresGestion() {
         )}
 
         <form onSubmit={handleSubmit(onSubmit)} noValidate className="space-y-4">
+          <fieldset className="bg-white rounded-2xl border border-slate-100 shadow-sm p-5">
+            <legend className="sr-only">Capturista</legend>
+            <p className="text-[10px] font-bold uppercase tracking-widest text-slate-800 mb-1.5">
+              ¿Quién está capturando?<span className="text-red-400 ml-0.5">*</span>
+            </p>
+            <p id="mgs-capturista-hint" className="text-xs text-slate-500 mb-3">El nombre se conserva entre registros.</p>
+            <div className="flex flex-wrap gap-2">
+              {CAPTURISTAS.map(nombre => (
+                <label key={nombre} className="flex-1 min-w-[88px] cursor-pointer">
+                  <input type="radio" value={nombre} className="sr-only peer"
+                    {...register('capturista', {
+                      required: 'Selecciona quién está capturando',
+                      validate: value => CAPTURISTAS.includes(value) || 'Selecciona un capturista de la lista',
+                    })}
+                    aria-invalid={!!errors.capturista}
+                    aria-describedby={`mgs-capturista-hint${errors.capturista ? ' mgs-capturista-error' : ''}`} />
+                  <span className="flex min-h-[44px] items-center justify-center rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-600 transition-colors hover:border-rose-300 hover:bg-rose-50 peer-checked:border-[#7B1528] peer-checked:bg-[#7B1528] peer-checked:text-white peer-focus-visible:ring-2 peer-focus-visible:ring-[#7B1528] peer-focus-visible:ring-offset-2">
+                    {nombre}
+                  </span>
+                </label>
+              ))}
+            </div>
+            {errors.capturista && <p id="mgs-capturista-error" role="alert" className="text-red-500 text-xs mt-2">{errors.capturista.message}</p>}
+          </fieldset>
           {/* ── Asignación ── */}
           <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-5">
             <p className="text-[10px] font-bold uppercase tracking-widest text-slate-800 mb-4">

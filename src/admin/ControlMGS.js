@@ -69,6 +69,19 @@ function fullName(p) {
 }
 function fmt(n) { return Number(n).toLocaleString('es-MX'); }
 
+const registrationDateFormat = new Intl.DateTimeFormat('es-MX', {
+  timeZone: 'America/Mexico_City',
+  day: '2-digit', month: '2-digit', year: 'numeric',
+  hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
+});
+function formatRegistrationDate(value) {
+  if (!value) return '';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+  const parts = Object.fromEntries(registrationDateFormat.formatToParts(date).map(part => [part.type, part.value]));
+  return `${parts.day}/${parts.month}/${parts.year} ${parts.hour}:${parts.minute}`;
+}
+
 // ── Sub-components ─────────────────────────────────────────────────────────
 
 function SemaforoDot({ pct, zero = false }) {
@@ -435,7 +448,19 @@ function SectorAnalysis({ tree, loading, movs, smByUsuario }) {
           'Fracción':    sm?.ubt ?? '—',
           'SM':          sm ? fullName(sm) : '—',
           'MGS':         fullName(m),
+          'Nombre(s)': m.nombre ?? '',
+          'Apellido paterno': m.a_paterno ?? '',
+          'Apellido materno': m.a_materno ?? '',
+          'CURP': m.curp ?? '',
+          'Teléfono': m.telefono_1 == null ? '' : String(m.telefono_1),
+          'Calle': m.calle ?? '',
+          'Colonia / localidad': m.col_loc ?? '',
+          'Código postal': m.c_p == null ? '' : String(m.c_p),
+          'Número exterior / manzana': m.n_ext_mz == null ? '' : String(m.n_ext_mz),
+          'Número interior / lote': m.n_int_lt == null ? '' : String(m.n_int_lt),
           'Observaciones': m.observaciones || '',
+          'Fecha de ingreso a estructura (CDMX)': formatRegistrationDate(m.ingreso_estructura),
+          'Capturista': m.capturista ?? '',
         };
       });
 
@@ -447,7 +472,10 @@ function SectorAnalysis({ tree, loading, movs, smByUsuario }) {
     const ws = XLSX.utils.json_to_sheet(exportRows);
     ws['!cols'] = [
       { wch: 12 }, { wch: 10 }, { wch: 10 },
-      { wch: 34 }, { wch: 34 }, { wch: 40 },
+      { wch: 34 }, { wch: 34 }, { wch: 24 },
+      { wch: 22 }, { wch: 22 }, { wch: 20 }, { wch: 16 },
+      { wch: 32 }, { wch: 32 }, { wch: 16 }, { wch: 26 },
+      { wch: 24 }, { wch: 40 }, { wch: 38 }, { wch: 18 },
     ];
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'Control MGS');
@@ -666,7 +694,7 @@ export default function ControlMGS() {
           supabaseAdmin.from('ubt_catalogo').select('seccion, fraccion').order('seccion').order('fraccion', { ascending: true }),
           supabaseAdmin.from('secciones').select('seccion, pologono'),
           supabaseAdmin.from('ciudadania').select('usuario, nombre, a_paterno, a_materno, seccion, poligono, ubt, url_foto_perfil').ilike('puesto', 'sm').eq('status', 'ACTIVO'),
-          supabaseAdmin.from('ciudadania').select('id, usuario, nombre, a_paterno, a_materno, curp, telefono_1, movilizador, observaciones').ilike('puesto', 'movilizador').eq('status', 'ACTIVO').order('a_paterno'),
+          supabaseAdmin.from('ciudadania').select('id, usuario, nombre, a_paterno, a_materno, curp, telefono_1, calle, col_loc, c_p, n_ext_mz, n_int_lt, movilizador, observaciones, ingreso_estructura, capturista').ilike('puesto', 'movilizador').eq('status', 'ACTIVO').order('a_paterno'),
         ]);
         if (catRes.error) throw catRes.error;
         if (secRes.error) throw secRes.error;
