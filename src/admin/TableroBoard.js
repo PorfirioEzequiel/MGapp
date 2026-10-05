@@ -9,6 +9,7 @@ import TerritorialLoading, { TerritorialSkeleton } from '../componentes/Territor
 import MapaEstadoMexico from '../map/MapaEstadoMexico';
 import afiliacionLocalData from '../data/afiliacion.json';
 import { backendFetch } from '../utils/backendFetch';
+import { summarizeTerritorialSMs, selectTerritorialSMScope, findSMForFraction } from '../utils/territorialSMs';
 
 const fullName = (p) => p ? `${p.nombre} ${p.a_paterno} ${p.a_materno}`.trim() : null;
 const fmt      = (n)  => n != null ? Number(n).toLocaleString('es-MX') : null;
@@ -340,6 +341,7 @@ const TableroBoard = ({ readOnly = false }) => {
   // ── Totales territoriales globales ───────────────────────────────────────
   const [globalFracciones, setGlobalFracciones] = useState({}); // seccion → count
   const [globalSMs,        setGlobalSMs]        = useState({}); // seccion → count
+  const [smRegistry, setSMRegistry] = useState({ rows: [], loaded: false, error: null });
 
   // ── Mercado Solidario ─────────────────────────────────────────────────────
   const [mercadoEntregas,   setMercadoEntregas]   = useState([]);   // lista de entregas para la gráfica histórica
@@ -378,18 +380,20 @@ const TableroBoard = ({ readOnly = false }) => {
   useEffect(() => {
     Promise.all([
       supabaseAdmin.from('ubt_catalogo').select('seccion'),
-      supabaseAdmin.from('ciudadania').select('seccion, usuario').eq('puesto', 'SM').eq('status', 'ACTIVO'),
+      supabaseAdmin.from('ciudadania').select('seccion, usuario, poligono, status').eq('puesto', 'SM'),
       supabaseAdmin.from('ciudadania').select('seccion, movilizador').eq('puesto', 'MOVILIZADOR').eq('status', 'ACTIVO'),
     ]).then(([fracRes, smRes, movRes]) => {
       const fracBySec = {};
       (fracRes.data ?? []).forEach(r => { fracBySec[r.seccion] = (fracBySec[r.seccion] ?? 0) + 1; });
       setGlobalFracciones(fracBySec);
 
+      setSMRegistry({ rows: smRes.data ?? [], loaded: true, error: smRes.error ? 'No se pudo actualizar el conteo de SM.' : null });
       const smBySec = {};
       const smSecByUsuario = {};
+      // Count every SM; movilizador assignments retain their existing active-only rule.
       (smRes.data ?? []).forEach(r => {
         smBySec[r.seccion] = (smBySec[r.seccion] ?? 0) + 1;
-        if (r.usuario) smSecByUsuario[r.usuario] = r.seccion;
+        if (r.status === 'ACTIVO' && r.usuario) smSecByUsuario[r.usuario] = r.seccion;
       });
       setGlobalSMs(smBySec);
 
@@ -400,7 +404,7 @@ const TableroBoard = ({ readOnly = false }) => {
         if (sec) movBySec[sec] = (movBySec[sec] ?? 0) + 1;
       });
       setMovCountBySec(movBySec);
-    });
+    }).catch(() => setSMRegistry({ rows: [], loaded: true, error: 'No se pudo actualizar el conteo de SM.' }));
   }, []);
 
   useEffect(() => {
@@ -644,6 +648,9 @@ const TableroBoard = ({ readOnly = false }) => {
   }, [globalFracciones, movCountBySec]);
 
   // ── Derivados ─────────────────────────────────────────────────────────────
+  const smSummary = useMemo(() => summarizeTerritorialSMs(smRegistry.rows, allSecciones), [smRegistry.rows, allSecciones]);
+  const smScopeCounts = selectTerritorialSMScope(smSummary, { section: selectedSeccion, sector: selectedSector, district: selectedDistrito });
+
   const distritos = useMemo(() =>
     [...new Set(allSecciones.map(s => s.distrito_federal))].filter(Boolean).sort((a, b) => a - b),
   [allSecciones]);
@@ -945,7 +952,7 @@ const TableroBoard = ({ readOnly = false }) => {
     setCiudadanosGeo([]);
     if (!selectedSector) return;
     supabase.from('ciudadania').select('id, nombre, a_paterno, a_materno, latitud, longitud, puesto, ubt, seccion, url_foto_perfil, telefono_1')
-      .eq('poligono', selectedSector).eq('status', 'ACTIVO').not('latitud', 'is', null).abortSignal(controller.signal)
+      .eq('poligono', selectedSector).or('status.eq.ACTIVO,puesto.eq.SM').not('latitud', 'is', null).abortSignal(controller.signal)
       .then(({ data, error }) => {
         if (!active) return;
         if (error) throw error;
@@ -975,13 +982,13 @@ const TableroBoard = ({ readOnly = false }) => {
       const [rsRes, smRes, fracRes, regRes, geoRes, fracGeoRes] = await Promise.all([
         supabase.from('ciudadania').select('nombre, a_paterno, a_materno')
           .eq('puesto', 'SECCIONAL').eq('seccion', selectedSeccion).eq('status', 'ACTIVO').maybeSingle().abortSignal(controller.signal),
-        supabaseAdmin.from('ciudadania').select('nombre, a_paterno, a_materno, ubt, usuario, telefono_1, latitud, longitud, url_foto_perfil')
-          .eq('puesto', 'SM').eq('seccion', selectedSeccion).eq('status', 'ACTIVO').order('ubt', { ascending: true }).abortSignal(controller.signal),
+        supabaseAdmin.from('ciudadania').select('id, nombre, a_paterno, a_materno, seccion, ubt, usuario, status, telefono_1, latitud, longitud, url_foto_perfil')
+          .eq('puesto', 'SM').eq('seccion', selectedSeccion).order('ubt', { ascending: true }).abortSignal(controller.signal),
         supabase.from('ubt_catalogo').select('fraccion').eq('seccion', selectedSeccion).order('fraccion', { ascending: true }).abortSignal(controller.signal),
         supabase.from('ciudadania').select('id', { count: 'exact', head: true })
           .eq('seccion', selectedSeccion).eq('status', 'ACTIVO').abortSignal(controller.signal),
         supabase.from('ciudadania').select('id, nombre, a_paterno, a_materno, latitud, longitud, puesto, ubt, seccion, url_foto_perfil, telefono_1')
-          .eq('seccion', selectedSeccion).eq('status', 'ACTIVO').not('latitud', 'is', null).abortSignal(controller.signal),
+          .eq('seccion', selectedSeccion).or('status.eq.ACTIVO,puesto.eq.SM').not('latitud', 'is', null).abortSignal(controller.signal),
         supabase.from('fracciones').select('fraccion, seccion, geometry').eq('seccion', selectedSeccion).abortSignal(controller.signal),
       ]);
       if (!active) return;
@@ -1000,7 +1007,7 @@ const TableroBoard = ({ readOnly = false }) => {
       })));
 
       // Buscar movilizadores por usuarios de SMs de esta sección — cubre casos donde seccion=null en el registro
-      const smUsuarios = smList.map(p => p.usuario).filter(Boolean);
+      const smUsuarios = smList.filter(p => p.status === 'ACTIVO').map(p => p.usuario).filter(Boolean);
       if (smUsuarios.length > 0) {
         const { data: movData, error: movError } = await supabaseAdmin.from('ciudadania')
           .select('nombre, a_paterno, a_materno, movilizador')
@@ -1041,7 +1048,7 @@ const TableroBoard = ({ readOnly = false }) => {
   const handleSelectSM = useCallback((sm) => {
     if (!sm) return;
     setSelectedSM(prev => {
-      if (prev?.ubt === sm.ubt) { setFocusCoords(null); return null; }
+      if (prev && (prev.id != null && sm.id != null ? prev.id === sm.id : prev.usuario && prev.usuario === sm.usuario)) { setFocusCoords(null); return null; }
       const lat = Number(sm.latitud), lng = Number(sm.longitud);
       if (sm.latitud && sm.longitud && !isNaN(lat) && !isNaN(lng) && lat !== 0 && lng !== 0)
         setFocusCoords({ lat, lng, name: fullName(sm), ubt: sm.ubt });
@@ -1051,7 +1058,7 @@ const TableroBoard = ({ readOnly = false }) => {
   }, []);
 
   const fraccionesWithSM = useMemo(() =>
-    fracciones.map(f => ({ ...f, sm: promotores.find(p => String(p.ubt) === String(f.fraccion)) ?? null })),
+    fracciones.map(f => ({ ...f, sm: findSMForFraction(promotores, f.fraccion) })),
   [fracciones, promotores]);
 
   // ── Totales de SMs y fracciones para el alcance actual ─────────────────────
@@ -1063,9 +1070,9 @@ const TableroBoard = ({ readOnly = false }) => {
       return allSecciones.map(s => s.seccion);
     })();
     const totalFrac = secs.reduce((s, sec) => s + (globalFracciones[sec] ?? 0), 0);
-    const totalSMs  = secs.reduce((s, sec) => s + (globalSMs[sec] ?? 0), 0);
+    const totalSMs  = selectTerritorialSMScope(smSummary, { section: selectedSeccion, sector: selectedSector, district: selectedDistrito }).total;
     return { totalFrac, totalSMs, pct: totalFrac > 0 ? (totalSMs / totalFrac) * 100 : null };
-  }, [selectedSeccion, selectedSector, selectedDistrito, allSecciones, globalFracciones, globalSMs]);
+  }, [selectedSeccion, selectedSector, selectedDistrito, allSecciones, globalFracciones, smSummary]);
 
   const crumbs = useMemo(() => {
     const list = [{ label: 'Municipio', onClick: () => { setSelectedDistrito(null); setSelectedSector(null); setSelectedSeccion(null); } }];
@@ -1561,7 +1568,7 @@ const TableroBoard = ({ readOnly = false }) => {
             </div>
             <div className="divide-y divide-slate-50">
               {fracciones.map(f => {
-                const sm = promotores.find(p => String(p.ubt) === String(f.fraccion));
+                const sm = findSMForFraction(promotores, f.fraccion);
                 const smMov = movDetailSec.filter(m => sm && m.movilizador === sm.usuario);
                 const smCount = smMov.length;
                 const smPct = Math.min((smCount / 10) * 100, 100);
@@ -2466,6 +2473,13 @@ const TableroBoard = ({ readOnly = false }) => {
       const padronTotal = secData?.padron ?? secData?.padron_electoral;
       const smConUbic  = promotores.filter(p => p.latitud && Number(p.latitud) !== 0).length;
       const fracConSM  = fracciones.filter(f => promotores.some(p => String(p.ubt) === String(f.fraccion))).length;
+      const smsWithoutFraction = promotores.filter(sm => sm.ubt == null || String(sm.ubt).trim() === '');
+      const catalogFractions = new Set(fracciones.map(f => String(f.fraccion)));
+      const uncataloguedFractions = [...new Set(promotores
+        .filter(sm => sm.ubt != null && String(sm.ubt).trim() !== '' && !catalogFractions.has(String(sm.ubt)))
+        .map(sm => String(sm.ubt)))];
+      // Keep recorded fractions visible without adding them to catalog counts or map geometry.
+      const displayedFractions = [...fracciones, ...uncataloguedFractions.map(fraccion => ({ fraccion, outsideCatalog: true }))];
       const afSec      = afiliacionStats?.seccion;
 
       return (
@@ -2481,7 +2495,7 @@ const TableroBoard = ({ readOnly = false }) => {
             <StatCard label="Lista Nominal" value={fmt(secData?.lista_nominal)} accent />
             <StatCard label="Padrón" value={fmt(padronTotal)} sub="electoral" />
             <StatCard label="Fracciones" value={fracciones.length} />
-            <StatCard label="SMs" value={promotores.length} sub="activos" />
+            <StatCard label="SMs" value={smRegistry.loaded && !smRegistry.error ? smScopeCounts.total : '—'} sub="registradas" />
           </div>
 
           {/* Cobertura + Afiliación */}
@@ -2514,7 +2528,7 @@ const TableroBoard = ({ readOnly = false }) => {
           </div>
 
           {/* Fracciones */}
-          {fracciones.length > 0 ? (
+          {displayedFractions.length > 0 ? (
             <div>
               <SectionTitle>Fracciones y promotores SM</SectionTitle>
               <div className="rounded-xl border border-slate-200 overflow-hidden shadow-sm">
@@ -2528,8 +2542,9 @@ const TableroBoard = ({ readOnly = false }) => {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-50">
-                    {fracciones.map(f => {
-                      const sm           = promotores.find(p => String(p.ubt) === String(f.fraccion));
+                    {displayedFractions.map(f => {
+                      const sm           = findSMForFraction(promotores, f.fraccion);
+                      const fractionSMs  = promotores.filter(p => String(p.ubt) === String(f.fraccion));
                       const isSelected   = String(selectedSM?.ubt) === String(f.fraccion);
                       const hasCoords    = sm?.latitud && Number(sm.latitud) !== 0 && !isNaN(Number(sm.latitud));
                       const dot          = sm ? (hasCoords ? 'bg-emerald-400' : 'bg-blue-400') : 'bg-slate-200';
@@ -2548,9 +2563,12 @@ const TableroBoard = ({ readOnly = false }) => {
                                 {f.fraccion}
                                 {isSelected && <FiCheckCircle className="territorial-selection-check" aria-label="SM seleccionado" />}
                               </div>
+                              {f.outsideCatalog && <span className="block mt-0.5 text-[9px] font-normal text-amber-600">Sin coincidencia en catálogo</span>}
                             </td>
                             <td className={`px-2.5 py-2 text-[11px] ${isSelected ? 'text-blue-600 font-semibold' : 'text-slate-600'}`}>
-                              {fullName(sm) || <span className="text-slate-300 italic text-[10px]">Sin asignar</span>}
+                              {fractionSMs.length ? fractionSMs.map(person => (
+                                <button key={person.id ?? person.usuario ?? fullName(person)} type="button" className="block text-left py-0.5 hover:text-blue-700" onClick={event => { event.stopPropagation(); handleSelectSM(person); }}>{fullName(person)}</button>
+                              )) : <span className="text-slate-300 italic text-[10px]">Sin asignar</span>}
                             </td>
                             <td className="px-2 py-1.5 text-center">
                               <button
@@ -2613,29 +2631,33 @@ const TableroBoard = ({ readOnly = false }) => {
                 <span className="flex items-center gap-1 text-[9px] text-slate-400"><span className="w-1.5 h-1.5 rounded-full bg-blue-400" />Sin ubicación</span>
                 <span className="flex items-center gap-1 text-[9px] text-slate-400"><span className="w-1.5 h-1.5 rounded-full bg-slate-200" />Sin SM</span>
               </div>
-              {selectedSM && (
-                <div className={`territorial-sm-card mt-2.5 rounded-xl border p-3 ${focusCoords ? 'bg-emerald-50 border-emerald-200' : 'bg-amber-50 border-amber-200'}`}>
-                  <div className="territorial-sm-card-heading flex items-start justify-between gap-2 mb-1.5">
-                    <div className="flex items-center gap-2 min-w-0">
-                      <InitialAvatar name={fullName(selectedSM)} colorClass={focusCoords ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'} />
-                      <div>
-                        <p className="territorial-sm-name text-xs font-bold text-slate-800 leading-tight">{fullName(selectedSM)}</p>
-                        <p className="text-[10px] text-slate-500 mt-0.5">Fracción <strong>{selectedSM.ubt}</strong></p>
-                      </div>
-                    </div>
-                    <button onClick={() => { setSelectedSM(null); setFocusCoords(null); }} aria-label="Cerrar ficha del SM" title="Cerrar ficha del SM" className="territorial-sm-close text-slate-400 hover:text-slate-600 text-lg leading-none flex-shrink-0"><FiX aria-hidden="true" /></button>
-                  </div>
-                  {selectedSM.telefono_1 && (
-                    <a href={`tel:${selectedSM.telefono_1}`} className="territorial-sm-phone block text-[11px] text-slate-600 mb-1.5 hover:text-blue-600 transition-colors"><FiPhone aria-hidden="true" /> {selectedSM.telefono_1}</a>
-                  )}
-                  <div className={`territorial-sm-location flex items-center gap-1 text-[11px] font-semibold ${focusCoords ? 'text-emerald-600' : 'text-amber-600'}`}>
-                    {focusCoords ? <><FiMapPin aria-hidden="true" /> Ubicación marcada en el mapa</> : <><FiAlertCircle aria-hidden="true" /> Sin coordenadas registradas</>}
-                  </div>
-                </div>
-              )}
             </div>
           ) : (
             <EmptyGuide>No hay fracciones registradas para esta sección.</EmptyGuide>
+          )}
+          {smsWithoutFraction.length > 0 && <div className="rounded-xl border border-slate-100 bg-white p-3 shadow-sm">
+            <SectionTitle>Sin fracción asignada</SectionTitle>
+            {smsWithoutFraction.map(sm => <button key={sm.id ?? sm.usuario ?? fullName(sm)} type="button" className="block w-full text-left text-[11px] text-slate-600 py-1.5 hover:text-blue-700" onClick={() => handleSelectSM(sm)}>{fullName(sm)}</button>)}
+          </div>}
+          {selectedSM && (
+            <div className={`territorial-sm-card mt-2.5 rounded-xl border p-3 ${focusCoords ? 'bg-emerald-50 border-emerald-200' : 'bg-amber-50 border-amber-200'}`}>
+              <div className="territorial-sm-card-heading flex items-start justify-between gap-2 mb-1.5">
+                <div className="flex items-center gap-2 min-w-0">
+                  <InitialAvatar name={fullName(selectedSM)} colorClass={focusCoords ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'} />
+                  <div>
+                    <p className="territorial-sm-name text-xs font-bold text-slate-800 leading-tight">{fullName(selectedSM)}</p>
+                    <p className="text-[10px] text-slate-500 mt-0.5">{selectedSM.ubt == null || String(selectedSM.ubt).trim() === '' ? 'Sin fracción asignada' : <>Fracción <strong>{selectedSM.ubt}</strong></>}</p>
+                  </div>
+                </div>
+                <button onClick={() => { setSelectedSM(null); setFocusCoords(null); }} aria-label="Cerrar ficha del SM" title="Cerrar ficha del SM" className="territorial-sm-close text-slate-400 hover:text-slate-600 text-lg leading-none flex-shrink-0"><FiX aria-hidden="true" /></button>
+              </div>
+              {selectedSM.telefono_1 && (
+                <a href={`tel:${selectedSM.telefono_1}`} className="territorial-sm-phone block text-[11px] text-slate-600 mb-1.5 hover:text-blue-600 transition-colors"><FiPhone aria-hidden="true" /> {selectedSM.telefono_1}</a>
+              )}
+              <div className={`territorial-sm-location flex items-center gap-1 text-[11px] font-semibold ${focusCoords ? 'text-emerald-600' : 'text-amber-600'}`}>
+                {focusCoords ? <><FiMapPin aria-hidden="true" /> Ubicación marcada en el mapa</> : <><FiAlertCircle aria-hidden="true" /> Sin coordenadas registradas</>}
+              </div>
+            </div>
           )}
         </div>
       );
@@ -2646,7 +2668,6 @@ const TableroBoard = ({ readOnly = false }) => {
       const secData           = allSecciones.filter(s => s.pologono === selectedSector);
       const listaNominal      = secData.reduce((s, x) => s + (Number(x.lista_nominal) || 0), 0);
       const fraccionesSector  = secData.reduce((s, x) => s + (globalFracciones[x.seccion] ?? 0), 0);
-      const smsSector         = secData.reduce((s, x) => s + (globalSMs[x.seccion] ?? 0), 0);
       const af                = afiliacionStats;
       const afKey             = String(selectedSector);
       const afSect            = af?.bySector?.[afKey];
@@ -2662,7 +2683,7 @@ const TableroBoard = ({ readOnly = false }) => {
             <StatCard label="Lista Nominal" value={fmt(listaNominal)} accent wide />
             <StatCard label="Secciones" value={secData.length} sub="en este sector" />
             <StatCard label="Fracciones" value={fraccionesSector || '—'} sub="en este sector" />
-            <StatCard label="SMs" value={smsSector || '—'} sub="activas" />
+            <StatCard label="SMs" value={smRegistry.loaded && !smRegistry.error ? smScopeCounts.total : '—'} sub="registradas" />
             <StatCard label="Ubicados" value={ciudadanosGeo.length || '—'} sub="con coordenadas" />
           </div>
           <div className="bg-white border border-slate-100 rounded-xl p-3 shadow-sm">
@@ -2679,7 +2700,6 @@ const TableroBoard = ({ readOnly = false }) => {
       const secData           = allSecciones.filter(s => s.distrito_federal === selectedDistrito);
       const listaNominal      = secData.reduce((s, x) => s + (Number(x.lista_nominal) || 0), 0);
       const fraccionesDistrito = secData.reduce((s, x) => s + (globalFracciones[x.seccion] ?? 0), 0);
-      const smsDistrito        = secData.reduce((s, x) => s + (globalSMs[x.seccion] ?? 0), 0);
       const af                = afiliacionStats;
       const dKey              = String(selectedDistrito);
       const afDist            = af?.byDistrito?.[dKey];
@@ -2695,7 +2715,7 @@ const TableroBoard = ({ readOnly = false }) => {
             <StatCard label="Secciones" value={secData.length} />
             <StatCard label="Sectores" value={sectoresEnDist.length} />
             <StatCard label="Fracciones" value={fraccionesDistrito || '—'} sub="en este distrito" />
-            <StatCard label="SMs" value={smsDistrito || '—'} sub="activas" />
+            <StatCard label="SMs" value={smRegistry.loaded && !smRegistry.error ? smScopeCounts.total : '—'} sub="registradas" />
           </div>
           <EmptyGuide>Selecciona un sector para ver sus secciones y coordinadores.</EmptyGuide>
         </div>
@@ -2706,7 +2726,6 @@ const TableroBoard = ({ readOnly = false }) => {
     const totalNominal    = allSecciones.reduce((s, x) => s + (Number(x.lista_nominal) || 0), 0);
     const totalSectores   = [...new Set(allSecciones.map(s => s.pologono))].length;
     const totalFracciones = Object.values(globalFracciones).reduce((s, n) => s + n, 0);
-    const totalSMsMun     = Object.values(globalSMs).reduce((s, n) => s + n, 0);
     const af              = afiliacionStats;
     const afTotal         = af?.total;
     const sectorRows      = Object.entries(af?.bySector ?? {})
@@ -2721,7 +2740,7 @@ const TableroBoard = ({ readOnly = false }) => {
           <StatCard label="Distritos" value={distritos.length} />
           <StatCard label="Sectores" value={totalSectores} />
           <StatCard label="Fracciones" value={totalFracciones || '—'} sub="total municipal" />
-          <StatCard label="SMs" value={totalSMsMun || '—'} sub="activas" />
+          <StatCard label="SMs" value={smRegistry.loaded && !smRegistry.error ? smScopeCounts.total : '—'} sub="registradas" />
         </div>
         <EmptyGuide>Selecciona un distrito federal para comenzar el análisis territorial.</EmptyGuide>
       </div>
@@ -2824,12 +2843,10 @@ const TableroBoard = ({ readOnly = false }) => {
     const secToSp = {};
     for (const s of allSecciones) secToSp[s.seccion] = s.pologono;
 
-    // Agrupa SMs por sector usando globalSMs (ciudadania puesto=SM) y globalFracciones
+    // Use each SM's sector so historical sections are not exported without a sector.
     const bySector = {};
-    for (const [sec, count] of Object.entries(globalSMs)) {
-      const sp = secToSp[Number(sec)] ?? '?';
-      if (!bySector[sp]) bySector[sp] = { sm: 0, fracciones: 0 };
-      bySector[sp].sm += count;
+    for (const [sector, bucket] of Object.entries(smSummary.bySector)) {
+      bySector[sector] = { sm: bucket.total, fracciones: 0 };
     }
     for (const [sec, count] of Object.entries(globalFracciones)) {
       const sp = secToSp[Number(sec)] ?? '?';
@@ -2845,7 +2862,7 @@ const TableroBoard = ({ readOnly = false }) => {
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'SM por Sector');
     XLSX.writeFile(wb, `sm_por_sector_${new Date().toISOString().slice(0,10)}.xlsx`);
-  }, [allSecciones, globalSMs, globalFracciones]);
+  }, [allSecciones, smSummary, globalFracciones]);
 
   return (
     <div className="territorial-board min-h-screen bg-slate-50 font-sans">
@@ -3008,7 +3025,7 @@ const TableroBoard = ({ readOnly = false }) => {
           </div>
 
           <div className="p-4 space-y-4">
-            {(infoError || sectorError) && <p role="alert" className="territorial-notice territorial-notice-error text-xs text-red-600"><FiAlertCircle aria-hidden="true" />{infoError || sectorError}</p>}
+            {(infoError || sectorError || smRegistry.error) && <p role="alert" className="territorial-notice territorial-notice-error text-xs text-red-600"><FiAlertCircle aria-hidden="true" />{infoError || sectorError || smRegistry.error}</p>}
             {(afiliacionOffline || comprobadasOffline) && (
               <p role="status" className="territorial-notice territorial-notice-warning text-xs text-amber-700">
                 <FiAlertCircle aria-hidden="true" />

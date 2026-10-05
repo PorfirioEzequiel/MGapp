@@ -1,8 +1,10 @@
 import { loadMapJson } from '../utils/loadMapJson';
 import { installPolygonMousePan } from './polygonMousePan';
+import { getMapRuntime, IS_LEAFLET } from './territorialMapProvider';
+import { LEAFLET_BASEMAPS } from './territorialMapConfig';
 import TerritorialLoading from '../componentes/TerritorialLoading';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { GoogleMap, useJsApiLoader, Polygon, Marker, InfoWindow, OverlayView, Autocomplete } from '@react-google-maps/api';
+import { GoogleMap, useJsApiLoader, Polygon, Marker, InfoWindow, OverlayView, Autocomplete } from './territorialMapProvider';
 
 import { GOOGLE_MAPS_API_KEY as GOOGLE_API_KEY, GOOGLE_MAPS_LIBRARIES as GOOGLE_LIBRARIES } from '../utils/googleMapsConfig';
 const DEFAULT_CENTER = { lat: 19.66, lng: -98.99 };
@@ -979,13 +981,13 @@ const MapTerritorial = ({
 
   const casillaTier = currentZoom >= 16 ? 3 : currentZoom >= 14 ? 2 : currentZoom >= 12 ? 1 : 0;
   const urnaIcon = useMemo(() => {
-    if (!window.google || !isLoaded) return undefined;
+    if (!getMapRuntime() || !isLoaded) return undefined;
     const [W, H] = CASILLA_SIZES[casillaTier];
     const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 34 44"><ellipse cx="17" cy="41.5" rx="5.5" ry="1.8" fill="rgba(0,0,0,0.20)"/><path d="M17 2C9.8 2 4 7.8 4 15c0 10 13 26.5 13 26.5S30 25 30 15C30 7.8 24.2 2 17 2z" fill="#F59E0B" stroke="#D97706" stroke-width="1.2"/><circle cx="17" cy="14.5" r="10" fill="rgba(255,255,255,0.12)"/><rect x="10" y="10" width="14" height="3.5" rx="1.2" fill="rgba(255,255,255,0.97)"/><rect x="13" y="10.8" width="8" height="1.6" rx="0.7" fill="#92400E"/><polygon points="11,13.5 23,13.5 22,22 12,22" fill="rgba(255,255,255,0.93)"/><line x1="13" y1="17.5" x2="21" y2="17.5" stroke="rgba(146,64,14,0.20)" stroke-width="0.8"/><rect x="12.5" y="22" width="2.5" height="1.5" rx="0.4" fill="rgba(255,255,255,0.85)"/><rect x="19" y="22" width="2.5" height="1.5" rx="0.4" fill="rgba(255,255,255,0.85)"/></svg>`;
     return {
       url: 'data:image/svg+xml;base64,' + btoa(svg),
-      scaledSize: new window.google.maps.Size(W, H),
-      anchor: new window.google.maps.Point(Math.round(W / 2), H - 1),
+      scaledSize: new (getMapRuntime().maps.Size)(W, H),
+      anchor: new (getMapRuntime().maps.Point)(Math.round(W / 2), H - 1),
     };
   }, [isLoaded, casillaTier]);
 
@@ -1231,8 +1233,8 @@ const MapTerritorial = ({
 
   // Auto-fit al cambiar secciones visibles
   useEffect(() => {
-    if (!mapRef.current || !secciones.length || !window.google) return;
-    const bounds = new window.google.maps.LatLngBounds();
+    if (!mapRef.current || !secciones.length || !getMapRuntime()) return;
+    const bounds = new (getMapRuntime().maps.LatLngBounds)();
     let has = false;
     secciones.forEach(sec => {
       parseWKT(sec.geometry).flat().forEach(p => { bounds.extend(p); has = true; });
@@ -1245,8 +1247,8 @@ const MapTerritorial = ({
     setActiveMarker(null);
     hoveredRef.current = null;
     setHovered(null);
-    if (!mapRef.current || !window.google || !secciones.length) return;
-    const bounds = new window.google.maps.LatLngBounds();
+    if (!mapRef.current || !getMapRuntime() || !secciones.length) return;
+    const bounds = new (getMapRuntime().maps.LatLngBounds)();
     let has = false;
     if (selectedSeccion != null) {
       const sec = secciones.find(s => s.seccion === selectedSeccion);
@@ -1261,10 +1263,10 @@ const MapTerritorial = ({
 
   // Scope preciso a la fracción: fitBounds en el polígono, fallback panTo+zoom
   useEffect(() => {
-    if (!focusCoords || !mapRef.current || !window.google) return;
+    if (!focusCoords || !mapRef.current || !getMapRuntime()) return;
     const rings = focusCoords.ubt ? (fraccionPathMap.get(focusCoords.ubt) ?? []) : [];
     if (rings.length) {
-      const bounds = new window.google.maps.LatLngBounds();
+      const bounds = new (getMapRuntime().maps.LatLngBounds)();
       rings.flat().forEach(p => bounds.extend(p));
       mapRef.current.fitBounds(bounds, { top: 80, bottom: 80, left: 80, right: 80 });
     } else {
@@ -1275,7 +1277,7 @@ const MapTerritorial = ({
 
   // Pan al marcador editable cuando se coloca o se actualiza (p.ej. escribiendo lat/lng a mano)
   useEffect(() => {
-    if (!editableLocation || !mapRef.current || !window.google) return;
+    if (!editableLocation || !mapRef.current || !getMapRuntime()) return;
     mapRef.current.panTo(editableLocation);
   }, [editableLocation]);
 
@@ -1288,8 +1290,8 @@ const MapTerritorial = ({
 
     // Fit bounds inmediato al montar (los datos ya pueden estar cargados)
     const allSecs = seccionesRef.current;
-    if (!allSecs.length || !window.google) return;
-    const bounds = new window.google.maps.LatLngBounds();
+    if (!allSecs.length || !getMapRuntime()) return;
+    const bounds = new (getMapRuntime().maps.LatLngBounds)();
     let has = false;
     const selSec = selectedSecRef.current;
     const targets = selSec != null ? allSecs.filter(s => s.seccion === selSec) : allSecs;
@@ -1312,7 +1314,7 @@ const MapTerritorial = ({
 
   // ── Generar PDF con formato ───────────────────────────────────────────────
   const generatePDF = useCallback(async () => {
-    if (!mapRef.current || !window.google) return;
+    if (IS_LEAFLET || !mapRef.current || !window.google) return;
     setGenerating(true);
     try {
       // 1. Fit bounds al contenido actual
@@ -1613,9 +1615,9 @@ const MapTerritorial = ({
   }, [isMobileMap, selectedSeccion, fraccionesGeo, fraccionPathMap, secciones, seccionPaths, ciudadanos]);
 
   const markerIcon = useCallback((puesto) => {
-    if (!window.google) return undefined;
+    if (!getMapRuntime()) return undefined;
     return {
-      path: window.google.maps.SymbolPath.CIRCLE,
+      path: getMapRuntime().maps.SymbolPath.CIRCLE,
       scale: 7,
       fillColor: getPuestoColor(puesto),
       fillOpacity: 0.92,
@@ -1670,12 +1672,13 @@ const MapTerritorial = ({
           {/* ── Fila de estilos de mapa + botón ocultar ── siempre visible */}
           <p className={`territorial-layer-heading ${!ctrlsOpen ? 'hidden md:block' : ''}`}>Mapa base</p>
           <div className="territorial-base-grid flex flex-wrap gap-1 items-center">
-            {Object.entries(MAP_STYLE_DEFS).filter(([key]) => key !== 'oscuro').map(([key, def]) => (
+            {Object.entries(IS_LEAFLET ? LEAFLET_BASEMAPS : MAP_STYLE_DEFS).filter(([key]) => IS_LEAFLET || key !== 'oscuro').map(([key, def]) => (
               <button
                 key={key}
                 onClick={() => setCurrentStyle(key)}
                 aria-pressed={currentStyle === key}
-                className={`px-2.5 py-1 rounded-md text-xs font-medium transition-all ${
+                title={IS_LEAFLET ? LEAFLET_BASEMAPS[key]?.description : def.label}
+                className={`territorial-basemap-choice px-2.5 py-1 rounded-md text-xs font-medium transition-all ${
                   !ctrlsOpen ? 'hidden md:inline-flex' : ''
                 } ${
                   currentStyle === key
@@ -1683,7 +1686,8 @@ const MapTerritorial = ({
                     : 'text-gray-600 hover:bg-gray-100'
                 }`}
               >
-                {def.label}
+                {IS_LEAFLET && <span className={`territorial-basemap-swatch territorial-basemap-swatch-${key}`} aria-hidden="true" />}
+                {IS_LEAFLET ? LEAFLET_BASEMAPS[key]?.label || def.label : def.label}
               </button>
             ))}
             {/* Ocultar / Mostrar menú */}
@@ -1867,7 +1871,7 @@ const MapTerritorial = ({
         </div>
 
         {/* Botones de exportación (solo cuando no hay modo editable y no es visor readOnly) */}
-        {!onEditableLocationChange && !readOnly && (
+        {!IS_LEAFLET && !onEditableLocationChange && !readOnly && (
           <div className="territorial-export-tools no-print absolute top-3 right-3 z-10 flex items-center gap-1.5">
             <button
               onClick={() => window.print()}
@@ -1936,6 +1940,7 @@ const MapTerritorial = ({
         )}
 
         <GoogleMap
+          baseStyle={currentStyle}
           mapContainerStyle={{ width: '100%', height: '100%', touchAction: gestureHandling === 'cooperative' ? 'auto' : 'none' }}
           center={DEFAULT_CENTER}
           zoom={11}
@@ -1950,7 +1955,7 @@ const MapTerritorial = ({
             streetViewControl: false,
             fullscreenControl: false,
             zoomControl: true,
-            zoomControlOptions: { position: window.google.maps.ControlPosition.RIGHT_CENTER },
+            zoomControlOptions: { position: getMapRuntime().maps.ControlPosition.RIGHT_CENTER },
             scaleControl: true,
             rotateControl: false,
             clickableIcons: false,
@@ -2496,7 +2501,7 @@ const MapTerritorial = ({
             const parsed = parseCasillaUbicacion(c.ubicacion);
             const mapsUrl = `https://www.google.com/maps/search/?api=1&query=${c.lat},${c.lng}`;
             const dirUrl  = `https://www.google.com/maps/dir/?api=1&destination=${c.lat},${c.lng}`;
-            const svUrl   = `https://maps.googleapis.com/maps/api/streetview?size=576x292&location=${c.lat},${c.lng}&fov=80&pitch=5&key=${GOOGLE_API_KEY}`;
+            const svUrl   = IS_LEAFLET ? null : `https://maps.googleapis.com/maps/api/streetview?size=576x292&location=${c.lat},${c.lng}&fov=80&pitch=5&key=${GOOGLE_API_KEY}`;
             const cardStyle = {
               width: 288,
               background: '#fff',
@@ -2526,12 +2531,12 @@ const MapTerritorial = ({
 
                     {/* ── Foto Street View ── */}
                     <div style={{ position: 'relative', height: 148, background: 'linear-gradient(135deg,#fef3c7,#fde68a)' }}>
-                      <img
+                      {svUrl ? <img
                         src={svUrl}
                         alt=""
                         style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
                         onError={e => { e.currentTarget.style.display = 'none'; }}
-                      />
+                      /> : <a href={`https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=${c.lat},${c.lng}`} target="_blank" rel="noopener noreferrer" style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', whiteSpace: 'nowrap', color: '#78350f', fontSize: 13, fontWeight: 600, zIndex: 1 }}>Abrir Street View ↗</a>}
                       <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(to top,rgba(0,0,0,0.38) 0%,transparent 52%)' }} />
                       {/* Casillas badge */}
                       <div style={{
@@ -2695,11 +2700,11 @@ const MapTerritorial = ({
           })}
 
           {/* ── Marcador de enfoque SM seleccionada ─────────────────── */}
-          {focusCoords && window.google && (
+          {focusCoords && getMapRuntime() && (
             <Marker
               position={{ lat: focusCoords.lat, lng: focusCoords.lng }}
               icon={{
-                path: window.google.maps.SymbolPath.CIRCLE,
+                path: getMapRuntime().maps.SymbolPath.CIRCLE,
                 scale: 16,
                 fillColor: '#F59E0B',
                 fillOpacity: 0.85,
@@ -2712,13 +2717,13 @@ const MapTerritorial = ({
           )}
 
           {/* ── Marcador editable (arrastrable) ─────────────────────── */}
-          {editableLocation && window.google && (
+          {editableLocation && getMapRuntime() && (
             <Marker
               position={editableLocation}
               draggable={!!onEditableLocationChange}
               onDragEnd={handleEditableMarkerDragEnd}
               icon={{
-                path: window.google.maps.SymbolPath.CIRCLE,
+                path: getMapRuntime().maps.SymbolPath.CIRCLE,
                 scale: 10,
                 fillColor: '#DC2626',
                 fillOpacity: 0.95,

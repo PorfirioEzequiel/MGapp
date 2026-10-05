@@ -1,6 +1,7 @@
 // Desktop fallback for drawing surfaces that intercept Google's native drag.
 // Keep clicks, markers, controls and touch gestures on their existing handlers.
 export function installPolygonMousePan(map) {
+  if (map.provider === 'leaflet') return { cleanup() {} };
   const root = map.getDiv();
   const doc = root.ownerDocument;
   const view = doc.defaultView;

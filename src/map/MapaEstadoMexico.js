@@ -1,11 +1,13 @@
 import { loadMapJson } from '../utils/loadMapJson';
+import { getMapRuntime } from './territorialMapProvider';
 import { installPolygonMousePan } from './polygonMousePan';
 import TerritorialLoading, { TerritorialSkeleton } from '../componentes/TerritorialLoading';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { GoogleMap, useJsApiLoader, Polygon, OverlayView } from '@react-google-maps/api';
+import { GoogleMap, useJsApiLoader, Polygon, OverlayView } from './territorialMapProvider';
 import supabase from '../supabase/client';
 import { GOOGLE_MAPS_API_KEY, GOOGLE_MAPS_LIBRARIES } from '../utils/googleMapsConfig';
 import { MAP_STYLE_DEFS } from './mapStyles';
+import { IS_LEAFLET, LEAFLET_BASEMAPS } from './territorialMapConfig';
 
 const EDOMEX_CENTER = { lat: 19.35, lng: -99.65 };
 
@@ -1491,8 +1493,8 @@ const MapaEstadoMexico = () => {
 
   // ── Auto-encuadre según el nivel activo ──────────────────────────────────
   useEffect(() => {
-    if (!mapRef.current || !window.google) return;
-    const bounds = new window.google.maps.LatLngBounds();
+    if (!mapRef.current || !getMapRuntime()) return;
+    const bounds = new (getMapRuntime().maps.LatLngBounds)();
     let has = false;
     const extend = (wkt) => parseWKT(wkt).flat().forEach(p => { bounds.extend(p); has = true; });
 
@@ -2003,6 +2005,7 @@ const MapaEstadoMexico = () => {
           <TerritorialLoading label="Preparando Estado de México" detail="Cargando la base cartográfica" />
         ) : (
           <GoogleMap
+            baseStyle={currentStyle}
             mapContainerClassName="territorial-map-reveal"
             mapContainerStyle={{ width: '100%', height: '100%' }}
             center={EDOMEX_CENTER}
@@ -2016,7 +2019,7 @@ const MapaEstadoMexico = () => {
               mapTypeId: styleDef.mapTypeId,
               mapTypeControl: false,
               zoomControl: true,
-              zoomControlOptions: { position: window.google.maps.ControlPosition.RIGHT_CENTER },
+              zoomControlOptions: { position: getMapRuntime().maps.ControlPosition.RIGHT_CENTER },
               scaleControl: true,
               gestureHandling: 'greedy',
               clickableIcons: false,
@@ -2225,15 +2228,17 @@ const MapaEstadoMexico = () => {
             {controlsOpen && <>
             <p className="territorial-layer-heading">Mapa base</p>
             <div className="territorial-base-grid flex flex-wrap gap-1">
-              {Object.entries(MAP_STYLE_DEFS).filter(([key]) => key !== 'oscuro').map(([key, def]) => (
+              {Object.entries(IS_LEAFLET ? LEAFLET_BASEMAPS : MAP_STYLE_DEFS).filter(([key]) => IS_LEAFLET || key !== 'oscuro').map(([key, def]) => (
                 <button
                   key={key}
                   onClick={() => setCurrentStyle(key)}
                   aria-pressed={currentStyle === key}
-                  className="px-2.5 py-1 rounded-md text-xs font-medium transition-all"
+                  title={IS_LEAFLET ? LEAFLET_BASEMAPS[key]?.description : def.label}
+                  className="territorial-basemap-choice px-2.5 py-1 rounded-md text-xs font-medium transition-all"
                   style={currentStyle === key ? { backgroundColor: GUINDA, color: '#fff' } : { color: '#4B5563' }}
                 >
-                  {def.label}
+                  {IS_LEAFLET && <span className={`territorial-basemap-swatch territorial-basemap-swatch-${key}`} aria-hidden="true" />}
+                  {IS_LEAFLET ? LEAFLET_BASEMAPS[key]?.label || def.label : def.label}
                 </button>
               ))}
             </div>

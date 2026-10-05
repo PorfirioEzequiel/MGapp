@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { GoogleMap, useJsApiLoader, Polygon, InfoWindow } from '@react-google-maps/api';
+import { GoogleMap, useJsApiLoader, Polygon, InfoWindow } from '../map/territorialMapProvider';
 import { useNavigate } from 'react-router-dom';
 import supabase from '../supabase/client';
 import { GOOGLE_MAPS_API_KEY, GOOGLE_MAPS_LIBRARIES } from '../utils/googleMapsConfig';

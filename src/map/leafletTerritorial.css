@@ -1,0 +1,45 @@
+.territorial-leaflet-shell { position: relative; isolation: isolate; z-index: 0; overflow: hidden; }
+.territorial-leaflet-map { position: absolute; inset: 0; width: 100%; height: 100%; font-family: inherit; }
+.territorial-basemap-pane { transition: opacity 200ms ease-out; }
+.territorial-basemap-surface-claro { filter: grayscale(1) contrast(1.08) brightness(1.025); }
+.territorial-basemap-surface-oscuro { filter: grayscale(1) brightness(.55); }
+.territorial-basemap-surface-oscuro[data-renderer="vector"] { filter: grayscale(1); }
+.territorial-basemap-reference-oscuro { filter: grayscale(1) brightness(1.3); }
+.territorial-basemap-oscuro .territorial-leaflet-map { background: #17191c; }
+.territorial-basemap-claro .territorial-leaflet-map,
+.territorial-basemap-minimal .territorial-leaflet-map { background: #f4f4f3; }
+.territorial-basemap-choice { display: inline-flex; align-items: center; gap: 7px; transition: background-color 160ms ease-out, color 160ms ease-out, border-color 160ms ease-out; }
+.territorial-basemap-swatch { width: 22px; height: 22px; flex-shrink: 0; border: 1px solid #b3aca680; border-radius: 5px; }
+.territorial-basemap-swatch-claro { background: linear-gradient(35deg, transparent 42%, #fff 43% 52%, transparent 53%), linear-gradient(110deg, #e4e6e2 30%, #a9aaa7 31% 34%, #f7f7f5 35% 63%, #cecfca 64% 68%, #e4e6e2 69%); }
+.territorial-basemap-swatch-satelite { background: linear-gradient(35deg, transparent 45%, #dce2cd 46% 49%, transparent 50%), linear-gradient(120deg, #485542 35%, #b0a68c 36% 48%, #364435 49% 72%, #696550 73%); }
+.territorial-basemap-swatch-minimal { background: linear-gradient(110deg, #eee 46%, #fff 47% 54%, #ddd 55%); }
+.territorial-basemap-swatch-oscuro { background: linear-gradient(35deg, transparent 43%, #e8e8e8 44% 48%, transparent 49%), linear-gradient(110deg, #181a1c 35%, #a0a5ab 36% 40%, #303238 41% 70%, #181a1c 71%); }
+.territorial-leaflet-overlay { background: transparent; border: 0; pointer-events: none !important; }
+.territorial-leaflet-overlay > div { pointer-events: auto; }
+.territorial-leaflet-pin { background: transparent; border: 0; }
+.territorial-leaflet-map .leaflet-control-zoom { margin-top: 88px; border: 1px solid #e5e1df; border-radius: 10px; overflow: hidden; box-shadow: 0 2px 8px #29101712; }
+.territorial-leaflet-map .leaflet-control-zoom a { color: #7B1528; width: 34px; height: 34px; line-height: 34px; }
+.territorial-leaflet-map .leaflet-control-zoom a:hover { background: #faf6f7; }
+.territorial-leaflet-map .leaflet-control-zoom a:focus-visible { outline: 2px solid #7B1528; outline-offset: -3px; }
+.territorial-leaflet-map .leaflet-control-attribution { font-size: 9px; max-width: min(80vw, 520px); background: #fffffff0; line-height: 1.35; }
+.territorial-leaflet-map .leaflet-control-attribution a { color: #694453; }
+.territorial-basemap-loading { position: absolute; right: 12px; top: 48px; z-index: 1000; display: flex; align-items: center; gap: 7px; padding: 7px 10px; border: 1px solid #e5e1df; border-radius: 8px; background: #fffefbf2; color: #65575c; font: 11px/1.4 system-ui; pointer-events: none; }
+.territorial-basemap-loading > span { width: 12px; height: 12px; border: 2px solid #e5d9dd; border-top-color: #7B1528; border-radius: 50%; animation: territorial-map-spin 700ms linear infinite; }
+@keyframes territorial-map-spin { to { transform: rotate(360deg); } }
+.territorial-tile-error { position: absolute; bottom: 38px; left: 50%; transform: translateX(-50%); z-index: 1000; padding: 8px 12px; border: 1px solid #eadbd3; border-radius: 8px; color: #704022; background: #fffaf4ee; font: 11px/1.4 system-ui; width: max-content; max-width: 85%; }
+.territorial-tile-error button { color: #7B1528; font-weight: 600; text-decoration: underline; padding: 4px; }
+.territorial-address-search { position: relative; }
+.territorial-address-search button { color: #7B1528; background: #fff; border: 1px solid #e5e1df; border-radius: 7px; padding: 5px 9px; font-size: 12px; }
+.territorial-address-submit { position: absolute; right: 4px; top: 4px; }
+.territorial-address-search input { padding-right: 70px; }
+.territorial-address-results { margin-top: 5px; padding: 5px; background: #fff; border: 1px solid #e5e1df; border-radius: 10px; box-shadow: 0 4px 16px #2910171a; max-height: 220px; overflow: auto; }
+.territorial-address-results button { display: block; width: 100%; text-align: left; border: 0; padding: 9px; }
+.territorial-address-results button:hover { background: #faf6f7; }
+.territorial-address-feedback { padding: 6px; margin-top: 4px; background: #fff; border-radius: 6px; font-size: 11px; color: #704022; }
+@media (max-width: 767px) {
+  .territorial-leaflet-map .leaflet-control-attribution { margin: 0 8px 8px; max-width: calc(100vw - 24px); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .territorial-basemap-pane, .territorial-basemap-choice { transition: none; }
+  .territorial-basemap-loading > span { animation: none; }
+}

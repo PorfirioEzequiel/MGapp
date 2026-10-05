@@ -41,7 +41,7 @@ import MoviladoresGestion from './admin/MoviladoresGestion';
 import SubirEvidenciaActividad from './pages/SubirEvidenciaActividad';
 import ControlMGS from './admin/ControlMGS';
 import RecuperarApoyos from './admin/RecuperarApoyos';
-import TerritorialPinGate from './componentes/TerritorialPinGate';
+import TerritorialMapEntry from './componentes/TerritorialMapEntry';
 
 // Componente para proteger rutas privadas
 const PrivateRoute = ({ children }) => {
@@ -90,14 +90,14 @@ function App() {
         {/* Rutas protegidas */}
         <Route path="/admin" element={<PrivateRoute><Admin /></PrivateRoute>} />
         <Route path="/territorio" element={<PrivateRoute><Territorio /></PrivateRoute>} />
-        <Route path="/tablero" element={<PrivateRoute><TerritorialPinGate><TableroBoard /></TerritorialPinGate></PrivateRoute>} />
+        <Route path="/tablero" element={<PrivateRoute><TerritorialMapEntry><TableroBoard /></TerritorialMapEntry></PrivateRoute>} />
         <Route path="/solicitudes" element={<PrivateRoute><SolicitudesAdmin /></PrivateRoute>} />
         <Route path="/admin/reporte" element={<PrivateRoute><ReportePoligonos /></PrivateRoute>} />
         <Route path="/admin/base" element={<PrivateRoute><ExcelDownloader /></PrivateRoute>} />
         <Route path="/admin/programas" element={<PrivateRoute><ProgramasSociales /></PrivateRoute>} />
         <Route path="/admin/actividades" element={<PrivateRoute><Actividades /></PrivateRoute>} />
         <Route path="/admin/certificados" element={<PrivateRoute><ReporteCertificados /></PrivateRoute>} />
-        <Route path="/admin/mapa-edomex" element={<PrivateRoute><TerritorialPinGate><MapaEdomex /></TerritorialPinGate></PrivateRoute>} />
+        <Route path="/admin/mapa-edomex" element={<PrivateRoute><TerritorialMapEntry><MapaEdomex /></TerritorialMapEntry></PrivateRoute>} />
         <Route path="/admin/mercado" element={<PrivateRoute><MercadoControl /></PrivateRoute>} />
         <Route path="/admin/solicitudes-apoyos" element={<PrivateRoute><SolicitudesApoyos /></PrivateRoute>} />
         <Route path="/admin/reporte-mercado" element={<PrivateRoute><ReporteMercado /></PrivateRoute>} />

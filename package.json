@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "dependencies": {
+    "@maplibre/maplibre-gl-leaflet": "0.1.4",
     "@react-google-maps/api": "^2.20.3",
     "@supabase/supabase-js": "^2.46.1",
     "@testing-library/jest-dom": "^5.17.0",
@@ -11,6 +12,8 @@
     "html2canvas": "^1.4.1",
     "html5-qrcode": "^2.3.8",
     "jspdf": "^4.2.1",
+    "leaflet": "1.9.4",
+    "maplibre-gl": "6.12.0",
     "mongodb": "^7.6.0",
     "papaparse": "^5.5.1",
     "qrcode.react": "^4.2.0",
@@ -24,6 +27,8 @@
     "xlsx": "^0.18.5"
   },
   "scripts": {
+    "prestart": "node scripts/prepare-map-workers.cjs",
+    "prebuild": "node scripts/prepare-map-workers.cjs",
     "start": "react-scripts start",
     "build": "react-scripts build",
     "test": "react-scripts test",

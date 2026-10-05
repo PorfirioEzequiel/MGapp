@@ -3,6 +3,10 @@ import { fireEvent, render, screen } from '@testing-library/react';
 import MapaEstadoMexico from './MapaEstadoMexico';
 import { loadMapJson } from '../utils/loadMapJson';
 
+jest.mock('./territorialMapProvider', () => ({
+  ...jest.requireMock('@react-google-maps/api'),
+  getMapRuntime: () => global.window.google, IS_LEAFLET: false,
+}));
 jest.mock('../utils/loadMapJson', () => ({ loadMapJson: jest.fn() }));
 jest.mock('../supabase/client', () => ({ __esModule: true, default: {} }));
 jest.mock('@react-google-maps/api', () => ({
