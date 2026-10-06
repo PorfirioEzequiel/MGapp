@@ -462,7 +462,7 @@ export default function RegistroApoyos() {
       setError("Completa el nombre y al menos el apellido paterno.");
       return;
     }
-    if (ciudadanoExistente && ciudadanoExistente.puesto !== "BENEFICIARIO" && ciudadanoExistente.puesto !== "SM") {
+    if (ciudadanoExistente && ciudadanoExistente.puesto !== "BENEFICIARIO" && ciudadanoExistente.puesto !== "SM" && ciudadanoExistente.puesto !== "MOVILIZADOR") {
       setError(`Esta persona está registrada con el perfil "${ciudadanoExistente.puesto}". Acércate a la oficina para más información.`);
       return;
     }
@@ -654,7 +654,7 @@ export default function RegistroApoyos() {
       // Verificación directa en BD para obtener el id real sin depender del estado de React
       const { data: enBD } = await supabaseAdmin
         .from("ciudadania")
-        .select("id, movilizador, seccion, dtto_fed")
+        .select("id, puesto, movilizador, seccion, dtto_fed")
         .eq("curp", datosCurp.curp)
         .maybeSingle();
 
@@ -1122,17 +1122,17 @@ export default function RegistroApoyos() {
           ) : (
             <Card className="overflow-hidden">
               <div className={`px-4 py-3.5 border-b ${
-                ciudadanoExistente?.puesto && ciudadanoExistente.puesto !== "BENEFICIARIO" && ciudadanoExistente.puesto !== "SM"
+                ciudadanoExistente?.puesto && ciudadanoExistente.puesto !== "BENEFICIARIO" && ciudadanoExistente.puesto !== "SM" && ciudadanoExistente.puesto !== "MOVILIZADOR"
                   ? "bg-red-50 border-red-100"
                   : ciudadanoExistente ? "bg-amber-50 border-amber-100"
                   : "bg-emerald-50 border-emerald-100"
               }`}>
                 <div className="flex items-center gap-3">
                   <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${
-                    ciudadanoExistente?.puesto && ciudadanoExistente.puesto !== "BENEFICIARIO" && ciudadanoExistente.puesto !== "SM"
+                    ciudadanoExistente?.puesto && ciudadanoExistente.puesto !== "BENEFICIARIO" && ciudadanoExistente.puesto !== "SM" && ciudadanoExistente.puesto !== "MOVILIZADOR"
                       ? "bg-red-100" : ciudadanoExistente ? "bg-amber-100" : "bg-emerald-100"
                   }`}>
-                    {ciudadanoExistente?.puesto && ciudadanoExistente.puesto !== "BENEFICIARIO" && ciudadanoExistente.puesto !== "SM" ? (
+                    {ciudadanoExistente?.puesto && ciudadanoExistente.puesto !== "BENEFICIARIO" && ciudadanoExistente.puesto !== "SM" && ciudadanoExistente.puesto !== "MOVILIZADOR" ? (
                       <svg className="w-3.5 h-3.5 text-red-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
                     ) : ciudadanoExistente ? (
                       <svg className="w-3.5 h-3.5 text-amber-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M12 9v4m0 4h.01M12 3a9 9 0 110 18A9 9 0 0112 3z" /></svg>
@@ -1142,10 +1142,10 @@ export default function RegistroApoyos() {
                   </div>
                   <div>
                     <p className={`text-[10px] font-bold uppercase tracking-widest ${
-                      ciudadanoExistente?.puesto && ciudadanoExistente.puesto !== "BENEFICIARIO" && ciudadanoExistente.puesto !== "SM"
+                      ciudadanoExistente?.puesto && ciudadanoExistente.puesto !== "BENEFICIARIO" && ciudadanoExistente.puesto !== "SM" && ciudadanoExistente.puesto !== "MOVILIZADOR"
                         ? "text-red-600" : ciudadanoExistente ? "text-amber-700" : "text-emerald-700"
                     }`}>
-                      {ciudadanoExistente?.puesto && ciudadanoExistente.puesto !== "BENEFICIARIO" && ciudadanoExistente.puesto !== "SM"
+                      {ciudadanoExistente?.puesto && ciudadanoExistente.puesto !== "BENEFICIARIO" && ciudadanoExistente.puesto !== "SM" && ciudadanoExistente.puesto !== "MOVILIZADOR"
                         ? "Perfil no elegible"
                         : ciudadanoExistente ? "Ya registrado en el sistema"
                         : "CURP verificada · Persona nueva"}
@@ -1157,7 +1157,7 @@ export default function RegistroApoyos() {
               </div>
 
               <div className="px-4 py-4 space-y-3">
-                {ciudadanoExistente?.puesto && ciudadanoExistente.puesto !== "BENEFICIARIO" && ciudadanoExistente.puesto !== "SM" ? (
+                {ciudadanoExistente?.puesto && ciudadanoExistente.puesto !== "BENEFICIARIO" && ciudadanoExistente.puesto !== "SM" && ciudadanoExistente.puesto !== "MOVILIZADOR" ? (
                   <>
                     <ErrBox msg={`Esta persona está registrada como "${ciudadanoExistente.puesto}". Acércate a la oficina para más información.`} />
                     <Btn v="ghost" onClick={() => { setError(""); setDatosCurp(null); setSubId("inicio"); }}>← Volver al inicio</Btn>
@@ -1172,7 +1172,15 @@ export default function RegistroApoyos() {
                         <p className="text-xs text-blue-700">Seguidora de Manzana — se registrará como beneficiaria de apoyos sin cambiar su puesto.</p>
                       </div>
                     )}
-                    {ciudadanoExistente && ciudadanoExistente.puesto !== "SM" && (
+                    {ciudadanoExistente?.puesto === "MOVILIZADOR" && (
+                      <div className="flex gap-2 bg-blue-50 border border-blue-100 rounded-xl px-3.5 py-2.5">
+                        <svg className="w-3.5 h-3.5 text-blue-600 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M11.25 11.25l.041-.02a.75.75 0 011.063.852l-.708 2.836a.75.75 0 001.063.853l.041-.021M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9-3.75h.008v.008H12V8.25z" />
+                        </svg>
+                        <p className="text-xs text-blue-700">Movilizador/a — se registrará como beneficiario/a de apoyos sin cambiar su puesto.</p>
+                      </div>
+                    )}
+                    {ciudadanoExistente && ciudadanoExistente.puesto !== "SM" && ciudadanoExistente.puesto !== "MOVILIZADOR" && (
                       <div className="flex gap-2 bg-amber-50 border border-amber-100 rounded-xl px-3.5 py-2.5">
                         <svg className="w-3.5 h-3.5 text-amber-600 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor">
                           <path strokeLinecap="round" strokeLinejoin="round" d="M11.25 11.25l.041-.02a.75.75 0 011.063.852l-.708 2.836a.75.75 0 001.063.853l.041-.021M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9-3.75h.008v.008H12V8.25z" />

@@ -33,7 +33,8 @@ export default function SolicitudesApoyos() {
   const [registros,     setRegistros]     = useState([]);
   const [cargando,      setCargando]      = useState(false);
   const [smNombres,     setSmNombres]     = useState({});
-  const [guardandoPago, setGuardandoPago] = useState(null);
+  const [guardandoPago,   setGuardandoPago]   = useState(null);
+  const [guardandoStatus, setGuardandoStatus] = useState(null);
 
   // Cargar programas para el filtro (supabaseAdmin bypasses RLS)
   useEffect(() => {
@@ -95,6 +96,20 @@ export default function SolicitudesApoyos() {
     });
   }, [progFiltro, statusFiltro]);
 
+  const actualizarStatus = async (id, valor) => {
+    setGuardandoStatus(id);
+    const { error } = await supabaseAdmin
+      .from("apoyo_entregas")
+      .update({ status: valor })
+      .eq("id", id);
+    if (!error) {
+      setRegistros((prev) =>
+        prev.map((r) => (r.id === id ? { ...r, status: valor } : r))
+      );
+    }
+    setGuardandoStatus(null);
+  };
+
   const actualizarFormaPago = async (id, valor) => {
     setGuardandoPago(id);
     const { error } = await supabaseAdmin
@@ -134,7 +149,7 @@ export default function SolicitudesApoyos() {
   ).length;
 
   const descargarCSV = () => {
-    const cols = ["Nombre", "Teléfono", "Sector", "Sección", "Fracción", "SM", "Cantidad", "Apoyo", "Pago"];
+    const cols = ["Nombre", "Teléfono", "Sector", "Sección", "Fracción", "SM", "Cantidad", "Apoyo", "Pago", "Estatus", "Fecha"];
     const filas = filtrados.map((r) => {
       const c = r.ciudadania;
       const nombre = c ? `${c.nombre ?? ""} ${c.a_paterno ?? ""} ${c.a_materno ?? ""}`.trim() : "";
@@ -149,6 +164,8 @@ export default function SolicitudesApoyos() {
         r.cantidad ?? 1,
         r.programas_sociales?.nombre ?? "",
         r.forma_pago ?? "",
+        r.status ?? "",
+        r.created_at ? new Date(r.created_at).toLocaleDateString("es-MX") : "",
       ].map((v) => `"${String(v).replace(/"/g, '""')}"`).join(",");
     });
     const csv = [cols.join(","), ...filas].join("\n");
@@ -369,9 +386,16 @@ export default function SolicitudesApoyos() {
                           <span className="text-xs text-slate-400">{fmtFecha(r.created_at)}</span>
                         </td>
                         <td className="px-4 py-3 text-center">
-                          <span className={`inline-block text-[10px] font-bold uppercase px-2.5 py-1 rounded-full ${badgeStatus(r.status)}`}>
-                            {r.status}
-                          </span>
+                          <select
+                            value={r.status ?? "PENDIENTE"}
+                            onChange={(e) => actualizarStatus(r.id, e.target.value)}
+                            disabled={guardandoStatus === r.id}
+                            className={`text-[10px] font-bold uppercase px-2 py-1 rounded-full border-0 cursor-pointer focus:outline-none focus:ring-2 focus:ring-blue-400 disabled:opacity-50 ${badgeStatus(r.status)}`}
+                          >
+                            <option value="PENDIENTE">PENDIENTE</option>
+                            <option value="ENTREGADO">ENTREGADO</option>
+                            <option value="CANCELADO">CANCELADO</option>
+                          </select>
                         </td>
                         <td className="px-4 py-3 text-center">
                           {c?.id ? (
