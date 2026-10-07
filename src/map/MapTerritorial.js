@@ -5,6 +5,7 @@ import { LEAFLET_BASEMAPS } from './territorialMapConfig';
 import TerritorialLoading from '../componentes/TerritorialLoading';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { GoogleMap, useJsApiLoader, Polygon, Marker, InfoWindow, OverlayView, Autocomplete } from './territorialMapProvider';
+import './locationPicker.css';
 
 import { GOOGLE_MAPS_API_KEY as GOOGLE_API_KEY, GOOGLE_MAPS_LIBRARIES as GOOGLE_LIBRARIES } from '../utils/googleMapsConfig';
 const DEFAULT_CENTER = { lat: 19.66, lng: -98.99 };
@@ -850,6 +851,7 @@ const MapTerritorial = ({
   printContext = null,
   editableLocation = null,
   onEditableLocationChange = null,
+  locationOnly = false,
   showFraccionesAlways = false,
   electoralModeExternal = null,
   onElectoralModeChange = null,
@@ -866,6 +868,9 @@ const MapTerritorial = ({
   const zoomTimerRef     = useRef(null);
   const panFixOverlayRef = useRef(null);
   const hoveredRef       = useRef(null);
+  const editableLocationRef = useRef(editableLocation);
+  const lastHomePanRef = useRef(null);
+  useEffect(() => { editableLocationRef.current = editableLocation; }, [editableLocation]);
 
   const [activeMarker,    setActiveMarker]    = useState(null);
   const [sectorColorMap,  setSectorColorMap]  = useState({});
@@ -916,6 +921,40 @@ const MapTerritorial = ({
     fraccionRings.forEach(f => m.set(f.fraccion, f.rings));
     return m;
   }, [fraccionRings]);
+
+  // Referencia de trabajo del formulario: siempre procede del selector, nunca del pin.
+  const locationReference = useMemo(() => {
+    if (!locationOnly || selectedSeccion == null) return [];
+    const matchesSection = row => String(row.seccion) === String(selectedSeccion);
+    return [
+      ...secciones.filter(matchesSection).map(sec => ({
+        key: `section-${sec.seccion}`, isSection: true,
+        paths: seccionPaths.get(sec.id ?? sec.seccion) ?? [],
+      })),
+      ...fraccionesGeo.filter(matchesSection).map(frac => ({
+        key: `fraction-${frac.fraccion}`, label: frac.fraccion,
+        paths: fraccionPathMap.get(frac.fraccion) ?? [],
+      })),
+    ].filter(reference => reference.paths.length);
+  }, [locationOnly, selectedSeccion, secciones, seccionPaths, fraccionesGeo, fraccionPathMap]);
+  // Los formularios reconstruyen sus arrays al escribir; encuadrar solo si cambia la geometría.
+  const locationReferenceKey = JSON.stringify(locationReference);
+  const locationReferenceRef = useRef(locationReference);
+  useEffect(() => { locationReferenceRef.current = locationReference; }, [locationReference]);
+
+  const fitLocationReference = useCallback((map) => {
+    const points = locationReferenceRef.current.flatMap(reference => reference.paths.flat());
+    if (!map || !getMapRuntime() || !points.length) return false;
+    const bounds = new (getMapRuntime().maps.LatLngBounds)();
+    points.forEach(point => bounds.extend(point));
+    // Mantener visible también el domicilio, aunque esté fuera del territorio asignado.
+    if (editableLocationRef.current) {
+      bounds.extend(editableLocationRef.current);
+      lastHomePanRef.current = editableLocationRef.current;
+    }
+    map.fitBounds(bounds, 32);
+    return true;
+  }, []);
 
   // Si hay alguna fracción con geometría (solo recalcula cuando cambia fraccionRings)
   const hasFracGeom = fraccionRings.length > 0;
@@ -1234,19 +1273,21 @@ const MapTerritorial = ({
   // Auto-fit al cambiar secciones visibles
   useEffect(() => {
     if (!mapRef.current || !secciones.length || !getMapRuntime()) return;
+    if (locationOnly) return;
     const bounds = new (getMapRuntime().maps.LatLngBounds)();
     let has = false;
     secciones.forEach(sec => {
       parseWKT(sec.geometry).flat().forEach(p => { bounds.extend(p); has = true; });
     });
     if (has) mapRef.current.fitBounds(bounds, 32);
-  }, [secciones]);
+  }, [secciones, locationOnly]);
 
   // Centrar en la sección seleccionada (o en todo el sector si es null)
   useEffect(() => {
     setActiveMarker(null);
     hoveredRef.current = null;
     setHovered(null);
+    if (locationOnly) return;
     if (!mapRef.current || !getMapRuntime() || !secciones.length) return;
     const bounds = new (getMapRuntime().maps.LatLngBounds)();
     let has = false;
@@ -1259,7 +1300,11 @@ const MapTerritorial = ({
       bounds,
       selectedSeccion != null ? { top: 80, bottom: 160, left: 60, right: 60 } : 32
     );
-  }, [selectedSeccion]);
+  }, [selectedSeccion, locationOnly]);
+
+  useEffect(() => {
+    if (locationOnly) fitLocationReference(mapRef.current);
+  }, [locationOnly, locationReferenceKey, fitLocationReference]);
 
   // Scope preciso a la fracción: fitBounds en el polígono, fallback panTo+zoom
   useEffect(() => {
@@ -1278,8 +1323,11 @@ const MapTerritorial = ({
   // Pan al marcador editable cuando se coloca o se actualiza (p.ej. escribiendo lat/lng a mano)
   useEffect(() => {
     if (!editableLocation || !mapRef.current || !getMapRuntime()) return;
+    if (locationOnly && lastHomePanRef.current?.lat === editableLocation.lat && lastHomePanRef.current?.lng === editableLocation.lng) return;
+    lastHomePanRef.current = editableLocation;
     mapRef.current.panTo(editableLocation);
-  }, [editableLocation]);
+    if (locationOnly && mapRef.current.getZoom() < 16) mapRef.current.setZoom(16);
+  }, [locationOnly, editableLocation]);
 
   const onLoad = useCallback((map) => {
     mapRef.current = map;
@@ -1287,6 +1335,16 @@ const MapTerritorial = ({
 
     panFixOverlayRef.current?.cleanup();
     panFixOverlayRef.current = installPolygonMousePan(map);
+
+    if (locationOnly) {
+      if (fitLocationReference(map)) return;
+      if (editableLocationRef.current) {
+        map.panTo(editableLocationRef.current);
+        map.setZoom(16);
+        lastHomePanRef.current = editableLocationRef.current;
+      }
+      return;
+    }
 
     // Fit bounds inmediato al montar (los datos ya pueden estar cargados)
     const allSecs = seccionesRef.current;
@@ -1302,7 +1360,7 @@ const MapTerritorial = ({
       bounds,
       selSec != null ? { top: 80, bottom: 160, left: 60, right: 60 } : 32
     );
-  }, []);
+  }, [locationOnly, fitLocationReference]);
 
   const onZoomChanged = useCallback(() => {
     if (!mapRef.current) return;
@@ -1650,8 +1708,22 @@ const MapTerritorial = ({
   };
 
   return (
-    <div className="mp-root territorial-map-reveal flex flex-col h-full">
+    <div className={`mp-root territorial-map-reveal flex flex-col h-full ${locationOnly ? 'territorial-location-picker' : ''}`}>
       <PrintHeader ctx={printContext} />
+
+      {locationOnly && (
+        <div className="territorial-location-toolbar">
+          <div className="territorial-location-search">
+            <Autocomplete onLoad={onAutocompleteLoad} onPlaceChanged={onPlaceChanged} options={{ componentRestrictions: { country: 'mx' } }}>
+              <input type="text" aria-label="Buscar calle o dirección" placeholder="Calle, colonia o dirección…" />
+            </Autocomplete>
+          </div>
+          <div className="territorial-location-views" aria-label="Vista del domicilio">
+            {['claro', 'satelite'].map(style => <button type="button" key={style} aria-pressed={currentStyle === style}
+              onClick={() => setCurrentStyle(style)}>{style === 'claro' ? 'Claro' : 'Satélite'}</button>)}
+          </div>
+        </div>
+      )}
 
       <div className="flex flex-col flex-1 rounded-xl shadow-lg border border-gray-200">
 
@@ -1660,11 +1732,11 @@ const MapTerritorial = ({
         ref={containerRef}
         className="relative flex-1 min-h-[400px] overflow-hidden"
         style={{ touchAction: 'auto' }}
-        onMouseMove={isMobileMap ? undefined : handleContainerMouseMove}
+        onMouseMove={isMobileMap || locationOnly ? undefined : handleContainerMouseMove}
         onMouseLeave={isMobileMap ? undefined : () => { hoveredRef.current = null; setHovered(null); }}
       >
         {/* Panel de control flotante */}
-        <div
+        {!locationOnly && <div
           className="territorial-map-controls territorial-layer-panel no-print absolute top-3 z-10 bg-white/90 backdrop-blur-sm rounded-lg shadow-md p-1 border border-gray-200"
           style={{ maxWidth: 264, left: controlsLeftOffset ? `calc(${typeof controlsLeftOffset === 'number' ? controlsLeftOffset + 'px' : controlsLeftOffset} + 12px)` : 12, transition: 'left 0.3s ease-out' }}
         >
@@ -1673,7 +1745,7 @@ const MapTerritorial = ({
           <p className={`territorial-layer-heading ${!ctrlsOpen ? 'hidden md:block' : ''}`}>Mapa base</p>
           <div className="territorial-base-grid flex flex-wrap gap-1 items-center">
             {Object.entries(IS_LEAFLET ? LEAFLET_BASEMAPS : MAP_STYLE_DEFS).filter(([key]) => IS_LEAFLET || key !== 'oscuro').map(([key, def]) => (
-              <button
+              <button type="button"
                 key={key}
                 onClick={() => setCurrentStyle(key)}
                 aria-pressed={currentStyle === key}
@@ -1691,7 +1763,7 @@ const MapTerritorial = ({
               </button>
             ))}
             {/* Ocultar / Mostrar menú */}
-            <button
+            <button type="button"
               className="territorial-layer-menu px-3 py-2 md:px-2 md:py-1 rounded-md text-xs font-medium transition-all text-gray-400 hover:bg-gray-100 hover:text-gray-600 border border-gray-200"
               onClick={() => setCtrlsOpen(v => !v)}
               aria-expanded={ctrlsOpen}
@@ -1707,7 +1779,7 @@ const MapTerritorial = ({
               {Object.keys(electoralData).length > 0 && (
                 <section className="territorial-layer-group" aria-label="Elecciones">
                   <p className="territorial-layer-heading">Elecciones</p>
-                  <button
+                  <button type="button"
                     onClick={() => handleSetElectoralMode(electoralMode === 'ayu_2021' ? null : 'ayu_2021')}
                     aria-pressed={electoralMode === 'ayu_2021'}
                     className="hidden"
@@ -1715,7 +1787,7 @@ const MapTerritorial = ({
                   >
                     <BallotSvg /> Ayuntamiento 2021 - interno
                   </button>
-                  <button
+                  <button type="button"
                     onClick={() => handleSetElectoralMode(electoralMode === 'ayu_2021_ieem' ? null : 'ayu_2021_ieem')}
                     aria-pressed={electoralMode === 'ayu_2021_ieem'}
                     className={`w-full px-2.5 py-2 md:py-1 rounded-md text-xs font-medium transition-all text-left leading-tight ${
@@ -1725,7 +1797,7 @@ const MapTerritorial = ({
                   >
                     <BallotSvg /> Ayuntamiento 2021 - IEEM
                   </button>
-                  <button
+                  <button type="button"
                     onClick={() => handleSetElectoralMode(electoralMode === 'gubernatura_2023' ? null : 'gubernatura_2023')}
                     aria-pressed={electoralMode === 'gubernatura_2023'}
                     className={`w-full px-2.5 py-2 md:py-1 rounded-md text-xs font-medium transition-all text-left leading-tight ${
@@ -1735,7 +1807,7 @@ const MapTerritorial = ({
                   >
                     <BallotSvg /> Gubernatura 2023 - Delfina Gómez
                   </button>
-                  <button
+                  <button type="button"
                     onClick={() => handleSetElectoralMode(electoralMode === 'ayu_2024_ieem' ? null : 'ayu_2024_ieem')}
                     aria-pressed={electoralMode === 'ayu_2024_ieem'}
                     className={`w-full px-2.5 py-2 md:py-1 rounded-md text-xs font-medium transition-all text-left leading-tight ${
@@ -1745,7 +1817,7 @@ const MapTerritorial = ({
                   >
                     <BallotSvg /> Ayuntamiento 2024 - IEEM
                   </button>
-                  <button
+                  <button type="button"
                     onClick={() => handleSetElectoralMode(electoralMode === 'senado_2024' ? null : 'senado_2024')}
                     aria-pressed={electoralMode === 'senado_2024'}
                     className={`w-full px-2.5 py-2 md:py-1 rounded-md text-xs font-medium transition-all text-left leading-tight ${
@@ -1755,7 +1827,7 @@ const MapTerritorial = ({
                   >
                     <BallotSvg /> Senaduría 2024 - Mariela Gutiérrez
                   </button>
-                  <button
+                  <button type="button"
                     onClick={() => handleSetElectoralMode(electoralMode === 'dip_2024' ? null : 'dip_2024')}
                     aria-pressed={electoralMode === 'dip_2024'}
                     className={`w-full px-2.5 py-2 md:py-1 rounded-md text-xs font-medium transition-all text-left leading-tight ${
@@ -1765,7 +1837,7 @@ const MapTerritorial = ({
                   >
                     <BallotSvg /> Diputación Local 2024 - Interno
                   </button>
-                  <button
+                  <button type="button"
                     onClick={() => handleSetElectoralMode(electoralMode === 'pres_2024' ? null : 'pres_2024')}
                     aria-pressed={electoralMode === 'pres_2024'}
                     className={`w-full px-2.5 py-2 md:py-1 rounded-md text-xs font-medium transition-all text-left leading-tight ${
@@ -1784,7 +1856,7 @@ const MapTerritorial = ({
               {Object.keys(afiliacionBySec).length > 0 && (
                 <>
                   <div className="w-full h-px bg-gray-200 my-0.5" />
-                  <button
+                  <button type="button"
                     onClick={() => handleSetElectoralMode(electoralMode === 'semaforo_cred' ? null : 'semaforo_cred')}
                     aria-pressed={electoralMode === 'semaforo_cred'}
                     className={`w-full px-2.5 py-2 md:py-1 rounded-md text-xs font-medium transition-all text-left leading-tight flex items-center gap-1 ${
@@ -1802,7 +1874,7 @@ const MapTerritorial = ({
               {hasMercado && (
                 <>
                   <div className="w-full h-px bg-gray-200 my-0.5" />
-                  <button
+                  <button type="button"
                     onClick={() => handleSetElectoralMode(electoralMode === 'semaforo_mercado' ? null : 'semaforo_mercado')}
                     aria-pressed={electoralMode === 'semaforo_mercado'}
                     className={`w-full px-2.5 py-2 md:py-1 rounded-md text-xs font-medium transition-all text-left leading-tight flex items-center gap-1 ${
@@ -1819,7 +1891,7 @@ const MapTerritorial = ({
               {/* ── Capa Desdoble Movilizadores ──────────────────── */}
               <>
                 <div className="w-full h-px bg-gray-200 my-0.5" />
-                <button
+                <button type="button"
                   onClick={() => handleSetElectoralMode(electoralMode === 'semaforo_mov' ? null : 'semaforo_mov')}
                     aria-pressed={electoralMode === 'semaforo_mov'}
                   className={`w-full px-2.5 py-2 md:py-1 rounded-md text-xs font-medium transition-all text-left leading-tight flex items-center gap-1 ${
@@ -1838,7 +1910,7 @@ const MapTerritorial = ({
               {casillasPjem.length > 0 && (
                 <>
                   <div className="w-full h-px bg-gray-200 my-0.5" />
-                  <button
+                  <button type="button"
                     onClick={() => setShowCasillasPjem(v => !v)}
                     aria-pressed={showCasillasPjem}
                     className={`w-full px-2.5 py-2 md:py-1 rounded-md text-xs font-medium transition-all text-left leading-tight ${
@@ -1854,7 +1926,7 @@ const MapTerritorial = ({
               {/* Capa de colaboradores */}
               <>
                 <div className="w-full h-px bg-gray-200 my-0.5" />
-                <button
+                <button type="button"
                   onClick={() => setShowCiudadanos(v => !v)}
                   aria-pressed={showCiudadanos}
                   className={`w-full px-2.5 py-2 md:py-1 rounded-md text-xs font-medium transition-all text-left leading-tight ${
@@ -1868,12 +1940,12 @@ const MapTerritorial = ({
               </section>
             </>
           )}
-        </div>
+        </div>}
 
         {/* Botones de exportación (solo cuando no hay modo editable y no es visor readOnly) */}
         {!IS_LEAFLET && !onEditableLocationChange && !readOnly && (
           <div className="territorial-export-tools no-print absolute top-3 right-3 z-10 flex items-center gap-1.5">
-            <button
+            <button type="button"
               onClick={() => window.print()}
               className="flex items-center gap-1.5 px-2.5 py-1.5 bg-white/90 backdrop-blur-sm rounded-lg shadow-md border border-gray-200 text-xs font-semibold text-gray-600 hover:bg-gray-50 hover:border-gray-300 transition-all"
               title="Imprimir lo que se ve en pantalla"
@@ -1883,7 +1955,7 @@ const MapTerritorial = ({
               </svg>
               Imprimir
             </button>
-            <button
+            <button type="button"
               onClick={generatePDF}
               disabled={generating}
               className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg shadow-md border text-xs font-semibold transition-all ${
@@ -1913,7 +1985,7 @@ const MapTerritorial = ({
           </div>
         )}
 
-        {onEditableLocationChange && (
+        {onEditableLocationChange && !locationOnly && (
           <div className={`absolute top-3 right-3 z-10 rounded-lg shadow-md px-3 py-1.5 text-xs font-medium border ${
             isDark ? 'bg-gray-900/90 text-gray-200 border-gray-700' : 'bg-white/90 text-gray-700 border-gray-200'
           }`}>
@@ -1921,7 +1993,7 @@ const MapTerritorial = ({
           </div>
         )}
 
-        {onEditableLocationChange && isLoaded && (
+        {onEditableLocationChange && isLoaded && !locationOnly && (
           <div className="absolute top-14 left-1/2 -translate-x-1/2 z-10 w-[85%] max-w-xs">
             <Autocomplete
               onLoad={onAutocompleteLoad}
@@ -1947,7 +2019,7 @@ const MapTerritorial = ({
           onLoad={onLoad}
           onZoomChanged={onZoomChanged}
           onClick={handleMapClick}
-          onMouseMove={isMobileMap ? undefined : handleMapMouseMove}
+          onMouseMove={isMobileMap || locationOnly ? undefined : handleMapMouseMove}
           options={{
             mapTypeId: styleDef.mapTypeId,
             styles: styleDef.styles,
@@ -1965,6 +2037,31 @@ const MapTerritorial = ({
             maxZoom: 19,
           }}
         >
+          {locationOnly && locationReference.map(reference => (
+            <React.Fragment key={reference.key}>
+              {reference.paths.map((ring, index) => (
+                <Polygon
+                  key={`${reference.key}-${index}`}
+                  paths={ring}
+                  options={{
+                    fillColor: '#7B1528',
+                    fillOpacity: reference.isSection ? 0.02 : 0.06,
+                    strokeColor: currentStyle === 'satelite' ? '#FFF4CE' : '#7B1528',
+                    strokeWeight: reference.isSection ? 3 : 1.5,
+                    strokeOpacity: 0.9,
+                    zIndex: reference.isSection ? 20 : 12,
+                    clickable: false,
+                  }}
+                />
+              ))}
+              {reference.label && (
+                <OverlayView position={getCenter(reference.paths)} mapPaneName="floatPane">
+                  <span className="territorial-location-fraction-label">{reference.label}</span>
+                </OverlayView>
+              )}
+            </React.Fragment>
+          ))}
+          {!locationOnly && <>
           {/* ── Polígonos de secciones ──────────────────────────────── */}
           {(() => {
             const isSemaforo        = electoralMode === 'semaforo_cred';
@@ -2427,7 +2524,7 @@ const MapTerritorial = ({
                       {/* Gradiente inferior para legibilidad del texto */}
                       <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(to top, rgba(0,0,0,0.62) 0%, rgba(0,0,0,0.10) 55%, transparent 100%)' }} />
                       {/* Close */}
-                      <button
+                      <button type="button"
                         onClick={() => setActiveMarker(null)}
                         style={{
                           position: 'absolute', top: 6, right: 6,
@@ -2560,7 +2657,7 @@ const MapTerritorial = ({
                         </div>
                       )}
                       {/* Close button */}
-                      <button
+                      <button type="button"
                         onClick={() => setActiveCasilla(null)}
                         style={{
                           position: 'absolute', top: 8, right: 8,
@@ -2716,6 +2813,7 @@ const MapTerritorial = ({
             />
           )}
 
+          </>}
           {/* ── Marcador editable (arrastrable) ─────────────────────── */}
           {editableLocation && getMapRuntime() && (
             <Marker
@@ -2736,7 +2834,7 @@ const MapTerritorial = ({
         </GoogleMap>
 
         {/* ── Tooltip dinámico de hover ───────────────────────────────── */}
-        {hovered && !isMobileMap && (
+        {hovered && !isMobileMap && !locationOnly && (
           <HoverTooltip
             data={hovered.data}
             tipo={hovered.tipo}
@@ -2761,14 +2859,14 @@ const MapTerritorial = ({
       </div>
 
       {/* ── Pie: leyenda ────────────────────────────────────────────────── */}
-      <div role="region" tabIndex={0} aria-label="Leyenda del mapa territorial" className={`territorial-map-legend no-print flex-shrink-0 px-4 py-2.5 border-t flex flex-wrap items-center gap-x-4 gap-y-1.5 ${
+      {!locationOnly && <div role="region" tabIndex={0} aria-label="Leyenda del mapa territorial" className={`territorial-map-legend no-print flex-shrink-0 px-4 py-2.5 border-t flex flex-wrap items-center gap-x-4 gap-y-1.5 ${
         isDark ? 'bg-gray-900 border-gray-700' : 'bg-white border-gray-100'
       }`}>
         {onEditableLocationChange && (
           <div className="flex items-center gap-1.5">
             <div className="w-3 h-3 rounded-sm bg-red-600 border-2 border-red-900 flex-shrink-0" />
             <span className={`text-xs font-semibold ${isDark ? 'text-gray-200' : 'text-gray-700'}`}>
-              {assignedFraccion != null ? `Fracción asignada: ${assignedFraccion}` : 'Sin fracción asignada'}
+              Domicilio · la asignación se elige en Fracción (UBT)
             </span>
           </div>
         )}
@@ -2927,8 +3025,16 @@ const MapTerritorial = ({
             )}
           </div>
         )}
+      </div>}
       </div>
-      </div>
+
+      {locationOnly && locationReference.length > 0 && <div className="territorial-location-reference">
+        <span>Referencia: <strong>Sección {selectedSeccion}</strong> y sus fracciones</span>
+        <button type="button" onClick={() => fitLocationReference(mapRef.current)}>Ver sección y domicilio</button>
+      </div>}
+      {locationOnly && <div className="territorial-location-help">
+        <span aria-hidden="true" />{editableLocation ? 'Arrastra el pin o toca otro punto para ajustar el domicilio.' : 'Acércate y toca el lugar donde vive para colocar el pin.'}
+      </div>}
 
       <PrintFooter ctx={printContext} />
     </div>

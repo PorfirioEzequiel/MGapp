@@ -1,0 +1,31 @@
+.territorial-location-picker { --location-brand: #7b1528; min-height: 0; background: #fffdfa; }
+.territorial-location-toolbar { display: flex; align-items: center; gap: 12px; flex-shrink: 0; padding: 12px; border-bottom: 1px solid #e7e0da; position: relative; z-index: 1100; }
+.territorial-location-search { flex: 1; min-width: 0; }
+.territorial-location-search input { width: 100%; min-height: 44px; border: 1px solid #dbd3ce; border-radius: 8px; padding: 10px 12px; font-size: 13px; background: #faf8f5; color: #30272a; }
+.territorial-location-search input:focus { outline: 2px solid var(--location-brand); outline-offset: 1px; }
+.territorial-location-search .territorial-address-search input { padding-right: 78px; }
+.territorial-location-search .territorial-address-submit { min-height: 36px; top: 4px; right: 4px; }
+.territorial-location-search .territorial-address-results { position: absolute; top: 100%; left: 0; right: 0; max-height: 230px; overflow-y: auto; }
+.territorial-location-search .territorial-address-feedback { position: absolute; top: 100%; left: 0; right: 0; border: 1px solid #e7e0da; }
+.territorial-location-views { display: flex; padding: 3px; border: 1px solid #e7e0da; border-radius: 9px; background: #f7f5f1; }
+.territorial-location-views button { min-height: 36px; padding: 7px 12px; border-radius: 6px; color: #75666a; font-size: 12px; font-weight: 600; }
+.territorial-location-views button[aria-pressed="true"] { color: white; background: var(--location-brand); }
+.territorial-location-views button:focus-visible { outline: 2px solid var(--location-brand); outline-offset: 2px; }
+.territorial-location-picker > .flex { min-height: 0; border: 0; border-radius: 0; box-shadow: none; }
+.territorial-location-picker > .flex > .relative { min-height: 0; }
+.territorial-location-picker .territorial-basemap-loading { top: auto; bottom: 28px; right: 8px; }
+.territorial-location-help { flex-shrink: 0; display: flex; align-items: center; gap: 8px; padding: 10px 12px; border-top: 1px solid #e7e0da; color: #75666a; font-size: 11px; line-height: 1.5; }
+.territorial-location-help > span { width: 8px; height: 8px; border-radius: 50%; background: #dc2626; flex-shrink: 0; }
+.territorial-location-fraction-label { position: absolute; transform: translate(-50%, -50%); pointer-events: none; user-select: none; white-space: nowrap; padding: 2px 5px; border: 1px solid #d9bfc4; border-radius: 4px; background: #fffdfaf0; color: #7b1528; font-size: 10px; font-weight: 700; }
+.territorial-location-reference { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 4px 12px; flex-shrink: 0; padding: 4px 12px; border-top: 1px solid #e7e0da; color: #75666a; font-size: 11px; }
+.territorial-location-reference strong { color: #7b1528; }
+.territorial-location-reference button { min-height: 36px; color: #7b1528; font-weight: 600; text-decoration: underline; text-underline-offset: 3px; }
+.territorial-location-reference button:focus-visible { outline: 2px solid #7b1528; outline-offset: 2px; border-radius: 4px; }
+@media (max-width: 640px) {
+  .territorial-location-toolbar { flex-wrap: wrap; gap: 8px; padding: 10px; }
+  .territorial-location-search { flex-basis: 100%; }
+  .territorial-location-search input { font-size: 16px; }
+  .territorial-location-search .territorial-address-results { z-index: 2; }
+  .territorial-location-views { width: 100%; }
+  .territorial-location-views button { min-height: 38px; flex: 1; }
+}

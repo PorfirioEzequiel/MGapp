@@ -2,26 +2,14 @@ import { useEffect, useState, useMemo } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import supabase, { supabaseStorage as supabaseAdmin } from "../supabase/client";
 import MapTerritorial from "../map/MapTerritorial";
+import { changedCitizenFields, hasAssignmentChanges, validateSmAssignment, SM_ASSIGNMENT_FIELDS } from "../utils/smAssignment";
+import { SMField as Field, SMSectionTitle as SectionTitle, HomeLocationNote, SMSaveConfirmation } from '../componentes/SMFormUI';
+import { FiArrowLeft, FiGrid, FiMapPin, FiSave, FiImage, FiUser } from 'react-icons/fi';
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 
-const Field = ({ label, children }) => (
-  <div className="flex flex-col gap-1.5">
-    <label className="text-[10px] font-bold uppercase tracking-widest text-slate-400">{label}</label>
-    {children}
-  </div>
-);
-
-const inputCls =
-  "border border-slate-200 rounded-lg px-3 py-2.5 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white w-full";
-const selectCls =
-  "border border-slate-200 rounded-lg px-3 py-2.5 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white w-full";
-
-const SectionTitle = ({ children }) => (
-  <h2 className="text-[10px] font-bold uppercase tracking-[0.15em] text-slate-400 border-b border-slate-100 pb-2 mb-4">
-    {children}
-  </h2>
-);
+const inputCls = 'sm-control';
+const selectCls = 'sm-control';
 
 // Garantiza que el valor actual siempre aparezca en las opciones
 const ensureOption = (options, value) => {
@@ -37,8 +25,8 @@ const PhotoCard = ({ url, alt, shape, onUpload, uploading }) => {
 
   const containerCls =
     shape === "landscape"
-      ? "w-full max-w-xs h-40"
-      : "w-40 h-52";
+      ? "w-full max-w-xs h-36"
+      : "w-28 h-36";
 
   const handleDragOver  = (e) => { e.preventDefault(); setDragging(true); };
   const handleDragLeave = ()  => setDragging(false);
@@ -53,8 +41,8 @@ const PhotoCard = ({ url, alt, shape, onUpload, uploading }) => {
   return (
     <div className="flex flex-col items-center gap-2">
       <div
-        className={`${containerCls} relative rounded-xl overflow-hidden border-2 shadow-sm bg-slate-100 flex items-center justify-center transition-all duration-150
-          ${dragging ? "border-blue-500 bg-blue-50 scale-105" : "border-slate-200"}`}
+        className={`${containerCls} relative rounded-xl overflow-hidden border bg-[#f2eeea] flex items-center justify-center transition-all duration-150
+          ${dragging ? "border-[#7b1528] bg-[#f6edef]" : "border-[#e7e0da]"}`}
         onDragOver={handleDragOver}
         onDragLeave={handleDragLeave}
         onDrop={handleDrop}
@@ -75,14 +63,14 @@ const PhotoCard = ({ url, alt, shape, onUpload, uploading }) => {
           className="placeholder flex flex-col items-center justify-center w-full h-full"
           style={{ display: url ? "none" : "flex" }}
         >
-          <span className="text-3xl">📷</span>
-          <span className="text-[10px] text-slate-400 mt-1 text-center px-2">Arrastra o usa el botón</span>
+          <FiImage className="text-3xl text-[#aa8958]" aria-hidden="true" />
+          <span className="text-[11px] text-[#75666a] mt-1 text-center px-2">Arrastra o usa el botón</span>
         </div>
 
         {/* Overlay al arrastrar */}
         {dragging && (
-          <div className="absolute inset-0 flex items-center justify-center bg-blue-500/20 z-10">
-            <p className="text-blue-700 font-bold text-sm bg-white/90 px-3 py-1.5 rounded-lg shadow">
+          <div className="absolute inset-0 flex items-center justify-center bg-[#7b1528]/10 z-10">
+            <p className="text-[#7b1528] font-bold text-sm bg-white/90 px-3 py-1.5 rounded-lg shadow">
               Suelta aquí
             </p>
           </div>
@@ -91,16 +79,16 @@ const PhotoCard = ({ url, alt, shape, onUpload, uploading }) => {
         {/* Spinner mientras sube */}
         {uploading && (
           <div className="absolute inset-0 flex items-center justify-center bg-white/80 z-10">
-            <div className="w-5 h-5 rounded-full border-[3px] border-blue-700 border-t-transparent animate-spin" />
+            <span className="sm-spinner text-[#7b1528]" />
           </div>
         )}
       </div>
 
       <label className="cursor-pointer">
-        <span className="text-[10px] font-semibold text-blue-600 hover:text-blue-700 bg-blue-50 hover:bg-blue-100 px-3 py-1.5 rounded-lg transition-colors block text-center">
+        <span className="sm-button sm-button-secondary">
           {uploading ? "Subiendo…" : "Cambiar foto"}
         </span>
-        <input type="file" accept="image/*" className="hidden" onChange={onUpload} disabled={uploading} />
+        <input type="file" accept="image/*" aria-label={`Cambiar ${alt}`} className="sr-only" onChange={onUpload} disabled={uploading} />
       </label>
       <p className="text-[10px] text-slate-400 text-center">{alt}</p>
     </div>
@@ -113,15 +101,16 @@ const FichaCiudadano = () => {
   const { id } = useParams();
   const navigate = useNavigate();
   const [ciudadano, setCiudadano] = useState(null);
+  const [original, setOriginal] = useState(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [confirmOpen, setConfirmOpen] = useState(false);
   const [uploading, setUploading] = useState({});
   const [seccionGeo, setSeccionGeo] = useState(null);
   const [fracciones, setFracciones] = useState([]);
   const [catalogo, setCatalogo] = useState([]);
-  const [fraccionesCat, setFraccionesCat] = useState([]);
-  const [sectoresCat, setSectoresCat] = useState([]);
-  const [seccionesCat, setSeccionesCat] = useState([]);
+  const [catalogLoading, setCatalogLoading] = useState(true);
+  const [catalogError, setCatalogError] = useState('');
   const [smData, setSmData] = useState(null);
 
   let viewer = null;
@@ -132,92 +121,65 @@ const FichaCiudadano = () => {
 
   // Cargar ciudadano
   useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
     supabase.from("ciudadania").select("*").eq("id", id).single().then(({ data, error }) => {
-      if (!error) setCiudadano(data);
+      if (cancelled) return;
+      setCiudadano(error ? null : data);
+      setOriginal(error ? null : data);
       setLoading(false);
+    }).catch(() => {
+      if (!cancelled) { setCiudadano(null); setOriginal(null); setLoading(false); }
     });
+    return () => { cancelled = true; };
   }, [id]);
 
   // Cargar catálogo completo para los selects en cascada
   useEffect(() => {
+    let cancelled = false;
     supabase
       .from("ubt_catalogo")
-      .select("dtto_fed, dtto_loc, poligono, sector, seccion, fraccion")
+      .select("dtto_fed, dtto_loc, sector, seccion, fraccion")
       .limit(10000)
-      .then(({ data }) => {
-        if (!data) return;
+      .then(({ data, error }) => {
+        if (cancelled) return;
+        if (error || !data?.length) throw new Error('Catálogo no disponible');
         const norm = data.map(r => ({
           ...r,
-          poligono: r.poligono != null && r.poligono !== "" ? String(r.poligono) : String(r.sector ?? ""),
+          poligono: String(r.sector ?? ""),
           seccion: String(r.seccion ?? ""),
           fraccion: String(r.fraccion ?? ""),
           dtto_fed: String(r.dtto_fed ?? ""),
           dtto_loc: String(r.dtto_loc ?? ""),
         }));
         setCatalogo(norm);
-      });
-  }, []);
-
-  // Fracciones del catálogo para el select de UBT — consulta directa por sección
-  useEffect(() => {
-    if (!ciudadano?.seccion) { setFraccionesCat([]); return; }
-    supabase
-      .from("ubt_catalogo")
-      .select("fraccion")
-      .eq("seccion", ciudadano.seccion)
-      .then(({ data }) => {
-        setFraccionesCat((data ?? []).map(r => r.fraccion).filter(Boolean));
-      });
-  }, [ciudadano?.seccion]);
-
-  // Sectores — si el viewer es SP solo muestra su sector, si no muestra todos
-  useEffect(() => {
-    if (viewerEsSP && viewerPoligono) {
-      setSectoresCat([viewerPoligono]);
-      return;
-    }
-    supabase.from("ubt_catalogo").select("sector").order("sector", { ascending: true })
-      .then(({ data }) => {
-        const uniq = [...new Set((data ?? []).map(r => r.sector).filter(s => s != null))].sort((a, b) => a - b);
-        setSectoresCat(uniq.map(String));
-      });
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  // Secciones — carga solo cuando hay sector seleccionado; cancela peticiones anteriores (race condition)
-  useEffect(() => {
-    let cancelled = false;
-    const pol = ciudadano?.poligono ?? (viewerEsSP ? viewerPoligono : null);
-    if (pol == null || pol === "" || Number(pol) === 0) {
-      setSeccionesCat([]);
-      return;
-    }
-    supabase.from("ubt_catalogo").select("seccion").eq("sector", pol).order("seccion", { ascending: true })
-      .then(({ data }) => {
-        if (cancelled) return;
-        const uniq = [...new Set((data ?? []).map(r => r.seccion).filter(s => s != null))].sort((a, b) => a - b);
-        setSeccionesCat(uniq.map(String));
+      }).catch(() => {
+        if (!cancelled) setCatalogError('No se pudo cargar el catálogo. Recarga la ficha para cambiar la asignación. Puedes guardar cambios en el domicilio.');
+      }).finally(() => {
+        if (!cancelled) setCatalogLoading(false);
       });
     return () => { cancelled = true; };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ciudadano?.poligono]);
+  }, []);
 
   // Datos territoriales derivados de la SM (solo para movilizadores)
   useEffect(() => {
+    let cancelled = false;
     const esMovilizador = ciudadano?.puesto?.toUpperCase() === 'MOVILIZADOR';
     const smUsuario = ciudadano?.movilizador;
-    if (!esMovilizador || !smUsuario) { setSmData(null); return; }
+    setSmData(null);
+    if (!esMovilizador || !smUsuario) return;
     supabase
       .from('ciudadania')
       .select('nombre, a_paterno, a_materno, seccion, poligono, ubt')
       .eq('usuario', smUsuario)
       .maybeSingle()
       .then(({ data }) => {
+        if (cancelled) return;
         setSmData(data ?? null);
         if (!data) return;
         // Auto-populate territorial fields if the movilizador's own fields are empty
         setCiudadano(prev => {
-          if (!prev) return prev;
+          if (!prev || prev.movilizador !== smUsuario) return prev;
           const sinPoligono = prev.poligono == null || prev.poligono === '';
           const sinSeccion  = prev.seccion  == null || prev.seccion  === '';
           const sinUbt      = prev.ubt      == null || prev.ubt      === '';
@@ -229,21 +191,29 @@ const FichaCiudadano = () => {
             ubt:      sinUbt      ? (data.ubt      ?? prev.ubt)      : prev.ubt,
           };
         });
+      }).catch(() => {
+        if (!cancelled) setSmData(null);
       });
+    return () => { cancelled = true; };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ciudadano?.puesto, ciudadano?.movilizador]);
+  }, [id, ciudadano?.puesto, ciudadano?.movilizador]);
 
   // Geometría de la sección para el mapa
   useEffect(() => {
-    if (!ciudadano?.seccion) { setSeccionGeo(null); setFracciones([]); return; }
+    let cancelled = false;
+    setSeccionGeo(null);
+    setFracciones([]);
+    if (!ciudadano?.seccion) return;
     const num = Number(ciudadano.seccion);
     Promise.all([
       supabase.from("secciones").select("*").eq("seccion", num).maybeSingle(),
       supabase.from("fracciones").select("fraccion, seccion, geometry").eq("seccion", num),
     ]).then(([sec, frac]) => {
+      if (cancelled) return;
       setSeccionGeo(sec.data ?? null);
       setFracciones(frac.data ?? []);
-    });
+    }).catch(() => { /* El domicilio sigue siendo independiente de la geometría. */ });
+    return () => { cancelled = true; };
   }, [ciudadano?.seccion]);
 
   // ── opciones en cascada ─────────────────────────────────────────────────────
@@ -263,26 +233,24 @@ const FichaCiudadano = () => {
     return ensureOption([...new Set(base.map(r => r.dtto_loc))].filter(Boolean).sort(), curDttoLoc);
   }, [catalogo, curDttoFed, curDttoLoc]);
 
-  const sectores = useMemo(
-    () => ensureOption(sectoresCat, curPoligono),
-    [sectoresCat, curPoligono]
-  );
+  const sectores = useMemo(() => {
+    const options = viewerEsSP ? [viewerPoligono].filter(Boolean) : [...new Set(catalogo.map(r => r.poligono))].filter(Boolean).sort((a, b) => a - b);
+    return ensureOption(options, curPoligono);
+  }, [catalogo, curPoligono, viewerEsSP, viewerPoligono]);
 
   const secciones = useMemo(
-    () => ensureOption(seccionesCat, curSeccion),
-    [seccionesCat, curSeccion]
+    () => ensureOption([...new Set(catalogo.filter(r => r.poligono === curPoligono).map(r => r.seccion))].sort((a, b) => a - b), curSeccion),
+    [catalogo, curPoligono, curSeccion]
   );
 
   const ubts = useMemo(() => {
-    // Prioridad: resultado de consulta directa por sección
-    if (fraccionesCat.length > 0) return ensureOption([...new Set(fraccionesCat)].sort(), curUbt);
-    // Fallback: filtrar del catálogo general
+    // Todos los selects derivan del mismo catálogo: no hay respuestas de otra sección.
     if (!curSeccion) return ensureOption([], curUbt);
     const fromCatalog = [...new Set(
-      catalogo.filter(r => r.seccion === curSeccion).map(r => r.fraccion).filter(Boolean)
+      catalogo.filter(r => r.seccion === curSeccion && r.poligono === curPoligono).map(r => r.fraccion).filter(Boolean)
     )].sort();
     return ensureOption(fromCatalog, curUbt);
-  }, [fraccionesCat, catalogo, curSeccion, curUbt]);
+  }, [catalogo, curPoligono, curSeccion, curUbt]);
 
   // ── handlers de cascada ─────────────────────────────────────────────────────
 
@@ -310,24 +278,34 @@ const FichaCiudadano = () => {
   // ── upload de fotos ─────────────────────────────────────────────────────────
 
   async function handleFileUpload(e, fieldName) {
-    const file = e.target.files[0];
-    if (!file || !ciudadano) return;
+    const input = e.target;
+    const file = input.files[0];
+    if (!file || !ciudadano || saving || uploading[fieldName]) return;
+    if (original?.puesto?.toUpperCase() === 'SM' && viewerEsSP && String(original.poligono ?? '') !== viewerPoligono) {
+      alert('Esta SM no pertenece a tu sector. Solicita la revisión al administrador.');
+      return;
+    }
     if (!ciudadano.curp) { alert("El registro no tiene CURP. Guarda primero el CURP para poder subir fotos."); return; }
     setUploading(prev => ({ ...prev, [fieldName]: true }));
     const filePath = `ciudadanos/${fieldName}-${ciudadano.curp}`;
-    const { error: uploadError } = await supabaseAdmin.storage
-      .from("fotos_estructura")
-      .upload(filePath, file, { upsert: true });
-    if (uploadError) {
-      alert("Error al subir la foto: " + uploadError.message);
-    } else {
+    try {
+      const { error: uploadError } = await supabaseAdmin.storage
+        .from("fotos_estructura")
+        .upload(filePath, file, { upsert: true });
+      if (uploadError) throw uploadError;
       const { data: urlData } = supabaseAdmin.storage.from("fotos_estructura").getPublicUrl(filePath);
       const urlFinal = `${urlData.publicUrl}?t=${Date.now()}`;
       set(fieldName, urlFinal);
-      const { error: dbError } = await supabase.from("ciudadania").update({ [fieldName]: urlFinal }).eq("id", id);
-      if (dbError) alert("Foto subida pero error al guardar en base de datos: " + dbError.message);
+      const { data: savedPhoto, error: dbError } = await supabase.from("ciudadania")
+        .update({ [fieldName]: urlFinal }).eq("id", id).select('id').maybeSingle();
+      if (dbError || !savedPhoto) alert("Foto subida pero error al guardar en base de datos: " + (dbError?.message || 'El registro no pudo actualizarse.'));
+      else setOriginal(prev => ({ ...prev, [fieldName]: urlFinal }));
+    } catch (error) {
+      alert("Error al subir la foto: " + error.message);
+    } finally {
+      input.value = '';
+      setUploading(prev => ({ ...prev, [fieldName]: false }));
     }
-    setUploading(prev => ({ ...prev, [fieldName]: false }));
   }
 
   function handleUbicacion() {
@@ -340,10 +318,23 @@ const FichaCiudadano = () => {
 
   // ── guardar ─────────────────────────────────────────────────────────────────
 
-  async function handleSave() {
+  async function handleSave(confirmed = false) {
+    if (saving || Object.values(uploading).some(Boolean) || !original) return;
+    const esSM = original.puesto?.toUpperCase() === 'SM';
+    const assignmentChanged = esSM && hasAssignmentChanges(original, ciudadano);
+    if (esSM && viewerEsSP && String(original.poligono ?? '') !== viewerPoligono) {
+      alert('Esta SM no pertenece a tu sector. Solicita la revisión al administrador.');
+      return;
+    }
+    if (assignmentChanged) {
+      const validationError = catalogLoading ? 'Espera a que cargue el catálogo de asignaciones.'
+        : catalogError || validateSmAssignment(ciudadano, catalogo, viewerEsSP ? viewerPoligono : null);
+      if (validationError) { alert(validationError); return; }
+    }
+    if (confirmed !== true) { setConfirmOpen(true); return; }
     setSaving(true);
     const toInt = (v) => { const n = parseInt(String(v ?? ""), 10); return Number.isFinite(n) ? n : null; };
-    const { error } = await supabaseAdmin.from("ciudadania").update({
+    const payload = {
       usuario: ciudadano.usuario, password: ciudadano.password,
       dtto_fed: ciudadano.dtto_fed || null, dtto_loc: ciudadano.dtto_loc || null,
       poligono: toInt(ciudadano.poligono), seccion: toInt(ciudadano.seccion), ubt: ciudadano.ubt || null,
@@ -356,19 +347,41 @@ const FichaCiudadano = () => {
       url_foto_perfil: ciudadano.url_foto_perfil, url_foto_ine1: ciudadano.url_foto_ine1,
       url_foto_ine2: ciudadano.url_foto_ine2, cuenta_inst: ciudadano.cuenta_inst,
       cuenta_fb: ciudadano.cuenta_fb, cuenta_x: ciudadano.cuenta_x,
-    }).eq("id", id);
-    setSaving(false);
-    if (error) alert("Error al guardar: " + error.message);
-    else alert("Datos actualizados correctamente");
+    };
+    try {
+      const changes = esSM ? changedCitizenFields(original, payload) : payload;
+      if (!Object.keys(changes).length) { alert('No hay cambios para guardar.'); return; }
+      let query = supabaseAdmin.from('ciudadania').update(changes).eq('id', id);
+      if (esSM) {
+        query = query.eq('puesto', original.puesto);
+        if (viewerEsSP) query = query.eq('poligono', original.poligono);
+        // Si alguien reasignó la SM mientras la ficha estaba abierta, pedir recargar.
+        if (assignmentChanged) {
+          SM_ASSIGNMENT_FIELDS.forEach(field => {
+            query = original[field] == null ? query.is(field, null) : query.eq(field, original[field]);
+          });
+        }
+      }
+      const { data, error } = await query.select('id').maybeSingle();
+      if (error) throw error;
+      if (!data) throw new Error('El registro cambió o no pudo actualizarse. Recarga la ficha antes de guardar.');
+      setOriginal(prev => ({ ...prev, ...changes }));
+      alert('Datos actualizados correctamente');
+    } catch (error) {
+      alert('Error al guardar: ' + error.message);
+    } finally {
+      setSaving(false);
+      setConfirmOpen(false);
+    }
   }
 
   // ── renders ──────────────────────────────────────────────────────────────────
 
   if (loading) return (
-    <div className="flex items-center justify-center min-h-screen bg-slate-50">
+    <div className="sm-form-theme sm-form-page flex items-center justify-center">
       <div className="text-center">
-        <div className="w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto mb-3" />
-        <p className="text-sm text-slate-400">Cargando ficha…</p>
+        <span className="sm-spinner text-[#7b1528] mb-3" aria-hidden="true" />
+        <p className="sm-form-description" role="status">Cargando ficha…</p>
       </div>
     </div>
   );
@@ -376,27 +389,28 @@ const FichaCiudadano = () => {
   if (!ciudadano) return <p className="p-4 text-red-500">Ciudadano no encontrado.</p>;
 
   return (
-    <div className="min-h-screen bg-slate-50">
+    <div className="sm-form-theme sm-form-page">
       {/* Header */}
-      <div className="bg-gradient-to-r from-blue-600 to-blue-700 px-4 py-4 flex items-center justify-between sticky top-0 z-10 shadow-md">
-        <button onClick={() => navigate(-1)} className="text-white/80 hover:text-white text-sm">
-          ← Regresar
+      <header className="sm-form-header"><div className="sm-form-header-inner">
+        <button onClick={() => navigate(-1)} className="sm-back" aria-label="Regresar al panel">
+          <FiArrowLeft aria-hidden="true" />
         </button>
-        <h1 className="text-white font-bold text-sm">Ficha del Ciudadano</h1>
+        <div><p className="sm-eyebrow">Estructura territorial · Edición</p><h1>{ciudadano.puesto?.toUpperCase() === 'SM' ? 'Ficha de SM' : 'Ficha del Ciudadano'}</h1></div>
         <button
           onClick={handleSave}
-          disabled={saving}
-          className="bg-white text-blue-700 font-bold text-xs px-3 py-1.5 rounded-lg hover:bg-blue-50 disabled:opacity-60 transition-colors"
+          disabled={saving || Object.values(uploading).some(Boolean)}
+          className="sm-button sm-button-primary sm-header-action"
         >
           {saving ? "Guardando…" : "Guardar"}
         </button>
-      </div>
+      </div></header>
 
       {/* Contenido — ancho amplio en desktop */}
-      <div className="w-full max-w-6xl mx-auto px-4 sm:px-6 py-6 space-y-4">
+      <div className="sm-form-main space-y-5">
+        <div className="sm-form-intro"><div><h2>{[ciudadano.nombre, ciudadano.a_paterno, ciudadano.a_materno].filter(Boolean).join(' ')}</h2><p>Revisa sus datos, la asignación de trabajo y el domicilio.</p></div></div>
 
         {/* ── Fotografías ── */}
-        <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-6">
+        <div className="sm-form-card">
           <SectionTitle>Fotografías</SectionTitle>
           {/* En desktop: 3 columnas; en móvil: una columna */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 items-start">
@@ -425,35 +439,37 @@ const FichaCiudadano = () => {
         </div>
 
         {/* ── Ubicación territorial ── */}
-        <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-6">
-          <SectionTitle>Ubicación Territorial</SectionTitle>
+        <div className="sm-form-card">
+          <SectionTitle>Asignación de trabajo</SectionTitle>
 
           {/* Banner con datos derivados de la SM (solo movilizadores) */}
           {smData && (
-            <div className="mb-4 flex items-start gap-2.5 px-3.5 py-3 rounded-xl bg-blue-50 border border-blue-100 text-xs text-slate-600">
-              <svg className="flex-shrink-0 mt-px text-blue-400" width="14" height="14" viewBox="0 0 14 14"
-                fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
-                <circle cx="7" cy="7" r="6" />
-                <line x1="7" y1="5.5" x2="7" y2="7" />
-                <line x1="7" y1="8.5" x2="7" y2="9.5" />
-              </svg>
-              <div className="leading-snug">
-                <span className="font-semibold text-blue-700">Ubicación heredada de SM: </span>
-                {[smData.nombre, smData.a_paterno, smData.a_materno].filter(Boolean).join(' ')}
+            <div className="sm-responsible" aria-label="SM responsable de este movilizador">
+              <div className="sm-responsible-heading"><FiUser aria-hidden="true" /><div>
+                <p>SM responsable de este movilizador</p>
+                <strong>{[smData.nombre, smData.a_paterno, smData.a_materno].filter(Boolean).join(' ')}</strong>
+              </div></div>
+              <dl className="sm-responsible-territory">
                 {smData.poligono != null && smData.poligono !== '' && (
-                  <> · Sector <strong className="text-slate-700">{smData.poligono}</strong></>
+                  <div><dt>Sector</dt><dd>{smData.poligono}</dd></div>
                 )}
                 {smData.seccion != null && smData.seccion !== '' && (
-                  <> · Sección <strong className="text-slate-700">{smData.seccion}</strong></>
+                  <div><dt>Sección</dt><dd>{smData.seccion}</dd></div>
                 )}
                 {smData.ubt != null && smData.ubt !== '' && (
-                  <> · Fracción <strong className="text-slate-700">{smData.ubt}</strong></>
+                  <div><dt>Fracción (UBT)</dt><dd>{smData.ubt}</dd></div>
                 )}
-              </div>
+              </dl>
+              <p className="sm-responsible-caption">Este movilizador está asignado a la SM indicada. Estos datos corresponden a su estructura de trabajo.</p>
             </div>
           )}
 
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
+          {ciudadano.puesto?.toUpperCase() === 'SM' && (
+            <div className="sm-assignment-note"><FiGrid aria-hidden="true" /><p>La <strong>Fracción (UBT)</strong> indica dónde trabaja la SM. El domicilio se marca por separado en el mapa.</p></div>
+          )}
+          {catalogLoading && <p role="status" className="text-xs text-slate-500 mb-3">Cargando asignaciones…</p>}
+          {catalogError && <p role="alert" className="text-xs text-amber-700 mb-3">{catalogError}</p>}
+          <fieldset disabled={catalogLoading || Boolean(catalogError) || saving} className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
             <Field label="Distrito Federal">
               <select className={selectCls} value={curDttoFed} onChange={e => handleDttoFed(e.target.value)}>
                 <option value="">Seleccionar…</option>
@@ -489,11 +505,11 @@ const FichaCiudadano = () => {
                 {ubts.map(v => <option key={v} value={v}>{v}</option>)}
               </select>
             </Field>
-          </div>
+          </fieldset>
         </div>
 
         {/* ── Datos personales ── */}
-        <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-6">
+        <div className="sm-form-card">
           <SectionTitle>Datos Personales</SectionTitle>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             <Field label="Nombre">
@@ -529,7 +545,7 @@ const FichaCiudadano = () => {
         </div>
 
         {/* ── Acceso al sistema ── */}
-        <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-6">
+        <div className="sm-form-card">
           <SectionTitle>Acceso al Sistema</SectionTitle>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <Field label="Usuario">
@@ -542,8 +558,8 @@ const FichaCiudadano = () => {
         </div>
 
         {/* ── Domicilio + Mapa ── */}
-        <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-6">
-          <SectionTitle>Domicilio</SectionTitle>
+        <div className="sm-form-card">
+          <SectionTitle hint="Dirección donde vive la persona.">Dónde vive</SectionTitle>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-4">
             <Field label="Calle">
               <input className={inputCls} value={ciudadano.calle || ""} onChange={e => set("calle", e.target.value)} />
@@ -566,15 +582,21 @@ const FichaCiudadano = () => {
           </div>
           {!viewerEsSM && (
             <>
+              <div className="sm-map-intro"><h3>Domicilio en el mapa</h3>
+                <p>Aquí marcas dónde vive {ciudadano.puesto?.toUpperCase() === 'SM' ? 'la SM' : 'la persona'}. Puede vivir fuera de la fracción donde trabaja.</p>
+              </div>
+              <HomeLocationNote citizen={ciudadano} />
               <button
                 type="button"
                 onClick={handleUbicacion}
-                className="mb-4 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold px-4 py-2 rounded-lg transition-colors"
+                className="sm-button sm-button-secondary"
               >
-                📍 Usar mi ubicación actual
+                <FiMapPin aria-hidden="true" /> Usar mi ubicación actual
               </button>
-              <div className="rounded-xl overflow-hidden border border-slate-200" style={{ height: 320 }}>
+              <p className="sm-form-description mt-2">Úsala si estás en este domicilio. También puedes buscar la dirección y ajustar el pin.</p>
+              <div className="sm-location-map">
                 <MapTerritorial
+                  locationOnly
                   secciones={seccionGeo ? [seccionGeo] : []}
                   fraccionesGeo={fracciones}
                   selectedSeccion={seccionGeo?.seccion}
@@ -593,7 +615,7 @@ const FichaCiudadano = () => {
         </div>
 
         {/* ── Redes sociales ── */}
-        <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-6">
+        <div className="sm-form-card">
           <SectionTitle>Redes Sociales</SectionTitle>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <Field label="Instagram">
@@ -609,14 +631,19 @@ const FichaCiudadano = () => {
         </div>
 
         {/* Guardar */}
+        <div className="sm-form-savebar">
+        <p><strong>Revisa antes de guardar</strong>Comprueba el domicilio y la asignación de trabajo.</p>
         <button
           onClick={handleSave}
-          disabled={saving}
-          className="w-full bg-gradient-to-r from-blue-600 to-blue-700 text-white font-bold py-3.5 rounded-xl shadow-md shadow-blue-200/50 hover:from-blue-700 hover:to-blue-800 disabled:opacity-60 transition-all text-sm"
+          disabled={saving || Object.values(uploading).some(Boolean)}
+          className="sm-button sm-button-primary"
         >
-          {saving ? "Guardando cambios…" : "Guardar Cambios"}
+          {saving ? <span className="sm-spinner" aria-hidden="true" /> : <FiSave aria-hidden="true" />}{saving ? "Guardando cambios…" : "Guardar Cambios"}
         </button>
+        </div>
       </div>
+      <SMSaveConfirmation open={confirmOpen} onClose={() => setConfirmOpen(false)}
+        onConfirm={() => handleSave(true)} busy={saving} citizen={ciudadano} editing />
     </div>
   );
 };

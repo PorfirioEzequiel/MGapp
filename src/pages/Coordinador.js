@@ -530,10 +530,10 @@ const Coordinador = () => {
   };
 
   const fetchCatalogoFracciones = async () => {
-    const { data } = await supabase.from('ubt_catalogo').select('fraccion, seccion, poligono, sector');
+    const { data } = await supabase.from('ubt_catalogo').select('fraccion, seccion, sector').eq('sector', user.poligono);
     if (!data) return;
     setCatalogoFracciones(data.filter(f =>
-      String(f.poligono) === String(user.poligono) || String(f.sector) === String(user.poligono)
+      String(f.sector) === String(user.poligono)
     ));
   };
 

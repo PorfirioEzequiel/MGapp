@@ -525,18 +525,11 @@ import { useEffect, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import supabase, { supabaseStorage } from "../supabase/client";
 import MapTerritorial from "../map/MapTerritorial";
+import { changedCitizenFields, validateSmAssignment, SM_ASSIGNMENT_FIELDS } from "../utils/smAssignment";
+import { SMField as Field, SMSectionTitle, HomeLocationNote, SMSaveConfirmation } from '../componentes/SMFormUI';
+import { FiArrowLeft, FiGrid, FiMapPin, FiUpload, FiSave } from 'react-icons/fi';
 
-const fieldClass =
-  "w-full px-3 py-2 rounded-xl border border-slate-200 text-sm font-medium text-slate-800 bg-white focus:outline-none focus:border-blue-400";
-const labelClass =
-  "block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1";
-
-const Field = ({ label, children }) => (
-  <div>
-    <label className={labelClass}>{label}</label>
-    {children}
-  </div>
-);
+const fieldClass = 'sm-control';
 
 const fotoLabels = {
   url_foto_perfil: "Foto de perfil",
@@ -547,13 +540,21 @@ const fotoLabels = {
 export default function AgregarCiudadanoCP() {
   const navigate = useNavigate();
   const { state } = useLocation();
-  const { user } = state || {};
+  const [user] = useState(() => {
+    try { return state?.user || JSON.parse(sessionStorage.getItem('user')); }
+    catch { return null; }
+  });
 
   // ================= ESTADOS PRINCIPALES =================
   const [step, setStep] = useState(1); // ✅ Paso 1: Validar CURP | Paso 2: Datos + Fotos
   const [loading, setLoading] = useState(false);
-  const [secciones, setSecciones] = useState([]);
-  const [ubts, setUbts] = useState([]);
+  const [catalogo, setCatalogo] = useState([]);
+  const [catalogLoading, setCatalogLoading] = useState(true);
+  const [catalogError, setCatalogError] = useState('');
+  const [existingCitizen, setExistingCitizen] = useState(null);
+  const [validatedCurp, setValidatedCurp] = useState('');
+  const [uploading, setUploading] = useState({});
+  const [confirmOpen, setConfirmOpen] = useState(false);
   const [seccionGeoAlta, setSeccionGeoAlta] = useState(null);
   const [fraccionesAlta, setFraccionesAlta] = useState([]);
   const [nuevoCiudadano, setNuevoCiudadano] = useState({
@@ -636,6 +637,11 @@ export default function AgregarCiudadanoCP() {
 
   const validarCurp = async () => {
   const curp = nuevoCiudadano.curp.trim().toUpperCase();
+  if (loading) return;
+  if (user?.puesto?.toUpperCase() !== 'SP' || !user?.poligono) {
+    alert('No se encontró el sector del SP. Ingresa de nuevo desde tu panel.');
+    return;
+  }
   if (!CURP_REGEX.test(curp)) {
     alert("El CURP ingresado no es válido.");
     return;
@@ -643,40 +649,35 @@ export default function AgregarCiudadanoCP() {
 
   setLoading(true);
   try {
-    // ✅ Buscar si ya existe en Supabase
+    // Buscar globalmente evita sobrescribir por CURP un registro de otro sector.
     const { data, error } = await supabase
       .from("ciudadania")
       .select("*")
-      .eq("poligono", user?.poligono || "")
       .eq("curp", curp)
-      .single();
+      .maybeSingle();
 
-    if (error && error.code !== "PGRST116") throw error;
+    if (error) throw error;
 
     if (data) {
-      // ✅ Si el ciudadano ya existe
-      alert("CURP encontrado, los datos serán autocompletados.");
-
-      // 🔄 Actualizar el estatus a "SOLICITUD DE ALTA" si no lo tiene ya
-      if (data.status !== "SOLICITUD DE ALTA") {
-        const { error: updateError } = await supabase
-          .from("ciudadania")
-          .update({ status: "SOLICITUD DE ALTA" })
-          .eq("id", data.id);
-
-        if (updateError) {
-          console.error("Error al actualizar estatus:", updateError);
-        } else {
-          console.log("Estatus actualizado a 'SOLICITUD DE ALTA'");
-        }
+      const role = data.puesto?.toUpperCase();
+      if (!['SM', 'BENEFICIARIO'].includes(role) ||
+          (data.poligono != null && data.poligono !== '' && String(data.poligono) !== String(user.poligono))) {
+        alert('Este CURP ya tiene otro cargo o pertenece a otro sector. Solicita su revisión al administrador.');
+        return;
       }
-
-      // Autocompletar datos en el formulario
-      setNuevoCiudadano((prev) => ({ ...prev, ...data }));
+      // Consultar no cambia el estatus ni guarda nada. Una SM activa se edita en su ficha.
+      if (role === 'SM' && data.status === 'ACTIVO') {
+        navigate(`/ciudadano/${data.id}`);
+        return;
+      }
+      alert("CURP encontrado, los datos serán autocompletados.");
+      setNuevoCiudadano((prev) => ({ ...prev, ...data, curp, puesto: 'SM' }));
     } else {
       alert("CURP válido, ingresa los datos del ciudadano.");
+      setNuevoCiudadano(prev => ({ ...prev, curp }));
     }
-
+    setExistingCitizen(data || null);
+    setValidatedCurp(curp);
     // ✅ Pasar al siguiente paso
     setStep(2);
   } catch (err) {
@@ -691,53 +692,55 @@ export default function AgregarCiudadanoCP() {
   // ================= CARGAR SECCIONES (sector del coordinador) =================
   useEffect(() => {
     if (step !== 2) return;
+    let cancelled = false;
     const pol = user?.poligono;
     if (!pol) return;
-    supabase.from("ubt_catalogo").select("seccion").eq("sector", pol).order("seccion", { ascending: true })
+    setCatalogLoading(true);
+    setCatalogError('');
+    supabase.from("ubt_catalogo").select("*").eq("sector", pol).limit(10000)
       .then(({ data, error }) => {
-        if (error || !data) return;
-        const unicas = [...new Set(data.map((d) => d.seccion).filter(Boolean))].sort((a, b) => a - b);
-        setSecciones(unicas);
+        if (cancelled) return;
+        if (error || !data?.length) throw new Error('Catálogo no disponible');
+        setCatalogo(data);
+      }).catch(() => {
+        if (!cancelled) setCatalogError('No se pudo cargar el catálogo de asignaciones. Vuelve a entrar al formulario antes de guardar.');
+      }).finally(() => {
+        if (!cancelled) setCatalogLoading(false);
       });
-  }, [step, user]);
+    return () => { cancelled = true; };
+  }, [step, user?.poligono]);
+
+  const secciones = [...new Set(catalogo.map(row => row.seccion).filter(Boolean))].sort((a, b) => a - b);
+  const ubts = [...new Set(catalogo.filter(row => String(row.seccion) === String(nuevoCiudadano.seccion))
+    .map(row => row.fraccion).filter(Boolean))].sort();
 
   // ================= CAMBIO DE SECCIÓN =================
-  const handleSeccionChange = async (sec) => {
-    setNuevoCiudadano((p) => ({ ...p, seccion: sec }));
-    const { data, error } = await supabase.from("ubt_catalogo").select("*").eq("seccion", sec);
-    if (!error && data?.length) {
-      const info = data[0];
-      const listaUbts = data.map((d) => d.fraccion);
-      setUbts(listaUbts);
-      setNuevoCiudadano((prev) => ({
-        ...prev,
-        poligono: info.sector,
-        municipio: info.municipio,
-        nombre_municipio: info.nombre_municipio,
-        dtto_fed: info.dtto_fed,
-        dtto_loc: info.dtto_loc,
-        ubt: listaUbts.includes(prev.ubt) ? prev.ubt : "",
-      }));
-    }
+  const handleSeccionChange = (sec) => {
+    const info = catalogo.find(row => String(row.seccion) === String(sec));
+    setNuevoCiudadano(prev => ({
+      ...prev, seccion: sec, ubt: '',
+      poligono: info?.sector ?? '', municipio: info?.municipio ?? '',
+      nombre_municipio: info?.nombre_municipio ?? '',
+      dtto_fed: info?.dtto_fed ?? '', dtto_loc: info?.dtto_loc ?? '',
+    }));
   };
-
-  useEffect(() => {
-    if (step !== 2 || !nuevoCiudadano.seccion) return;
-    handleSeccionChange(nuevoCiudadano.seccion);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [step, nuevoCiudadano.seccion]);
 
   // ================= GEOMETRÍA DE LA SECCIÓN SELECCIONADA =================
   useEffect(() => {
-    if (!nuevoCiudadano.seccion) { setSeccionGeoAlta(null); setFraccionesAlta([]); return; }
+    let cancelled = false;
+    setSeccionGeoAlta(null);
+    setFraccionesAlta([]);
+    if (!nuevoCiudadano.seccion) return;
     const seccionNum = Number(nuevoCiudadano.seccion);
     Promise.all([
       supabase.from("secciones").select("*").eq("seccion", seccionNum).maybeSingle(),
       supabase.from("fracciones").select("fraccion, seccion, geometry").eq("seccion", seccionNum),
     ]).then(([secRes, fracRes]) => {
+      if (cancelled) return;
       setSeccionGeoAlta(secRes.data ?? null);
       setFraccionesAlta(fracRes.data ?? []);
-    });
+    }).catch(() => { /* La geometría no determina la asignación ni el domicilio. */ });
+    return () => { cancelled = true; };
   }, [nuevoCiudadano.seccion]);
 
   // ================= UBICACIÓN =================
@@ -760,20 +763,26 @@ export default function AgregarCiudadanoCP() {
 
   // ================= CARGAR IMÁGENES =================
   async function handleFileUpload(event, fieldName) {
-    const file = event.target.files[0];
-    if (!file) return;
+    const input = event.target;
+    const file = input.files[0];
+    if (!file || loading || uploading[fieldName]) return;
     const curp = nuevoCiudadano.curp.trim().toUpperCase();
     if (!curp) return alert("Ingresa el CURP antes de subir fotos.");
     const filePath = `ciudadanos/${fieldName}-${curp}`;
-    const { error } = await supabaseStorage.storage
-      .from("fotos_estructura")
-      .upload(filePath, file, { upsert: true });
-    if (error) return alert("Error subiendo imagen: " + error.message);
-    const { data: urlData } = supabaseStorage.storage
-      .from("fotos_estructura")
-      .getPublicUrl(filePath);
-    const urlFinal = `${urlData.publicUrl}?t=${Date.now()}`;
-    setNuevoCiudadano((p) => ({ ...p, [fieldName]: urlFinal }));
+    setUploading(prev => ({ ...prev, [fieldName]: true }));
+    try {
+      const { error } = await supabaseStorage.storage
+        .from("fotos_estructura")
+        .upload(filePath, file, { upsert: true });
+      if (error) throw error;
+      const { data: urlData } = supabaseStorage.storage.from("fotos_estructura").getPublicUrl(filePath);
+      setNuevoCiudadano((p) => ({ ...p, [fieldName]: `${urlData.publicUrl}?t=${Date.now()}` }));
+    } catch (error) {
+      input.value = '';
+      alert('Error subiendo imagen: ' + error.message);
+    } finally {
+      setUploading(prev => ({ ...prev, [fieldName]: false }));
+    }
   }
 
   // ================= GUARDAR REGISTRO =================
@@ -799,35 +808,60 @@ export default function AgregarCiudadanoCP() {
   //   }
   // };
 
-const handleSubmit = async (e) => {
-  e.preventDefault();
+const handleSubmit = async (e, confirmed = false) => {
+  e?.preventDefault();
+  if (loading || Object.values(uploading).some(Boolean)) return;
+  if (!validatedCurp || nuevoCiudadano.curp !== validatedCurp) {
+    alert('Valida nuevamente el CURP antes de guardar.');
+    return;
+  }
+  const validationError = catalogLoading ? 'Espera a que cargue el catálogo de asignaciones.'
+    : catalogError || validateSmAssignment(nuevoCiudadano, catalogo, user?.poligono);
+  if (validationError) { alert(validationError); return; }
+  if (['url_foto_perfil', 'url_foto_ine1', 'url_foto_ine2'].some(field => !nuevoCiudadano[field])) {
+    alert('Espera a que las tres fotografías se carguen correctamente antes de enviar el registro.');
+    return;
+  }
+  if (!confirmed) { setConfirmOpen(true); return; }
   setLoading(true);
   try {
     // Limpiar parámetros de cache-busting de las URLs antes de guardar
-    const cleanUrl = (url) => (url ? url.split('?')[0] : url || null);
+    const cleanPhoto = field => {
+      const url = nuevoCiudadano[field];
+      if (existingCitizen && url === existingCitizen[field]) return url;
+      return url ? url.split('?')[0] : url || null;
+    };
 
     const dataToSave = {
       ...nuevoCiudadano,
+      puesto: 'SM',
       status: "SOLICITUD DE ALTA",
-      // Asignar usuario/password para SM sin mutar el estado directamente
-      ...(nuevoCiudadano.puesto === "SM" ? {
-        usuario:  nuevoCiudadano.curp,
-        password: nuevoCiudadano.curp,
-      } : {}),
+      usuario: existingCitizen?.usuario || validatedCurp,
+      password: existingCitizen?.password || validatedCurp,
       // URLs limpias para persistencia confiable en DB
-      url_foto_perfil: cleanUrl(nuevoCiudadano.url_foto_perfil),
-      url_foto_ine1:   cleanUrl(nuevoCiudadano.url_foto_ine1),
-      url_foto_ine2:   cleanUrl(nuevoCiudadano.url_foto_ine2),
+      url_foto_perfil: cleanPhoto('url_foto_perfil'),
+      url_foto_ine1:   cleanPhoto('url_foto_ine1'),
+      url_foto_ine2:   cleanPhoto('url_foto_ine2'),
     };
 
-    // Eliminar campo id para evitar conflictos en upsert
+    // Un alta inserta; una conversión solo actualiza el registro validado por ID.
     const { id, ...dataSinId } = dataToSave;
-
-    const { error } = await supabaseStorage
-      .from("ciudadania")
-      .upsert([dataSinId], { onConflict: "curp" });
-
+    let query;
+    if (existingCitizen) {
+      const changes = changedCitizenFields(existingCitizen, dataSinId);
+      if (!Object.keys(changes).length) { alert('No hay cambios para guardar.'); return; }
+      query = supabaseStorage.from('ciudadania').update(changes)
+        .eq('id', existingCitizen.id).eq('curp', validatedCurp).eq('puesto', existingCitizen.puesto);
+      // No sobrescribir una asignación o activación hecha después de validar el CURP.
+      [...SM_ASSIGNMENT_FIELDS, 'status'].forEach(field => {
+        query = existingCitizen[field] == null ? query.is(field, null) : query.eq(field, existingCitizen[field]);
+      });
+    } else {
+      query = supabaseStorage.from('ciudadania').insert([dataSinId]);
+    }
+    const { data, error } = await query.select('id').maybeSingle();
     if (error) throw error;
+    if (!data) throw new Error('El registro cambió. Vuelve a validar el CURP antes de guardar.');
 
     alert("Ciudadano guardado correctamente con estatus 'SOLICITUD DE ALTA'.");
     navigate(-1);
@@ -836,6 +870,7 @@ const handleSubmit = async (e) => {
     alert("Error al guardar los datos: " + err.message);
   } finally {
     setLoading(false);
+    setConfirmOpen(false);
   }
 };
 
@@ -843,40 +878,43 @@ const handleSubmit = async (e) => {
 
   // ==================== RENDER ====================
   return (
-    <div className="min-h-screen bg-slate-50">
+    <div className="sm-form-theme sm-form-page">
       {/* Header */}
-      <header className="bg-blue-800 text-white px-4 py-5 shadow-md">
-        <div className="max-w-2xl mx-auto flex items-center gap-3">
+      <header className="sm-form-header">
+        <div className="sm-form-header-inner">
           <button
             type="button"
             onClick={() => navigate(-1)}
-            className="text-blue-200 hover:text-white transition-colors"
+            className="sm-back"
+            aria-label="Regresar al panel"
           >
-            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5" />
-            </svg>
+            <FiArrowLeft aria-hidden="true" />
           </button>
           <div>
-            <p className="text-[10px] font-bold uppercase tracking-widest text-blue-300">Coordinador</p>
-            <h1 className="text-xl font-black tracking-tight">Alta de SM</h1>
+            <p className="sm-eyebrow">Estructura territorial · Sector {user?.poligono || '—'}</p>
+            <h1>Alta de SM</h1>
           </div>
         </div>
       </header>
 
-      <main className="max-w-2xl mx-auto px-4 py-6 space-y-4">
+      <main className="sm-form-main">
+        <div className="sm-step-track" aria-label="Etapas del registro">
+          <span aria-current={step === 1 ? 'step' : undefined}><b>01</b> Validar CURP</span>
+          <span aria-current={step === 2 ? 'step' : undefined}><b>02</b> Completar registro</span>
+        </div>
 
         {/* ── PASO 1: CURP ── */}
         {step === 1 && (
-          <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5 space-y-4">
-            <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Validar CURP</p>
-            <Field label="CURP">
+          <div className="sm-form-card sm-curp-card">
+            <SMSectionTitle hint="Primero revisaremos si la persona ya tiene un registro para recuperar sus datos.">Comienza con su CURP</SMSectionTitle>
+            <Field label="CURP" hint="18 caracteres. Ten a la mano sus datos y fotografías.">
               <input
                 type="text"
                 value={nuevoCiudadano.curp}
                 onChange={(e) =>
                   setNuevoCiudadano({ ...nuevoCiudadano, curp: e.target.value.trim().toUpperCase() })
                 }
-                className={fieldClass}
+                className={`${fieldClass} sm-control-curp`}
                 placeholder="Ingresa el CURP"
                 maxLength={18}
               />
@@ -884,33 +922,39 @@ const handleSubmit = async (e) => {
             <button
               onClick={validarCurp}
               disabled={loading}
-              className="w-full py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold transition-colors disabled:opacity-50"
+              className="sm-button sm-button-primary"
             >
-              {loading ? "Validando..." : "Validar CURP"}
+              {loading && <span className="sm-spinner" aria-hidden="true" />}{loading ? "Validando..." : "Validar CURP"}
             </button>
           </div>
         )}
 
         {/* ── PASO 2: FORMULARIO COMPLETO ── */}
         {step === 2 && (
-          <form onSubmit={handleSubmit} className="space-y-4">
+          <form onSubmit={handleSubmit} className="space-y-5">
+            <div className="sm-form-intro">
+              <div><h2>Completa el registro</h2><p>Asigna su fracción de trabajo y ubica su domicilio.</p></div>
+              <p><span className="sm-required">*</span> Campos obligatorios</p>
+            </div>
 
             {/* Fotos */}
-            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5">
-              <p className={`${labelClass} mb-3`}>Fotografías</p>
-              <div className="grid grid-cols-3 gap-3">
+            <div className="sm-form-card">
+              <SMSectionTitle hint="Agrega imágenes claras de la persona y ambos lados de su INE.">Fotografías</SMSectionTitle>
+              <div className="sm-photo-grid">
                 {["url_foto_perfil", "url_foto_ine1", "url_foto_ine2"].map((f) => (
-                  <div key={f} className="space-y-2">
-                    <p className="text-[10px] font-semibold text-slate-500 text-center">{fotoLabels[f]}</p>
-                    <img
+                  <div key={f} className="sm-photo-slot">
+                    <p>{fotoLabels[f]}</p>
+                    {nuevoCiudadano[f] ? <img
                       src={nuevoCiudadano[f]}
                       alt={fotoLabels[f]}
-                      className="w-full h-36 object-cover rounded-xl border border-slate-200 bg-slate-100"
-                    />
+                      className="sm-photo-preview"
+                    /> : <div className="sm-photo-preview"><span className="sm-photo-placeholder"><FiUpload aria-hidden="true" />Sin imagen</span></div>}
                     <input
                       type="file"
+                      aria-label={fotoLabels[f]}
+                      disabled={loading || uploading[f]}
                       onChange={(e) => handleFileUpload(e, f)}
-                      className="block w-full text-xs text-slate-500 file:mr-2 file:py-1 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-blue-600 file:text-white hover:file:bg-blue-700"
+                      className="sm-file-input"
                       required={!nuevoCiudadano[f]}
                     />
                   </div>
@@ -919,44 +963,49 @@ const handleSubmit = async (e) => {
             </div>
 
             {/* Territorio */}
-            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5 space-y-3">
-              <p className={`${labelClass} mb-1`}>Territorio</p>
+            <div className="sm-form-card space-y-4">
+              <SMSectionTitle>Dónde trabaja</SMSectionTitle>
+              <div className="sm-assignment-note"><FiGrid aria-hidden="true" /><p>La <strong>Fracción (UBT)</strong> es su asignación de trabajo. Puede ser distinta al lugar donde vive.</p></div>
+              {catalogLoading && <p role="status" className="text-xs text-slate-500">Cargando asignaciones…</p>}
+              {catalogError && <p role="alert" className="text-xs text-amber-700">{catalogError}</p>}
+              <div className="sm-form-grid">
               <Field label="Sección">
                 <select
                   value={nuevoCiudadano.seccion}
                   onChange={(e) => handleSeccionChange(e.target.value)}
                   className={fieldClass}
+                  disabled={catalogLoading || Boolean(catalogError) || loading}
                   required
                 >
                   <option value="">Seleccionar</option>
                   {secciones.map((sec) => <option key={sec} value={sec}>{sec}</option>)}
                 </select>
               </Field>
-              {ubts.length > 0 && (
-                <Field label="Fracción">
+                <Field label="Fracción (UBT)">
                   <select
                     value={nuevoCiudadano.ubt}
                     onChange={(e) => setNuevoCiudadano((p) => ({ ...p, ubt: e.target.value }))}
                     className={fieldClass}
+                    disabled={!nuevoCiudadano.seccion || catalogLoading || Boolean(catalogError) || loading}
                     required
                   >
                     <option value="">Seleccionar</option>
                     {ubts.map((u) => <option key={u} value={u}>{u}</option>)}
                   </select>
                 </Field>
-              )}
+              </div>
               <Field label="Puesto">
-                <p className="px-3 py-2 rounded-xl border border-slate-200 text-sm font-medium text-slate-500 bg-slate-50">SM</p>
+                <p className="text-sm font-semibold text-[#7b1528]">SM</p>
               </Field>
             </div>
 
             {/* Datos personales */}
-            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5 space-y-3">
-              <p className={`${labelClass} mb-1`}>Datos personales</p>
+            <div className="sm-form-card space-y-4">
+              <SMSectionTitle>Datos personales</SMSectionTitle>
               <Field label="Nombre">
                 <input type="text" value={nuevoCiudadano.nombre} onChange={(e) => setNuevoCiudadano((p) => ({ ...p, nombre: e.target.value.toUpperCase() }))} className={fieldClass} required />
               </Field>
-              <div className="grid grid-cols-2 gap-3">
+              <div className="sm-form-grid">
                 <Field label="Apellido paterno">
                   <input type="text" value={nuevoCiudadano.a_paterno} onChange={(e) => setNuevoCiudadano({ ...nuevoCiudadano, a_paterno: e.target.value.toUpperCase() })} className={fieldClass} required />
                 </Field>
@@ -964,14 +1013,14 @@ const handleSubmit = async (e) => {
                   <input type="text" value={nuevoCiudadano.a_materno} onChange={(e) => setNuevoCiudadano({ ...nuevoCiudadano, a_materno: e.target.value.toUpperCase() })} className={fieldClass} required />
                 </Field>
               </div>
-              <Field label="CURP">
-                <input type="text" value={nuevoCiudadano.curp} onChange={(e) => setNuevoCiudadano({ ...nuevoCiudadano, curp: e.target.value.trim().toUpperCase() })} className={fieldClass} required />
+              <Field label="CURP" hint="CURP validada al iniciar el registro.">
+                <input type="text" value={nuevoCiudadano.curp} readOnly className={`${fieldClass} bg-slate-50`} required />
               </Field>
             </div>
 
             {/* Domicilio */}
-            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5 space-y-3">
-              <p className={`${labelClass} mb-1`}>Domicilio</p>
+            <div className="sm-form-card space-y-4">
+              <SMSectionTitle hint="Captura la dirección donde vive la persona.">Dónde vive</SMSectionTitle>
               <Field label="Calle">
                 <input type="text" value={nuevoCiudadano.calle} onChange={(e) => setNuevoCiudadano({ ...nuevoCiudadano, calle: e.target.value.toUpperCase() })} className={fieldClass} required />
               </Field>
@@ -986,7 +1035,7 @@ const handleSubmit = async (e) => {
                   <input type="text" value={nuevoCiudadano.n_casa} onChange={(e) => setNuevoCiudadano({ ...nuevoCiudadano, n_casa: e.target.value.toUpperCase() })} className={fieldClass} />
                 </Field>
               </div>
-              <div className="grid grid-cols-2 gap-3">
+              <div className="sm-form-grid">
                 <Field label="Código postal">
                   <input type="number" value={nuevoCiudadano.c_p} onChange={(e) => setNuevoCiudadano({ ...nuevoCiudadano, c_p: e.target.value })} className={fieldClass} required />
                 </Field>
@@ -997,10 +1046,12 @@ const handleSubmit = async (e) => {
             </div>
 
             {/* Mapa */}
-            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5">
-              <p className={`${labelClass} mb-3`}>Ubicación</p>
-              <div style={{ height: "420px" }} className="rounded-xl overflow-hidden border border-slate-200">
+            <div className="sm-form-card">
+              <SMSectionTitle hint="Aquí marcas dónde vive la SM. Puede vivir fuera de la fracción donde trabaja.">Domicilio en el mapa</SMSectionTitle>
+              <HomeLocationNote citizen={nuevoCiudadano} />
+              <div className="sm-location-map">
                 <MapTerritorial
+                  locationOnly
                   secciones={seccionGeoAlta ? [seccionGeoAlta] : []}
                   fraccionesGeo={fraccionesAlta}
                   selectedSeccion={seccionGeoAlta?.seccion}
@@ -1014,19 +1065,20 @@ const handleSubmit = async (e) => {
                   }
                 />
               </div>
-              <button
+              <div className="sm-location-actions"><button
                 type="button"
                 onClick={handleObtenerUbicacion}
-                className="mt-3 px-4 py-2 rounded-xl bg-slate-600 hover:bg-slate-700 text-white text-sm font-semibold transition-colors"
+                className="sm-button sm-button-secondary"
               >
-                Usar mi ubicación actual
+                <FiMapPin aria-hidden="true" /> Usar mi ubicación actual
               </button>
+              <p>Úsala si estás en el domicilio de la SM. Si estás en la oficina, busca su dirección en el mapa.</p></div>
             </div>
 
             {/* Contacto */}
-            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5 space-y-3">
-              <p className={`${labelClass} mb-1`}>Contacto y redes sociales</p>
-              <div className="grid grid-cols-2 gap-3">
+            <div className="sm-form-card space-y-4">
+              <SMSectionTitle>Contacto y redes sociales</SMSectionTitle>
+              <div className="sm-form-grid">
                 <Field label="Teléfono 1">
                   <input type="text" value={nuevoCiudadano.telefono_1} onChange={(e) => setNuevoCiudadano({ ...nuevoCiudadano, telefono_1: e.target.value })} className={fieldClass} required />
                 </Field>
@@ -1034,7 +1086,7 @@ const handleSubmit = async (e) => {
                   <input type="text" value={nuevoCiudadano.telefono_2} onChange={(e) => setNuevoCiudadano({ ...nuevoCiudadano, telefono_2: e.target.value })} className={fieldClass} />
                 </Field>
               </div>
-              <div className="grid grid-cols-3 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 <Field label="Instagram">
                   <input type="text" value={nuevoCiudadano.cuenta_inst} onChange={(e) => setNuevoCiudadano({ ...nuevoCiudadano, cuenta_inst: e.target.value })} className={fieldClass} />
                 </Field>
@@ -1048,16 +1100,21 @@ const handleSubmit = async (e) => {
             </div>
 
             {/* Guardar */}
+            <div className="sm-form-savebar">
+            <p><strong>Revisa antes de enviar</strong>Confirmarás los datos en el siguiente paso.</p>
             <button
               type="submit"
-              disabled={loading}
-              className="w-full py-3 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-bold tracking-wide transition-colors disabled:opacity-50 shadow-sm"
+              disabled={loading || catalogLoading || Boolean(catalogError) || Object.values(uploading).some(Boolean)}
+              className="sm-button sm-button-primary"
             >
-              {loading ? "Guardando..." : "Guardar solicitud de alta"}
+              {loading ? <span className="sm-spinner" aria-hidden="true" /> : <FiSave aria-hidden="true" />}{loading ? "Guardando..." : "Guardar solicitud de alta"}
             </button>
+            </div>
           </form>
         )}
       </main>
+      <SMSaveConfirmation open={confirmOpen} onClose={() => setConfirmOpen(false)}
+        onConfirm={() => handleSubmit(null, true)} busy={loading} citizen={nuevoCiudadano} />
     </div>
   );
 }
