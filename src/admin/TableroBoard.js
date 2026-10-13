@@ -3,6 +3,7 @@ import { loadMapJson } from '../utils/loadMapJson';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import * as XLSX from 'xlsx';
+import { readTerritorialRows, createTerritorialReportWorkbook, territorialReportFilename } from '../utils/territorialReport';
 import supabase, { supabaseStorage as supabaseAdmin } from '../supabase/client';
 import MapTerritorial from '../map/MapTerritorial';
 import TerritorialLoading, { TerritorialSkeleton } from '../componentes/TerritorialLoading';
@@ -340,7 +341,9 @@ const TableroBoard = ({ readOnly = false }) => {
 
   // ── Totales territoriales globales ───────────────────────────────────────
   const [globalFracciones, setGlobalFracciones] = useState({}); // seccion → count
-  const [globalSMs,        setGlobalSMs]        = useState({}); // seccion → count
+  const [reportDataState, setReportDataState] = useState({ loaded: false, error: null });
+  const [credentialLoads, setCredentialLoads] = useState({ affiliation: false, checked: false });
+  const [reportError, setReportError] = useState(null);
   const [smRegistry, setSMRegistry] = useState({ rows: [], loaded: false, error: null });
 
   // ── Mercado Solidario ─────────────────────────────────────────────────────
@@ -379,32 +382,33 @@ const TableroBoard = ({ readOnly = false }) => {
 
   useEffect(() => {
     Promise.all([
-      supabaseAdmin.from('ubt_catalogo').select('seccion'),
-      supabaseAdmin.from('ciudadania').select('seccion, usuario, poligono, status').eq('puesto', 'SM'),
-      supabaseAdmin.from('ciudadania').select('seccion, movilizador').eq('puesto', 'MOVILIZADOR').eq('status', 'ACTIVO'),
-    ]).then(([fracRes, smRes, movRes]) => {
+      readTerritorialRows(() => supabaseAdmin.from('ubt_catalogo').select('seccion', { count: 'exact' }).order('seccion').order('fraccion')),
+      readTerritorialRows(() => supabaseAdmin.from('ciudadania').select('seccion, usuario, poligono, status, latitud, longitud', { count: 'exact' }).eq('puesto', 'SM').order('id')),
+      readTerritorialRows(() => supabaseAdmin.from('ciudadania').select('seccion, movilizador', { count: 'exact' }).eq('puesto', 'MOVILIZADOR').eq('status', 'ACTIVO').order('id')),
+    ]).then(([fractionRows, smRows, movRows]) => {
       const fracBySec = {};
-      (fracRes.data ?? []).forEach(r => { fracBySec[r.seccion] = (fracBySec[r.seccion] ?? 0) + 1; });
+      fractionRows.forEach(r => { fracBySec[r.seccion] = (fracBySec[r.seccion] ?? 0) + 1; });
       setGlobalFracciones(fracBySec);
 
-      setSMRegistry({ rows: smRes.data ?? [], loaded: true, error: smRes.error ? 'No se pudo actualizar el conteo de SM.' : null });
-      const smBySec = {};
+      setSMRegistry({ rows: smRows, loaded: true, error: null });
       const smSecByUsuario = {};
       // Count every SM; movilizador assignments retain their existing active-only rule.
-      (smRes.data ?? []).forEach(r => {
-        smBySec[r.seccion] = (smBySec[r.seccion] ?? 0) + 1;
+      smRows.forEach(r => {
         if (r.status === 'ACTIVO' && r.usuario) smSecByUsuario[r.usuario] = r.seccion;
       });
-      setGlobalSMs(smBySec);
 
       // Derivar sección del SM asignado si el registro propio tiene seccion null
       const movBySec = {};
-      (movRes.data ?? []).forEach(r => {
+      movRows.forEach(r => {
         const sec = r.seccion ?? smSecByUsuario[r.movilizador];
         if (sec) movBySec[sec] = (movBySec[sec] ?? 0) + 1;
       });
       setMovCountBySec(movBySec);
-    }).catch(() => setSMRegistry({ rows: [], loaded: true, error: 'No se pudo actualizar el conteo de SM.' }));
+      setReportDataState({ loaded: true, error: null });
+    }).catch(() => {
+      setSMRegistry({ rows: [], loaded: true, error: 'No se pudo actualizar el conteo de SM.' });
+      setReportDataState({ loaded: true, error: 'No se pudo completar la carga de fracciones, SM y movilizadores. Recarga el mapa para descargar el reporte.' });
+    });
   }, []);
 
   useEffect(() => {
@@ -535,6 +539,7 @@ const TableroBoard = ({ readOnly = false }) => {
 
   useEffect(() => {
     backendFetch('/api/comprobadas').then(data => {
+      setCredentialLoads(prev => ({ ...prev, checked: true }));
       if (!data || !Array.isArray(data.bySec)) { setComprobadasOffline(true); return; }
       const map = {};
       for (const row of (data.bySec ?? [])) { if (row.seccion != null) map[row.seccion] = row.comprobadas; }
@@ -545,6 +550,7 @@ const TableroBoard = ({ readOnly = false }) => {
 
   useEffect(() => {
     backendFetch('/api/afiliacion').then(data => {
+      setCredentialLoads(prev => ({ ...prev, affiliation: true }));
       setAfiliacionOffline(!Array.isArray(data) || data.length === 0);
       setAfiliacionData(Array.isArray(data) && data.length > 0 ? data : afiliacionLocalData);
     });
@@ -2749,120 +2755,26 @@ const TableroBoard = ({ readOnly = false }) => {
 
   const levelLabel = ['Vista general del municipio', `Distrito Federal ${selectedDistrito ?? ''}`, `Sector ${selectedSector ?? ''}`, `Sección ${selectedSeccion ?? ''}`][currentLevel];
 
-  const downloadEstructuraExcel = useCallback(() => {
-    const rows = allSecciones
-      .slice()
-      .sort((a, b) => (a.distrito_federal ?? 0) - (b.distrito_federal ?? 0) || (a.pologono ?? 0) - (b.pologono ?? 0) || a.seccion - b.seccion)
-      .map(s => ({
-        'Distrito Federal': s.distrito_federal ?? '',
-        'Sector':           s.pologono ?? '',
-        'Sección':          s.seccion,
-        'Fracciones':       globalFracciones[s.seccion] ?? 0,
-        'SMs':              globalSMs[s.seccion] ?? 0,
-      }));
+  const reportReady = !loadingMap && allSecciones.length > 0 && reportDataState.loaded
+    && !reportDataState.error && credentialLoads.affiliation && credentialLoads.checked;
 
-    const ws = XLSX.utils.json_to_sheet(rows);
-    ws['!cols'] = [{ wch: 18 }, { wch: 10 }, { wch: 10 }, { wch: 12 }, { wch: 8 }];
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, 'Estructura Territorial');
-    XLSX.writeFile(wb, `estructura_territorial_${new Date().toISOString().slice(0,10)}.xlsx`);
-  }, [allSecciones, globalFracciones, globalSMs]);
-
-  const downloadReporteAvancesExcel = useCallback(() => {
-    const fecha = new Date().toISOString().slice(0, 10);
-
-    const rows = allSecciones
-      .slice()
-      .sort((a, b) =>
-        (a.pologono ?? 0) - (b.pologono ?? 0) ||
-        a.seccion - b.seccion
-      )
-      .map(s => {
-        const sec  = s.seccion;
-        const af   = afiliacionBySec[sec] ?? {};
-        const ms   = mercadoBySec[sec]    ?? {};
-        const mov  = movilizadoresBySec[sec] ?? {};
-
-        const credPct = af.entregadas_sp > 0
-          ? Math.round((af.comprobadas / af.entregadas_sp) * 100)
-          : 0;
-        const msPct  = ms.total > 0
-          ? Math.min(Math.round(ms.deliveryRate ?? 0), 100)
-          : 0;
-        const movPct = mov.meta > 0
-          ? Math.min(Math.round((mov.count / mov.meta) * 100), 100)
-          : 0;
-
-        return {
-          'Sector':                   s.pologono ?? '',
-          'Sección':                  sec,
-          'Fracciones':               globalFracciones[sec] ?? 0,
-          'SMs':                      globalSMs[sec] ?? 0,
-          // Afiliados
-          'Afiliados':                af.afiliados ?? '',
-          // Credenciales
-          'Cred. Entregadas SP':      af.entregadas_sp ?? '',
-          'Cred. Comprobadas':        af.comprobadas ?? '',
-          '% Avance Credenciales':    af.entregadas_sp > 0 ? `${credPct}%` : '',
-          // Mercado Solidario
-          'MS Piezas':                ms.total ?? '',
-          'MS Estatus':               ms.estatus ?? '',
-          '% Avance MS':              ms.total > 0 ? `${msPct}%` : '',
-          // Movilizadores
-          'Movilizadores Activos':    mov.count ?? 0,
-          'Meta Movilizadores':       mov.meta  ?? 0,
-          '% Avance Movilizadores':   mov.meta > 0 ? `${movPct}%` : '',
-        };
+  const downloadReporteGeneral = useCallback(() => {
+    if (!reportReady) return;
+    setReportError(null);
+    try {
+      const workbook = createTerritorialReportWorkbook({
+        sections: allSecciones,
+        fractions: globalFracciones,
+        sms: smRegistry.rows,
+        affiliation: afiliacionBySec,
+        mobilizers: movCountBySec,
+        unsectionedCredentials: comprobadasSp0,
       });
-
-    const ws = XLSX.utils.json_to_sheet(rows);
-    ws['!cols'] = [
-      { wch: 9 },  // Sector
-      { wch: 10 }, // Sección
-      { wch: 12 }, // Fracciones
-      { wch: 7 },  // SMs
-      { wch: 11 }, // Afiliados
-      { wch: 20 }, // Cred. Entregadas SP
-      { wch: 20 }, // Cred. Comprobadas
-      { wch: 22 }, // % Avance Credenciales
-      { wch: 13 }, // MS Piezas
-      { wch: 16 }, // MS Estatus
-      { wch: 14 }, // % Avance MS
-      { wch: 22 }, // Movilizadores Activos
-      { wch: 20 }, // Meta Movilizadores
-      { wch: 24 }, // % Avance Movilizadores
-    ];
-
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, 'Reporte Avances');
-    XLSX.writeFile(wb, `reporte_avances_${fecha}.xlsx`);
-  }, [allSecciones, globalFracciones, globalSMs, afiliacionBySec, mercadoBySec, movilizadoresBySec]);
-
-  const downloadSMPorSectorExcel = useCallback(() => {
-    // Construye mapa seccion → sector (campo pologono) desde allSecciones
-    const secToSp = {};
-    for (const s of allSecciones) secToSp[s.seccion] = s.pologono;
-
-    // Use each SM's sector so historical sections are not exported without a sector.
-    const bySector = {};
-    for (const [sector, bucket] of Object.entries(smSummary.bySector)) {
-      bySector[sector] = { sm: bucket.total, fracciones: 0 };
+      XLSX.writeFile(workbook, territorialReportFilename());
+    } catch (error) {
+      setReportError(error.message || 'No se pudo generar el reporte. Intenta de nuevo.');
     }
-    for (const [sec, count] of Object.entries(globalFracciones)) {
-      const sp = secToSp[Number(sec)] ?? '?';
-      if (!bySector[sp]) bySector[sp] = { sm: 0, fracciones: 0 };
-      bySector[sp].fracciones += count;
-    }
-
-    const rows = Object.entries(bySector)
-      .sort((a, b) => Number(a[0]) - Number(b[0]))
-      .map(([sector, v]) => ({ SECTOR: Number(sector), 'NUMERO DE SM': v.sm, FRACCIONES: v.fracciones }));
-
-    const ws = XLSX.utils.json_to_sheet(rows);
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, 'SM por Sector');
-    XLSX.writeFile(wb, `sm_por_sector_${new Date().toISOString().slice(0,10)}.xlsx`);
-  }, [allSecciones, smSummary, globalFracciones]);
+  }, [reportReady, allSecciones, globalFracciones, smRegistry.rows, afiliacionBySec, movCountBySec, comprobadasSp0]);
 
   return (
     <div className="territorial-board min-h-screen bg-slate-50 font-sans">
@@ -2914,38 +2826,17 @@ const TableroBoard = ({ readOnly = false }) => {
           {!loadingMap && mapScope === 'tecamac' && (
             <div className="territorial-header-actions flex items-center gap-4 ml-auto flex-shrink-0">
               {isAdmin && (
-                <div className="territorial-header-exports hidden sm:flex items-center gap-2">
+                <div className="territorial-header-exports flex items-center">
                   <button
-                    onClick={downloadEstructuraExcel}
-                    disabled={!allSecciones.length}
-                    title="Descargar Excel: sección, fracciones y SMs"
-                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-emerald-200 bg-emerald-50 text-emerald-700 text-[11px] font-semibold hover:bg-emerald-100 transition-colors disabled:opacity-40 disabled:pointer-events-none"
+                    onClick={downloadReporteGeneral}
+                    disabled={!reportReady}
+                    title={reportDataState.error || (!reportReady ? 'Esperando los datos del reporte' : 'Descargar Excel por sección con ajustes estimados de credenciales y detalle del reparto')}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-[11px] font-semibold whitespace-nowrap transition-colors disabled:opacity-40 disabled:cursor-wait"
                   >
-                    <svg width="13" height="13" viewBox="0 0 20 20" fill="currentColor">
+                    <svg aria-hidden="true" width="13" height="13" viewBox="0 0 20 20" fill="currentColor">
                       <path fillRule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm3.293-7.707a1 1 0 011.414 0L9 10.586V3a1 1 0 112 0v7.586l1.293-1.293a1 1 0 111.414 1.414l-3 3a1 1 0 01-1.414 0l-3-3a1 1 0 010-1.414z" clipRule="evenodd" />
                     </svg>
-                    Estructura
-                  </button>
-                  <button
-                    onClick={downloadReporteAvancesExcel}
-                    disabled={!allSecciones.length}
-                    title="Descargar Excel: avances por sección — afiliados, credenciales y mercado solidario"
-                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-blue-200 bg-blue-50 text-blue-700 text-[11px] font-semibold hover:bg-blue-100 transition-colors disabled:opacity-40 disabled:pointer-events-none"
-                  >
-                    <svg width="13" height="13" viewBox="0 0 20 20" fill="currentColor">
-                      <path fillRule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm3.293-7.707a1 1 0 011.414 0L9 10.586V3a1 1 0 112 0v7.586l1.293-1.293a1 1 0 111.414 1.414l-3 3a1 1 0 01-1.414 0l-3-3a1 1 0 010-1.414z" clipRule="evenodd" />
-                    </svg>
-                    Avances
-                  </button>
-                  <button
-                    onClick={downloadSMPorSectorExcel}
-                    title="Descargar Excel: SM y fracciones por sector"
-                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-purple-200 bg-purple-50 text-purple-700 text-[11px] font-semibold hover:bg-purple-100 transition-colors"
-                  >
-                    <svg width="13" height="13" viewBox="0 0 20 20" fill="currentColor">
-                      <path fillRule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm3.293-7.707a1 1 0 011.414 0L9 10.586V3a1 1 0 112 0v7.586l1.293-1.293a1 1 0 111.414 1.414l-3 3a1 1 0 01-1.414 0l-3-3a1 1 0 010-1.414z" clipRule="evenodd" />
-                    </svg>
-                    SM / Sector
+                    Reporte general
                   </button>
                 </div>
               )}
@@ -3025,7 +2916,7 @@ const TableroBoard = ({ readOnly = false }) => {
           </div>
 
           <div className="p-4 space-y-4">
-            {(infoError || sectorError || smRegistry.error) && <p role="alert" className="territorial-notice territorial-notice-error text-xs text-red-600"><FiAlertCircle aria-hidden="true" />{infoError || sectorError || smRegistry.error}</p>}
+            {(reportError || reportDataState.error || infoError || sectorError || smRegistry.error) && <p role="alert" className="territorial-notice territorial-notice-error text-xs text-red-600"><FiAlertCircle aria-hidden="true" />{reportError || reportDataState.error || infoError || sectorError || smRegistry.error}</p>}
             {(afiliacionOffline || comprobadasOffline) && (
               <p role="status" className="territorial-notice territorial-notice-warning text-xs text-amber-700">
                 <FiAlertCircle aria-hidden="true" />

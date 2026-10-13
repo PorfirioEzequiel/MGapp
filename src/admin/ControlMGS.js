@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { LiaArrowLeftSolid } from 'react-icons/lia';
 import { supabaseStorage as supabaseAdmin } from '../supabase/client';
 import * as XLSX from 'xlsx';
+import { readTerritorialRows } from '../utils/territorialReport';
 
 const META = 10;
 
@@ -691,19 +692,15 @@ export default function ControlMGS() {
     async function load() {
       try {
         const [catRes, secRes, smRes, movRes] = await Promise.all([
-          supabaseAdmin.from('ubt_catalogo').select('seccion, fraccion').order('seccion').order('fraccion', { ascending: true }),
-          supabaseAdmin.from('secciones').select('seccion, pologono'),
-          supabaseAdmin.from('ciudadania').select('usuario, nombre, a_paterno, a_materno, seccion, poligono, ubt, url_foto_perfil').ilike('puesto', 'sm').eq('status', 'ACTIVO'),
-          supabaseAdmin.from('ciudadania').select('id, usuario, nombre, a_paterno, a_materno, curp, telefono_1, calle, col_loc, c_p, n_ext_mz, n_int_lt, movilizador, observaciones, ingreso_estructura, capturista').ilike('puesto', 'movilizador').eq('status', 'ACTIVO').order('a_paterno'),
+          readTerritorialRows(() => supabaseAdmin.from('ubt_catalogo').select('seccion, fraccion', { count: 'exact' }).order('seccion').order('fraccion', { ascending: true })),
+          readTerritorialRows(() => supabaseAdmin.from('secciones').select('seccion, pologono', { count: 'exact' }).order('seccion')),
+          readTerritorialRows(() => supabaseAdmin.from('ciudadania').select('usuario, nombre, a_paterno, a_materno, seccion, poligono, ubt, url_foto_perfil', { count: 'exact' }).ilike('puesto', 'sm').eq('status', 'ACTIVO').order('id')),
+          readTerritorialRows(() => supabaseAdmin.from('ciudadania').select('id, usuario, nombre, a_paterno, a_materno, curp, telefono_1, calle, col_loc, c_p, n_ext_mz, n_int_lt, movilizador, observaciones, ingreso_estructura, capturista', { count: 'exact' }).ilike('puesto', 'movilizador').eq('status', 'ACTIVO').order('a_paterno').order('id')),
         ]);
-        if (catRes.error) throw catRes.error;
-        if (secRes.error) throw secRes.error;
-        if (smRes.error)  throw smRes.error;
-        if (movRes.error) throw movRes.error;
-        setCatalog(catRes.data ?? []);
-        setSecsList(secRes.data ?? []);
-        setSmsList(smRes.data ?? []);
-        setMovs(movRes.data ?? []);
+        setCatalog(catRes);
+        setSecsList(secRes);
+        setSmsList(smRes);
+        setMovs(movRes);
       } catch (err) {
         setLoadError(err?.message ?? 'Error al cargar los datos');
       } finally {

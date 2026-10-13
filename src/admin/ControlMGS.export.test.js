@@ -17,14 +17,17 @@ const mockClient = { from: table => {
   query.select = fields => { mockSelect(table, fields); return query; };
   query.ilike = (field, value) => { query.puesto = value; return query; };
   query.eq = query.order = () => query;
-  query.then = (resolve, reject) => Promise.resolve({ error: null, data:
+  query.range = (start, end) => { query.page = [start, end]; return query; };
+  query.then = (resolve, reject) => {
+    const rows =
     table === 'ubt_catalogo' ? [{ seccion: 4251, fraccion: 1 }, { seccion: 4252, fraccion: 2 }] :
     table === 'secciones' ? [{ seccion: 4251, pologono: 1 }, { seccion: 4252, pologono: 2 }] :
     query.puesto === 'movilizador' ? mockMovs : [
       { usuario: 'sm1', nombre: 'SM UNO', seccion: 4251, poligono: 1, ubt: 1 },
       { usuario: 'sm2', nombre: 'SM DOS', seccion: 4252, poligono: 2, ubt: 2 },
-    ],
-  }).then(resolve, reject);
+    ];
+    return Promise.resolve({ error: null, count: rows.length, data: query.page ? rows.slice(query.page[0], query.page[1] + 1) : rows }).then(resolve, reject);
+  };
   return query;
 } };
 jest.mock('../supabase/client', () => ({ supabaseStorage: mockClient }));
@@ -59,4 +62,18 @@ test('el botón exporta los datos capturados completos y conserva texto y orden 
   const fields = mockSelect.mock.calls.find(([, value]) => value.includes('movilizador'))[1].split(', ');
   expect(fields).toEqual(expect.arrayContaining(['calle', 'col_loc', 'c_p', 'n_ext_mz', 'n_int_lt', 'ingreso_estructura', 'capturista']));
   expect(fields).not.toContain('created_at');
+});
+
+test('Control MGS carga y exporta más de mil registros sin truncarlos', async () => {
+  const extra = Array.from({ length: 1001 }, (_, index) => ({ id: index + 4, movilizador: 'sm1', nombre: `MGS ${index}` }));
+  mockMovs.push(...extra);
+  XLSX.writeFile.mockClear();
+  try {
+    render(<MemoryRouter><ControlMGS /></MemoryRouter>);
+    fireEvent.change(screen.getByLabelText('PIN de acceso'), { target: { value: '2027' } });
+    const buttons = await screen.findAllByTitle('Descargar reporte Excel');
+    fireEvent.click(buttons[0]);
+    const workbook = XLSX.writeFile.mock.calls[0][0];
+    expect(XLSX.utils.sheet_to_json(workbook.Sheets['Control MGS'])).toHaveLength(1004);
+  } finally { mockMovs.splice(3); }
 });

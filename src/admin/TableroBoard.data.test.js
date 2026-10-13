@@ -2,6 +2,7 @@ import React from 'react';
 import { act } from 'react';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
+import * as XLSX from 'xlsx';
 
 const mockPending = {};
 const mockSections = [4251, 4252].map((seccion, index) => ({ seccion, pologono: index + 1, distrito_federal: 5, lista_nominal: 100 }));
@@ -9,14 +10,17 @@ const mockQueries = [];
 let mockSMRows = [];
 let mockCatalog = [];
 let mockSMError = null;
+let mockMovRows = [];
+let mockCatalogError = null;
 const mockClient = { from: table => {
   const query = { table, filters: {}, fields: '' };
-  for (const method of ['select', 'eq', 'or', 'not', 'order', 'in', 'maybeSingle', 'abortSignal']) {
+  for (const method of ['select', 'eq', 'or', 'not', 'order', 'in', 'maybeSingle', 'abortSignal', 'range']) {
     query[method] = (...args) => {
       if (method === 'select') query.fields = args[0];
       if (method === 'eq') query.filters[args[0]] = args[1];
       if (method === 'or') query.orFilter = args[0];
       if (method === 'in') query.inFilter = args;
+      if (method === 'range') query.rangeArgs = args;
       return query;
     };
   }
@@ -33,13 +37,18 @@ const mockClient = { from: table => {
       error = mockSMError;
     }
     if (table === 'ubt_catalogo') data = mockCatalog.filter(row => !query.filters.seccion || row.seccion === query.filters.seccion);
-    return Promise.resolve({ data, count: 0, error }).then(resolve, reject);
+    if (table === 'ubt_catalogo') error = mockCatalogError;
+    if (table === 'ciudadania' && query.filters.puesto === 'MOVILIZADOR') data = mockMovRows;
+    const count = data.length;
+    if (query.rangeArgs) data = data.slice(query.rangeArgs[0], query.rangeArgs[1] + 1);
+    return Promise.resolve({ data, count, error }).then(resolve, reject);
   };
   return query;
 } };
 jest.mock('../supabase/client', () => ({ __esModule: true, default: mockClient, supabaseStorage: mockClient }));
 jest.mock('../utils/loadMapJson', () => ({ loadMapJson: jest.fn(async () => []) }));
 jest.mock('../utils/backendFetch', () => ({ backendFetch: jest.fn(async () => null) }));
+jest.mock('xlsx', () => ({ ...jest.requireActual('xlsx'), writeFile: jest.fn() }));
 jest.mock('../map/MapaEstadoMexico', () => () => null);
 jest.mock('../map/MapTerritorial', () => ({ ciudadanos, onSelectSeccion, focusCoords, fraccionesGeo }) => (
   <div>
@@ -57,6 +66,7 @@ const deferred = () => {
 };
 beforeEach(() => {
   mockSMRows = []; mockCatalog = []; mockSMError = null; mockQueries.length = 0;
+  mockMovRows = []; mockCatalogError = null; XLSX.writeFile.mockClear();
   require('../utils/loadMapJson').loadMapJson.mockResolvedValue([]);
   require('../utils/backendFetch').backendFetch.mockResolvedValue(null);
   mockPending[4251] = deferred(); mockPending[4252] = deferred();
@@ -161,6 +171,61 @@ test('un error en la consulta de SM no presenta cero como un conteo válido', as
   mockSMError = { message: 'Network error' };
   render(<MemoryRouter><TableroBoard /></MemoryRouter>);
   await screen.findByRole('button', { name: 'Abrir 4251' });
-  expect(await screen.findByRole('alert')).toHaveTextContent('No se pudo actualizar el conteo de SM.');
+  expect(await screen.findByRole('alert')).toHaveTextContent('No se pudo completar la carga');
   expect(within(smCount()).getByText('—')).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Reporte general' })).toBeDisabled();
+});
+
+test('reporte completo con datos paginados, comprobadas vivas y reparto documentado; ignora filtros del mapa', async () => {
+  mockCatalog = [{ seccion: 4251, fraccion: 'F4251-01' }];
+  mockSMRows = [
+    { id: 1, usuario: 'uno', seccion: 4251, poligono: 1, status: 'ACTIVO', latitud: 19.7, longitud: -99 },
+    { id: 2, seccion: 4251, poligono: 1, status: 'ELIMINADO', latitud: null, longitud: null },
+    { id: 3, seccion: 4191, poligono: 1, status: 'RECHAZADA' },
+  ];
+  mockMovRows = Array.from({ length: 1003 }, (_, i) => ({ seccion: i < 1001 ? 4252 : null, movilizador: 'uno' }));
+  require('../utils/backendFetch').backendFetch.mockImplementation(async path => path === '/api/afiliacion'
+    ? [{ seccion: 4251, sp: 1, entregadas_sp: 10, comprobadas: 1 }]
+    : { bySec: [{ seccion: 4251, comprobadas: 8 }], bySp0: { 1: 2 } });
+  render(<MemoryRouter><TableroBoard /></MemoryRouter>);
+  const button = await screen.findByRole('button', { name: 'Reporte general' });
+  await waitFor(() => expect(button).toBeEnabled());
+  fireEvent.click(screen.getByRole('button', { name: 'Abrir 4251' }));
+  await finishSection();
+  fireEvent.click(button);
+  expect(XLSX.writeFile).toHaveBeenCalledTimes(1);
+  const [book, filename] = XLSX.writeFile.mock.calls[0];
+  expect(filename).toMatch(/^reporte_general_\d{4}-\d{2}-\d{2}\.xlsx$/);
+  const rows = XLSX.utils.sheet_to_json(book.Sheets['Reporte general']);
+  expect(rows.find(r => r.Sección === 4251)).toMatchObject({ SMs: 2, 'SMs con ubicación': 1, 'SMs sin ubicación': 1,
+    'Credenciales: entregadas SP (ajustadas)': 10, 'Credenciales: comprobadas (con reparto estimado)': 10,
+    'Credenciales: % de avance ajustado': 1, 'Número de movilizadores': 2 });
+  expect(rows.find(r => r.Sección === 4252)['Número de movilizadores']).toBe(1001);
+  expect(rows.find(r => r.Sección === 4191).SMs).toBe(1);
+  expect(rows.find(r => r.Sección === '')).toBeUndefined();
+  const adjustments = XLSX.utils.sheet_to_json(book.Sheets['Ajustes credenciales']);
+  expect(adjustments).toHaveLength(1);
+  expect(adjustments[0]).toMatchObject({ Sector: 1, Sección: 4251, 'Comprobadas originales': 8, 'Asignación estimada': 2, 'Comprobadas en reporte': 10 });
+  expect(rows.reduce((sum, r) => sum + r['Número de movilizadores'], 0)).toBe(1003);
+  expect(screen.queryByRole('button', { name: 'Avances', exact: true })).not.toBeInTheDocument();
+});
+
+test('espera ambas fuentes de credenciales antes de habilitar el reporte', async () => {
+  const checked = deferred();
+  const affiliation = deferred();
+  require('../utils/backendFetch').backendFetch.mockImplementation(path => path === '/api/afiliacion' ? affiliation.promise : checked.promise);
+  render(<MemoryRouter><TableroBoard /></MemoryRouter>);
+  const button = await screen.findByRole('button', { name: 'Reporte general' });
+  expect(button).toBeDisabled();
+  await act(async () => checked.resolve({ bySec: [], bySp0: {} }));
+  expect(button).toBeDisabled();
+  await act(async () => affiliation.resolve([]));
+  expect(button).toBeEnabled();
+});
+
+test('un error de catálogo bloquea el reporte en vez de exportar metas cero', async () => {
+  mockCatalogError = { message: 'Error catálogo' };
+  render(<MemoryRouter><TableroBoard /></MemoryRouter>);
+  expect(await screen.findByRole('alert')).toHaveTextContent('No se pudo completar la carga');
+  expect(screen.getByRole('button', { name: 'Reporte general' })).toBeDisabled();
 });

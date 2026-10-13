@@ -254,7 +254,7 @@ test('el movilizador identifica a su SM responsable sin confundir su estructura 
   mockIntercept = q => q.table === 'ciudadania' && q.filters.usuario === 'sm-responsable'
     ? mockReply({ nombre: 'SM', a_paterno: 'RESPONSABLE', a_materno: 'FICTICIA', poligono: 1, seccion: 7001, ubt: 'F7001-01' }) : undefined;
   await edit();
-  expect(screen.getByLabelText('SM responsable de este movilizador')).toHaveTextContent('SM RESPONSABLE FICTICIA');
+  expect(await screen.findByLabelText('SM responsable de este movilizador')).toHaveTextContent('SM RESPONSABLE FICTICIA');
   expect(screen.queryByText(/Ubicación heredada de SM/)).not.toBeInTheDocument();
   expect(screen.getByText(/Aquí marcas dónde vive la persona/)).toHaveTextContent('Puede vivir fuera de la fracción donde trabaja');
   expect(mockWrites).toHaveLength(0);

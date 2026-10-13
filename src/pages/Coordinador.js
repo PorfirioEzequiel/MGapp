@@ -5,6 +5,9 @@ import MapTerritorial from '../map/MapTerritorial';
 import ToggleStatusButtonCP from './ToggleStatusButtonCP';
 import AFILIACION from '../data/afiliacion.json';
 import { backendFetch } from '../utils/backendFetch';
+import MobilizerProgress from '../componentes/MobilizerProgress';
+import SMMobilizers from '../componentes/SMMobilizers';
+import { loadSectorMobilizerProgress } from '../utils/mobilizerProgress';
 
 // ── Splash screen (mismo estilo que VisorConsultor) ───────────────────────────
 const SPLASH_MSGS = [
@@ -364,6 +367,8 @@ const Coordinador = () => {
   const [loadingSecInfo, setLoadingSecInfo]     = useState(false);
   const [focusCoords, setFocusCoords]           = useState(null);
   const [electoralMode, setElectoralMode]       = useState(null);
+  const [mobilizerProgress, setMobilizerProgress] = useState({ bySection: {}, total: null, loaded: false, error: null });
+  const [mobilizerRefresh, setMobilizerRefresh] = useState(0);
 
   const [apoyos,        setApoyos]        = useState([]);
   const [loadingApoyos, setLoadingApoyos] = useState(false);
@@ -488,6 +493,21 @@ const Coordinador = () => {
       fetchActividades(),
     ]).finally(() => setLoading(false));
   }, [user]);
+
+  useEffect(() => {
+    if (!user || user.puesto?.toLowerCase() !== 'sp' || user.usuario !== usuario || !seccionesSector.length) return;
+    let active = true;
+    const controller = new AbortController();
+    setMobilizerProgress({ bySection: {}, total: null, loaded: false, error: null });
+    loadSectorMobilizerProgress(supabaseAdmin, seccionesSector, controller.signal, promotores.map(sm => sm.usuario).filter(Boolean))
+      .then(progress => {
+        if (active) setMobilizerProgress({ ...progress, loaded: true, error: null });
+      })
+      .catch(() => {
+        if (active) setMobilizerProgress({ bySection: {}, total: null, loaded: true, error: true });
+      });
+    return () => { active = false; controller.abort(); };
+  }, [user, usuario, seccionesSector, promotores, mobilizerRefresh]);
 
   useEffect(() => {
     backendFetch('/api/comprobadas').then(data => {
@@ -952,6 +972,15 @@ const Coordinador = () => {
     setLoadingBusqueda(false);
   };
 
+  const openMobilizerMap = () => {
+    setTab('mapa');
+    setSeccionMapa('');
+    setFocusCoords(null);
+    setElectoralMode('semaforo_mov');
+    setSheetSnap('half');
+    setLeftPanelOpen(true);
+  };
+
   if (!user) return null;
 
   // ── Shared table styles ────────────────────────────────────────────────────
@@ -1072,6 +1101,10 @@ const Coordinador = () => {
                   </div>
                 );
               })()}
+
+              <MobilizerProgress progress={mobilizerProgress} sector={user.poligono}
+                onRetry={() => setMobilizerRefresh(value => value + 1)}
+                onViewMap={openMobilizerMap} />
 
               {/* ── Credenciales delivery analysis ─────────────────────── */}
               {(() => {
@@ -1280,6 +1313,7 @@ const Coordinador = () => {
                         </div>
                       </div>
                       {/* Acciones */}
+                      <SMMobilizers sm={r} progress={mobilizerProgress} onRetry={() => setMobilizerRefresh(value => value + 1)} />
                       <div className="flex gap-2">
                         <ToggleStatusButtonCP registroId={r.id} initialStatus={r.status} />
                         <button onClick={() => navigate(`/ciudadano/${r.id}`)}
@@ -1397,6 +1431,10 @@ const Coordinador = () => {
                     </div>
                   );
                 })()}
+
+                <MobilizerProgress progress={mobilizerProgress} sector={user.poligono}
+                  onRetry={() => setMobilizerRefresh(value => value + 1)}
+                  onViewMap={openMobilizerMap} />
 
                 {/* Credenciales */}
                 {(() => {
@@ -1562,6 +1600,7 @@ const Coordinador = () => {
                             </div>
                           </div>
                         </div>
+                        <SMMobilizers sm={r} progress={mobilizerProgress} onRetry={() => setMobilizerRefresh(value => value + 1)} />
                         <div className="flex gap-2 mt-auto">
                           <ToggleStatusButtonCP registroId={r.id} initialStatus={r.status} />
                           <button onClick={() => navigate(`/ciudadano/${r.id}`)}
@@ -1641,6 +1680,7 @@ const Coordinador = () => {
                   afiliacionBySec={afiliacionBySec}
                   hasMercado={mercadoRows.length > 0}
                   mercadoBySec={mercadoBySec}
+                  movilizadoresBySec={mobilizerProgress.bySection}
                   electoralModeExternal={electoralMode}
                   onElectoralModeChange={setElectoralMode}
                   initialStyle="satelite"
@@ -1833,6 +1873,12 @@ const Coordinador = () => {
 
               {/* ── Contenido scrollable ────────────────────────────────── */}
               <div className="flex-1 overflow-y-auto overscroll-contain p-3 space-y-3" style={!isMobile ? { minWidth: 300 } : {}}>
+
+                {electoralMode === 'semaforo_mov' && (
+                  <MobilizerProgress progress={mobilizerProgress} sector={user.poligono} section={seccionMapa}
+                    onRetry={() => setMobilizerRefresh(value => value + 1)}
+                    onSelectSection={section => { setSeccionMapa(String(section)); setFocusCoords(null); if (isMobile) setSheetSnap('half'); }} />
+                )}
 
                 {/* ── Capa activa: Entrega de credenciales ─────────────── */}
                 {electoralMode === 'semaforo_cred' && (() => {
@@ -2599,19 +2645,13 @@ const Coordinador = () => {
                   );
                 })()}
 
-                {(!electoralMode || electoralMode === 'semaforo_mov') && !seccionMapa && (() => {
+                {!electoralMode && !seccionMapa && (() => {
 
                   const totalNominal = seccionesSector.reduce((s, x) => s + (Number(x.lista_nominal) || 0), 0);
                   const totalPadron  = seccionesSector.reduce((s, x) => s + (Number(x.padron ?? x.padron_electoral) || 0), 0);
                   const totalHombres = seccionesSector.reduce((s, x) => s + (Number(x.hombres) || 0), 0);
                   const totalMujeres = seccionesSector.reduce((s, x) => s + (Number(x.mujeres) || 0), 0);
                   const smConUbicSec = promotores.filter(p => p.latitud && Number(p.latitud) !== 0 && !isNaN(Number(p.latitud))).length;
-
-                  const afRows   = Object.values(afiliacionBySec);
-                  const afSector = afRows.length > 0 ? {
-                    afiliados:               afRows.reduce((s, r) => s + (r.afiliados || 0), 0),
-                    credenciales_entregadas: afRows.reduce((s, r) => s + (r.credenciales_entregadas || 0), 0),
-                  } : null;
 
                   return (
                     <>
@@ -2660,7 +2700,7 @@ const Coordinador = () => {
                         );
                       })()}
 
-                      {/* Cobertura + Afiliación */}
+                      {/* Cobertura territorial */}
                       <div className="bg-white border border-slate-100 rounded-xl p-3 shadow-sm space-y-2">
                         <div className="flex items-center gap-1.5 mb-2">
                           <div className="w-0.5 h-3.5 rounded-full flex-shrink-0 bg-blue-500" />
@@ -2682,32 +2722,6 @@ const Coordinador = () => {
                           </div>
                         ) : null)}
 
-                        {afSector && (
-                          <div className="pt-2 mt-1 border-t border-slate-100">
-                            <div className="flex items-center gap-1.5 mb-2">
-                              <div className="w-0.5 h-3.5 rounded-full flex-shrink-0 bg-teal-500" />
-                              <p className="text-[9px] font-bold uppercase tracking-[0.14em] text-slate-400">Actividad · Afiliación</p>
-                            </div>
-                            <div className="grid grid-cols-2 gap-1 mb-2">
-                              <div className="bg-teal-50 rounded-lg p-2 text-center">
-                                <p className="text-[10px] font-bold uppercase tracking-widest text-teal-500 leading-none mb-1">Afiliados</p>
-                                <p className="text-xl font-bold tabular-nums text-teal-700">{fmt(afSector.afiliados)}</p>
-                              </div>
-                              <div className="bg-teal-50 rounded-lg p-2 text-center">
-                                <p className="text-[10px] font-bold uppercase tracking-widest text-teal-500 leading-none mb-1">Comprobadas</p>
-                                <p className="text-xl font-bold tabular-nums text-teal-700">{fmt(afSector.credenciales_entregadas)}</p>
-                              </div>
-                            </div>
-                            <div className="flex justify-between items-center mb-1">
-                              <span className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Entrega</span>
-                              <span className="text-[10px] font-bold text-teal-700">{pct(afSector.credenciales_entregadas, afSector.afiliados)}</span>
-                            </div>
-                            <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
-                              <div className="h-full bg-teal-500 rounded-full transition-all duration-500"
-                                style={{ width: `${Math.min((afSector.credenciales_entregadas / afSector.afiliados) * 100, 100)}%` }} />
-                            </div>
-                          </div>
-                        )}
                       </div>
 
                       {/* Género agregado */}
@@ -2795,7 +2809,7 @@ const Coordinador = () => {
                   );
                 })()}
 
-                {(!electoralMode || electoralMode === 'semaforo_mov') && seccionMapa && (() => {
+                {!electoralMode && seccionMapa && (() => {
                   const secSelData  = seccionesSector.find(s => s.seccion === Number(seccionMapa));
                   // detalleSec built from fresh Supabase fetch (same as TableroBoard)
                   const smPorUbt    = Object.fromEntries(smsDeSec.map(p => [p.ubt, p]));
@@ -2803,7 +2817,6 @@ const Coordinador = () => {
                   const smConUbic   = smsDeSec.filter(p => p.latitud && Number(p.latitud) !== 0 && !isNaN(Number(p.latitud))).length;
                   const fracConSM   = detalleSec.filter(f => f.sm != null).length;
                   const padronTotal = secSelData?.padron ?? secSelData?.padron_electoral;
-                  const afSec       = afiliacionBySec[Number(seccionMapa)];
 
                   return (
                     <>
@@ -2844,61 +2857,31 @@ const Coordinador = () => {
                             ))}
                           </div>
 
-                          {/* Cobertura + Afiliación */}
-                          <div className="bg-white border border-slate-100 rounded-xl p-3 shadow-sm space-y-2">
-                            {detalleSec.length > 0 && (
-                              <>
-                                <div className="flex items-center gap-1.5 mb-2">
-                                  <div className="w-0.5 h-3.5 rounded-full flex-shrink-0 bg-blue-500" />
-                                  <p className="text-[9px] font-bold uppercase tracking-[0.14em] text-slate-400">Cobertura territorial</p>
-                                </div>
-                                {[
-                                  { label: 'Fracciones con SM', v: fracConSM,  t: fraccionesDeSec.length,   cls: '#3B82F6' },
-                                  { label: 'SMs con ubicación', v: smConUbic,  t: smsDeSec.length,          cls: '#10B981' },
-                                  ...(regCountSec != null ? [{ label: 'Ciudadanos reg.', v: regCountSec, t: Number(secSelData?.lista_nominal) || regCountSec, cls: '#A78BFA' }] : []),
-                                ].map(({ label, v, t, cls }) => t ? (
-                                  <div key={label}>
-                                    <div className="flex justify-between items-center mb-1">
-                                      <span className="text-[10px] font-bold uppercase tracking-widest text-slate-500">{label}</span>
-                                      <span className="text-[11px] font-bold text-slate-700 tabular-nums">{v}<span className="text-slate-400 font-normal">/{t}</span></span>
-                                    </div>
-                                    <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden">
-                                      <div className="h-full rounded-full transition-all duration-500"
-                                        style={{ width: `${Math.min((v / t) * 100, 100)}%`, backgroundColor: cls }} />
-                                    </div>
-                                  </div>
-                                ) : null)}
-                              </>
-                            )}
-
-                            {/* Actividad · Afiliación */}
-                            {afSec && (
-                              <div className={detalleSec.length > 0 ? 'pt-2 mt-1 border-t border-slate-100' : ''}>
-                                <div className="flex items-center gap-1.5 mb-2">
-                                  <div className="w-0.5 h-3.5 rounded-full flex-shrink-0 bg-teal-500" />
-                                  <p className="text-[9px] font-bold uppercase tracking-[0.14em] text-slate-400">Actividad · Afiliación</p>
-                                </div>
-                                <div className="grid grid-cols-2 gap-1 mb-2">
-                                  <div className="bg-teal-50 rounded-lg p-2 text-center">
-                                    <p className="text-[10px] font-bold uppercase tracking-widest text-teal-500 leading-none mb-1">Afiliados</p>
-                                    <p className="text-xl font-bold tabular-nums text-teal-700">{fmt(afSec.afiliados)}</p>
-                                  </div>
-                                  <div className="bg-teal-50 rounded-lg p-2 text-center">
-                                    <p className="text-[10px] font-bold uppercase tracking-widest text-teal-500 leading-none mb-1">Comprobadas</p>
-                                    <p className="text-xl font-bold tabular-nums text-teal-700">{fmt(afSec.credenciales_entregadas)}</p>
-                                  </div>
-                                </div>
-                                <div className="flex justify-between items-center mb-1">
-                                  <span className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Entrega</span>
-                                  <span className="text-[10px] font-bold text-teal-700">{pct(afSec.credenciales_entregadas, afSec.afiliados)}</span>
-                                </div>
-                                <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
-                                  <div className="h-full bg-teal-500 rounded-full transition-all duration-500"
-                                    style={{ width: `${Math.min((afSec.credenciales_entregadas / afSec.afiliados) * 100, 100)}%` }} />
-                                </div>
+                          {/* Cobertura territorial */}
+                          {detalleSec.length > 0 && (
+                            <div className="bg-white border border-slate-100 rounded-xl p-3 shadow-sm space-y-2">
+                              <div className="flex items-center gap-1.5 mb-2">
+                                <div className="w-0.5 h-3.5 rounded-full flex-shrink-0 bg-blue-500" />
+                                <p className="text-[9px] font-bold uppercase tracking-[0.14em] text-slate-400">Cobertura territorial</p>
                               </div>
-                            )}
-                          </div>
+                              {[
+                                { label: 'Fracciones con SM', v: fracConSM,  t: fraccionesDeSec.length,   cls: '#3B82F6' },
+                                { label: 'SMs con ubicación', v: smConUbic,  t: smsDeSec.length,          cls: '#10B981' },
+                                ...(regCountSec != null ? [{ label: 'Ciudadanos reg.', v: regCountSec, t: Number(secSelData?.lista_nominal) || regCountSec, cls: '#A78BFA' }] : []),
+                              ].map(({ label, v, t, cls }) => t ? (
+                                <div key={label}>
+                                  <div className="flex justify-between items-center mb-1">
+                                    <span className="text-[10px] font-bold uppercase tracking-widest text-slate-500">{label}</span>
+                                    <span className="text-[11px] font-bold text-slate-700 tabular-nums">{v}<span className="text-slate-400 font-normal">/{t}</span></span>
+                                  </div>
+                                  <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                                    <div className="h-full rounded-full transition-all duration-500"
+                                      style={{ width: `${Math.min((v / t) * 100, 100)}%`, backgroundColor: cls }} />
+                                  </div>
+                                </div>
+                              ) : null)}
+                            </div>
+                          )}
 
                           {/* Responsable SP */}
                           <div className="bg-white border border-slate-100 rounded-xl p-3 shadow-sm">
