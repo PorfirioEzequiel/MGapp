@@ -459,8 +459,11 @@ const Coordinador = () => {
       sheetRef.current.style.transform  = `translateY(${raw}px)`;
     };
     el.addEventListener('touchmove', onMove, { passive: false });
-    return () => el.removeEventListener('touchmove', onMove);
-  }, []);
+    return () => {
+      el.removeEventListener('touchmove', onMove);
+      dragRef.current.active = false;
+    };
+  }, [tab, isMobile]);
 
   // Drive snap position from state for non-drag snaps (button/chip clicks)
   useEffect(() => {
@@ -481,7 +484,7 @@ const Coordinador = () => {
       : 'transform 0.42s cubic-bezier(0.22, 1, 0.36, 1)';
     el.style.transform  = `translateY(${snapY}px)`;
     prevSnapRef.current = sheetSnap;
-  }, [sheetSnap, isMobile]);
+  }, [sheetSnap, isMobile, tab]);
 
   // ── Fetch ──────────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -751,7 +754,8 @@ const Coordinador = () => {
         fracciones:   v.fracciones,
         sector:       v.sector,
         estatus,
-        deliveryRate: Math.min((v.total / maxTotal) * 100, 100),
+        estatusCounts: v.estatusCounts,
+        deliveryRate: v.total === 0 ? 0 : Math.min((v.total / maxTotal) * 100, 100),
       };
     }
     return result;
@@ -1683,7 +1687,7 @@ const Coordinador = () => {
                   movilizadoresBySec={mobilizerProgress.bySection}
                   electoralModeExternal={electoralMode}
                   onElectoralModeChange={setElectoralMode}
-                  initialStyle="satelite"
+                  initialStyle="claro"
                   gestureHandling="greedy"
                   readOnly
                 />
@@ -2092,7 +2096,15 @@ const Coordinador = () => {
                   if (seccionMapa) {
                     const sec = Number(seccionMapa);
                     const d   = mercadoBySec[sec];
-                    if (!d) return null;
+                    if (!d) return (
+                      <div className="rounded-xl border border-dashed border-slate-200 p-4 text-center">
+                        <p className="text-xs text-slate-400">Sin datos de Mercado Solidario para la sección {sec}.</p>
+                        <button onClick={() => setSeccionMapa('')}
+                          className="mt-2 text-[10px] font-bold" style={{ color: BRAND }}>
+                          ← Ver todo el sector
+                        </button>
+                      </div>
+                    );
                     const dr  = d.deliveryRate;
                     const col = drColor(dr);
                     const entregadas = d.estatusCounts['ENTREGADO'] ?? 0;

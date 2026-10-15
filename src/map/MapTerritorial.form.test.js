@@ -13,9 +13,9 @@ jest.mock('./territorialMapProvider', () => {
   return {
     IS_LEAFLET: true,
     useJsApiLoader: () => ({ isLoaded: true }),
-    GoogleMap: ({ children, onClick, onLoad }) => {
+    GoogleMap: ({ children, onClick, onLoad, onMouseMove }) => {
       React.useEffect(() => { onLoad(mockMap); }, []);
-      return <div>{children}<button type="button" onClick={() => onClick(event)}>Puntear domicilio</button></div>;
+      return <div data-testid="map-surface" onMouseMove={() => onMouseMove?.(event)}>{children}<button type="button" onClick={() => onClick(event)}>Puntear domicilio</button></div>;
     },
     Autocomplete: passthrough,
     Polygon: ({ paths, options }) => <div data-testid="polygon" data-paths={JSON.stringify(paths)} data-interactive={options.clickable} />,
@@ -26,6 +26,25 @@ jest.mock('./territorialMapProvider', () => {
       SymbolPath: { CIRCLE: 1 }, ControlPosition: { RIGHT_CENTER: 1 },
     } }),
   };
+});
+
+test('el tooltip de Mercado muestra el total vigente y conserva las otras capas al alternarlas', async () => {
+  window.innerWidth = 1024;
+  const section = { seccion: 4251, pologono: 1, geometry: 'POLYGON((-98.98 19.80,-98.96 19.80,-98.96 19.82,-98.98 19.82,-98.98 19.80))' };
+  render(<MapTerritorial secciones={[section]} hasMercado mercadoBySec={{ 4251: { total: 300, deliveryRate: 75, estatus: 'ENTREGADO' } }}
+    afiliacionBySec={{ 4251: { entregadas_sp: 10, comprobadas: 5 } }} movilizadoresBySec={{ 4251: { pct: 25 } }} />);
+  await act(async () => {});
+  fireEvent.click(screen.getByRole('button', { name: /Mercado Solidario/ }));
+  fireEvent.mouseMove(screen.getByTestId('map-surface'));
+  expect(screen.getByText('300 pzas')).toBeInTheDocument();
+  expect(screen.getByText(/75%/)).toBeInTheDocument();
+  for (const name of [/Entrega de credenciales/, /Desdoble Movilizadores/]) {
+    fireEvent.click(screen.getByRole('button', { name }));
+    expect(screen.queryByText('300 pzas')).not.toBeInTheDocument();
+  }
+  fireEvent.click(screen.getByRole('button', { name: /Mercado Solidario/ }));
+  expect(screen.getByText('300 pzas')).toBeInTheDocument();
+  expect(screen.getAllByTestId('polygon').every(node => node.dataset.interactive === 'false')).toBe(true);
 });
 
 test('los controles de capas y menú nunca envían el formulario de alta', async () => {

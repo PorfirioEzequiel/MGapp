@@ -599,9 +599,11 @@ const HoverTooltip = ({ data, pos, containerRef, isDark, tipo = 'seccion', secci
             <span className={`text-xs font-semibold ${sub}`}>Mercado Solidario</span>
             <span className={`text-[10px] tabular-nums font-bold`}
               style={{ color: getSemaforoColor(mercado.deliveryRate).fill }}>
-              {mercado.totalEntregadas != null ? mercado.totalEntregadas : '—'}
+              {mercado.total != null ? `${mercado.total} pzas` : (
+                <>{mercado.totalEntregadas ?? '—'} / {mercado.totalPiezas ?? '—'} pzas</>
+              )}
               <span className={`font-normal ml-1 ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
-                / {mercado.totalPiezas} pzas · {mercado.deliveryRate != null ? `${mercado.deliveryRate.toFixed(0)}%` : '—'}
+                · {mercado.deliveryRate != null ? `${mercado.deliveryRate.toFixed(0)}%` : '—'}
               </span>
             </span>
           </div>
