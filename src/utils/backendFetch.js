@@ -3,9 +3,10 @@ const prodOrigin = process.env.NODE_ENV === 'production' && typeof window !== 'u
   : null;
 
 const BACKEND_URLS = [...new Set([
-  process.env.REACT_APP_BACKEND_URL,
+  // En producción las funciones del mismo sitio son la primera conexión.
   prodOrigin,
-  'http://localhost:3003',
+  process.env.REACT_APP_BACKEND_URL,
+  ...(prodOrigin ? [] : ['http://localhost:3003']),
 ].filter(Boolean))];
 
 export async function backendFetch(path, { timeoutMs = 10000 } = {}) {
@@ -13,7 +14,7 @@ export async function backendFetch(path, { timeoutMs = 10000 } = {}) {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), timeoutMs);
     try {
-      const r = await fetch(`${base.replace(/\/$/, '')}${path}`, { signal: controller.signal });
+      const r = await fetch(`${base.replace(/\/$/, '')}${path}`, { signal: controller.signal, cache: 'no-store' });
       if (r.ok) return await r.json();
     } catch {} finally {
       clearTimeout(timer);

@@ -34,6 +34,7 @@ const mockClient = { from: table => {
     if (table === 'secciones') data = mockSections;
     if (table === 'ciudadania' && query.filters.puesto === 'SM') {
       data = mockSMRows.filter(row => !query.filters.seccion || Number(row.seccion) === query.filters.seccion);
+      if (query.filters.status) data = data.filter(row => row.status === query.filters.status);
       error = mockSMError;
     }
     if (table === 'ubt_catalogo') data = mockCatalog.filter(row => !query.filters.seccion || row.seccion === query.filters.seccion);
@@ -50,8 +51,9 @@ jest.mock('../utils/loadMapJson', () => ({ loadMapJson: jest.fn(async () => []) 
 jest.mock('../utils/backendFetch', () => ({ backendFetch: jest.fn(async () => null) }));
 jest.mock('xlsx', () => ({ ...jest.requireActual('xlsx'), writeFile: jest.fn() }));
 jest.mock('../map/MapaEstadoMexico', () => () => null);
-jest.mock('../map/MapTerritorial', () => ({ ciudadanos, onSelectSeccion, focusCoords, fraccionesGeo }) => (
+jest.mock('../map/MapTerritorial', () => ({ ciudadanos, onSelectSeccion, focusCoords, fraccionesGeo, afiliacionBySec }) => (
   <div>
+    <div data-testid="credential-data">{JSON.stringify(afiliacionBySec)}</div>
     {mockSections.map(section => <button key={section.seccion} onClick={() => onSelectSeccion(section)}>Abrir {section.seccion}</button>)}
     <div data-testid="pins">{ciudadanos.map(c => c.nombre).join(',')}</div>
     <div data-testid="focused-sm">{focusCoords?.name}</div>
@@ -93,29 +95,32 @@ test('una respuesta de la sección anterior no reemplaza los pines de la secció
   expect(screen.getByTestId('pins')).not.toHaveTextContent('Sección anterior');
 });
 
-test('los totales incluyen todos los estatus y las históricas en municipio, distrito y sector', async () => {
+test('los totales solo incluyen SM activas y conservan las históricas en municipio, distrito y sector', async () => {
   mockSMRows = [
     { seccion: '4251', poligono: 1, status: 'ACTIVO' },
     { seccion: '4251', poligono: 1, status: 'ELIMINADO' },
     { seccion: '4191', poligono: 1, status: 'SOLICITUD DE ALTA' },
     { seccion: '4252', poligono: 2, status: 'RECHAZADA' },
+    { seccion: '4191', poligono: 1, status: 'ACTIVO' },
+    { seccion: '4252', poligono: 2, status: 'ACTIVO' },
+    { seccion: '4252', poligono: 2, status: null },
   ];
   render(<MemoryRouter><TableroBoard /></MemoryRouter>);
   await screen.findByRole('button', { name: 'Abrir 4251' });
-  await waitFor(() => expect(within(smCount()).getByText('4')).toBeInTheDocument());
-  expect(within(smCount()).getByText('registradas')).toBeInTheDocument();
+  await waitFor(() => expect(within(smCount()).getByText('3')).toBeInTheDocument());
+  expect(within(smCount()).getByText('activas')).toBeInTheDocument();
   fireEvent.click(screen.getByRole('button', { name: 'Abrir 4251' }));
   await act(async () => { mockPending[4251].resolve({ data: [], error: null }); });
-  await waitFor(() => expect(within(smCount()).getByText('2')).toBeInTheDocument());
+  await waitFor(() => expect(within(smCount()).getByText('1')).toBeInTheDocument());
   fireEvent.click(within(screen.getByRole('navigation', { name: 'Ubicación territorial' })).getByRole('button', { name: 'Sector 1', exact: true }));
-  await waitFor(() => expect(within(smCount()).getByText('3')).toBeInTheDocument());
+  await waitFor(() => expect(within(smCount()).getByText('2')).toBeInTheDocument());
   fireEvent.click(within(screen.getByRole('navigation', { name: 'Ubicación territorial' })).getByRole('button', { name: 'Dto. 5', exact: true }));
-  await waitFor(() => expect(within(smCount()).getByText('4')).toBeInTheDocument());
-  expect(mockQueries.filter(q => q.table === 'ciudadania' && q.filters.puesto === 'SM').every(q => q.filters.status == null)).toBe(true);
+  await waitFor(() => expect(within(smCount()).getByText('3')).toBeInTheDocument());
+  expect(mockQueries.filter(q => q.table === 'ciudadania' && q.filters.puesto === 'SM').every(q => q.filters.status === 'ACTIVO')).toBe(true);
   expect(screen.queryByText(/ELIMINADO|SOLICITUD DE ALTA|RECHAZADA/)).not.toBeInTheDocument();
 });
 
-test('muestra todas las SM de una fracción y permite seleccionar personas distintas', async () => {
+test('la lista de fracción muestra las SM activas y excluye las eliminadas', async () => {
   mockCatalog = [{ seccion: 4251, fraccion: 'F4251-01' }];
   mockSMRows = [
     { id: 1, nombre: 'Primera', a_paterno: 'SM', a_materno: 'Prueba', usuario: 'sm-one', seccion: '4251', poligono: 1, ubt: 'F4251-01', status: 'ELIMINADO', latitud: 19.7, longitud: -98.9 },
@@ -125,22 +130,21 @@ test('muestra todas las SM de una fracción y permite seleccionar personas disti
   fireEvent.click(await screen.findByRole('button', { name: 'Abrir 4251' }));
   await finishSection();
   expect(screen.getByTestId('fraction-sm')).toHaveTextContent('Segunda');
-  fireEvent.click(screen.getByRole('button', { name: 'Primera SM Prueba' }));
-  expect(screen.getByTestId('focused-sm')).toHaveTextContent('Primera SM Prueba');
+  expect(screen.queryByRole('button', { name: 'Primera SM Prueba' })).not.toBeInTheDocument();
   fireEvent.click(screen.getByRole('button', { name: 'Segunda SM Prueba' }));
   expect(screen.getByTestId('focused-sm')).toHaveTextContent('Segunda SM Prueba');
   expect(screen.getByRole('button', { name: 'Cerrar ficha del SM' })).toBeInTheDocument();
   const movQuery = mockQueries.find(q => q.filters.puesto === 'MOVILIZADOR' && q.inFilter);
   expect(movQuery.filters.status).toBe('ACTIVO');
   expect(movQuery.inFilter).toEqual(['movilizador', ['sm-two']]);
-  expect(mockQueries.filter(q => q.fields.startsWith('id, nombre') && q.filters.puesto !== 'SM').every(q => q.orFilter === 'status.eq.ACTIVO,puesto.eq.SM')).toBe(true);
+  expect(mockQueries.filter(q => q.fields.startsWith('id, nombre') && q.filters.puesto !== 'SM').every(q => q.filters.status === 'ACTIVO')).toBe(true);
   expect(screen.queryByText('ELIMINADO')).not.toBeInTheDocument();
 });
 
 test('las SM sin fracción aparecen y abren su ficha incluso si la sección no tiene catálogo', async () => {
   mockSMRows = [
-    { id: 3, nombre: 'Sin fracción uno', a_paterno: '', a_materno: '', usuario: 'sm-three', seccion: '4251', poligono: 1, ubt: null },
-    { id: 4, nombre: 'Sin fracción dos', a_paterno: '', a_materno: '', usuario: 'sm-four', seccion: '4251', poligono: 1, ubt: '' },
+    { id: 3, nombre: 'Sin fracción uno', a_paterno: '', a_materno: '', usuario: 'sm-three', seccion: '4251', poligono: 1, ubt: null, status: 'ACTIVO' },
+    { id: 4, nombre: 'Sin fracción dos', a_paterno: '', a_materno: '', usuario: 'sm-four', seccion: '4251', poligono: 1, ubt: '', status: 'ACTIVO' },
   ];
   render(<MemoryRouter><TableroBoard /></MemoryRouter>);
   fireEvent.click(await screen.findByRole('button', { name: 'Abrir 4251' }));
@@ -155,7 +159,7 @@ test('las SM sin fracción aparecen y abren su ficha incluso si la sección no t
 
 test('muestra la fracción capturada que falta en catálogo sin inflar las fracciones oficiales', async () => {
   mockCatalog = [{ seccion: 4251, fraccion: 'F4251-01' }];
-  mockSMRows = [{ id: 5, nombre: 'Referencia original', a_paterno: '', a_materno: '', seccion: '4251', poligono: 1, ubt: 'F4191-09' }];
+  mockSMRows = [{ id: 5, nombre: 'Referencia original', a_paterno: '', a_materno: '', seccion: '4251', poligono: 1, ubt: 'F4191-09', status: 'ACTIVO' }];
   render(<MemoryRouter><TableroBoard /></MemoryRouter>);
   fireEvent.click(await screen.findByRole('button', { name: 'Abrir 4251' }));
   await finishSection();
@@ -181,7 +185,7 @@ test('reporte completo con datos paginados, comprobadas vivas y reparto document
   mockSMRows = [
     { id: 1, usuario: 'uno', seccion: 4251, poligono: 1, status: 'ACTIVO', latitud: 19.7, longitud: -99 },
     { id: 2, seccion: 4251, poligono: 1, status: 'ELIMINADO', latitud: null, longitud: null },
-    { id: 3, seccion: 4191, poligono: 1, status: 'RECHAZADA' },
+    { id: 3, seccion: 4191, poligono: 1, status: 'ACTIVO' },
   ];
   mockMovRows = Array.from({ length: 1003 }, (_, i) => ({ seccion: i < 1001 ? 4252 : null, movilizador: 'uno' }));
   require('../utils/backendFetch').backendFetch.mockImplementation(async path => path === '/api/afiliacion'
@@ -197,7 +201,7 @@ test('reporte completo con datos paginados, comprobadas vivas y reparto document
   const [book, filename] = XLSX.writeFile.mock.calls[0];
   expect(filename).toMatch(/^reporte_general_\d{4}-\d{2}-\d{2}\.xlsx$/);
   const rows = XLSX.utils.sheet_to_json(book.Sheets['Reporte general']);
-  expect(rows.find(r => r.Sección === 4251)).toMatchObject({ SMs: 2, 'SMs con ubicación': 1, 'SMs sin ubicación': 1,
+  expect(rows.find(r => r.Sección === 4251)).toMatchObject({ SMs: 1, 'SMs con ubicación': 1, 'SMs sin ubicación': '',
     'Credenciales: entregadas SP (ajustadas)': 10, 'Credenciales: comprobadas (con reparto estimado)': 10,
     'Credenciales: % de avance ajustado': 1, 'Número de movilizadores': 2 });
   expect(rows.find(r => r.Sección === 4252)['Número de movilizadores']).toBe(1001);
@@ -228,4 +232,20 @@ test('un error de catálogo bloquea el reporte en vez de exportar metas cero', a
   render(<MemoryRouter><TableroBoard /></MemoryRouter>);
   expect(await screen.findByRole('alert')).toHaveTextContent('No se pudo completar la carga');
   expect(screen.getByRole('button', { name: 'Reporte general' })).toBeDisabled();
+});
+
+test('reintentar sustituye el respaldo por comprobadas vivas y espera ambas respuestas', async () => {
+  render(<MemoryRouter><TableroBoard /></MemoryRouter>);
+  const retry = await screen.findByRole('button', { name: 'Reintentar conexión' });
+  const checked = deferred(), affiliation = deferred();
+  require('../utils/backendFetch').backendFetch.mockImplementation(path => path === '/api/afiliacion' ? affiliation.promise : checked.promise);
+  fireEvent.click(retry);
+  expect(screen.getByRole('button', { name: 'Actualizando…' })).toBeDisabled();
+  expect(screen.getByRole('button', { name: 'Reporte general' })).toBeDisabled();
+  await act(async () => checked.resolve({ bySec: [{ seccion: 4251, comprobadas: 321 }], bySp0: { 1: 7 } }));
+  expect(screen.getByRole('button', { name: 'Reporte general' })).toBeDisabled();
+  await act(async () => affiliation.resolve([{ seccion: 4251, sp: 1, comprobadas: 9, entregadas_sp: 400 }]));
+  expect(screen.queryByText(/usando respaldo local|no se pudo actualizar el conteo/)).not.toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Reporte general' })).toBeEnabled();
+  expect(JSON.parse(screen.getByTestId('credential-data').textContent)[4251].comprobadas).toBe(321);
 });

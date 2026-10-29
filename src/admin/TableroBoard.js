@@ -4,6 +4,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom';
 import * as XLSX from 'xlsx';
 import { readTerritorialRows, createTerritorialReportWorkbook, territorialReportFilename } from '../utils/territorialReport';
+import ActiveSMReportButton from '../componentes/ActiveSMReportButton';
 import supabase, { supabaseStorage as supabaseAdmin } from '../supabase/client';
 import MapTerritorial from '../map/MapTerritorial';
 import TerritorialLoading, { TerritorialSkeleton } from '../componentes/TerritorialLoading';
@@ -364,6 +365,7 @@ const TableroBoard = ({ readOnly = false }) => {
   const [afiliacionData, setAfiliacionData] = useState(afiliacionLocalData);
   const [afiliacionOffline, setAfiliacionOffline] = useState(false);
   const [comprobadasOffline, setComprobadasOffline] = useState(false);
+  const [credentialRefresh, setCredentialRefresh] = useState(0);
 
   useEffect(() => {
     // Usa supabaseAdmin (service role) para evitar el deadlock de GoTrueClient
@@ -383,7 +385,7 @@ const TableroBoard = ({ readOnly = false }) => {
   useEffect(() => {
     Promise.all([
       readTerritorialRows(() => supabaseAdmin.from('ubt_catalogo').select('seccion', { count: 'exact' }).order('seccion').order('fraccion')),
-      readTerritorialRows(() => supabaseAdmin.from('ciudadania').select('seccion, usuario, poligono, status, latitud, longitud', { count: 'exact' }).eq('puesto', 'SM').order('id')),
+      readTerritorialRows(() => supabaseAdmin.from('ciudadania').select('seccion, usuario, poligono, status, latitud, longitud', { count: 'exact' }).eq('puesto', 'SM').eq('status', 'ACTIVO').order('id')),
       readTerritorialRows(() => supabaseAdmin.from('ciudadania').select('seccion, movilizador', { count: 'exact' }).eq('puesto', 'MOVILIZADOR').eq('status', 'ACTIVO').order('id')),
     ]).then(([fractionRows, smRows, movRows]) => {
       const fracBySec = {};
@@ -392,7 +394,7 @@ const TableroBoard = ({ readOnly = false }) => {
 
       setSMRegistry({ rows: smRows, loaded: true, error: null });
       const smSecByUsuario = {};
-      // Count every SM; movilizador assignments retain their existing active-only rule.
+      // El conteo territorial y el reporte consideran solo SM activas.
       smRows.forEach(r => {
         if (r.status === 'ACTIVO' && r.usuario) smSecByUsuario[r.usuario] = r.seccion;
       });
@@ -538,23 +540,30 @@ const TableroBoard = ({ readOnly = false }) => {
   }, []);
 
   useEffect(() => {
+    let active = true;
     backendFetch('/api/comprobadas').then(data => {
+      if (!active) return;
       setCredentialLoads(prev => ({ ...prev, checked: true }));
       if (!data || !Array.isArray(data.bySec)) { setComprobadasOffline(true); return; }
+      setComprobadasOffline(false);
       const map = {};
       for (const row of (data.bySec ?? [])) { if (row.seccion != null) map[row.seccion] = row.comprobadas; }
       setComprobadasMongo(map);
       setComprobadasSp0(data.bySp0 ?? {});
     });
-  }, []);
+    return () => { active = false; };
+  }, [credentialRefresh]);
 
   useEffect(() => {
+    let active = true;
     backendFetch('/api/afiliacion').then(data => {
+      if (!active) return;
       setCredentialLoads(prev => ({ ...prev, affiliation: true }));
       setAfiliacionOffline(!Array.isArray(data) || data.length === 0);
       setAfiliacionData(Array.isArray(data) && data.length > 0 ? data : afiliacionLocalData);
     });
-  }, []);
+    return () => { active = false; };
+  }, [credentialRefresh]);
 
   // Fade transition when electoral mode changes
   useEffect(() => {
@@ -958,7 +967,7 @@ const TableroBoard = ({ readOnly = false }) => {
     setCiudadanosGeo([]);
     if (!selectedSector) return;
     supabase.from('ciudadania').select('id, nombre, a_paterno, a_materno, latitud, longitud, puesto, ubt, seccion, url_foto_perfil, telefono_1')
-      .eq('poligono', selectedSector).or('status.eq.ACTIVO,puesto.eq.SM').not('latitud', 'is', null).abortSignal(controller.signal)
+      .eq('poligono', selectedSector).eq('status', 'ACTIVO').not('latitud', 'is', null).abortSignal(controller.signal)
       .then(({ data, error }) => {
         if (!active) return;
         if (error) throw error;
@@ -989,12 +998,12 @@ const TableroBoard = ({ readOnly = false }) => {
         supabase.from('ciudadania').select('nombre, a_paterno, a_materno')
           .eq('puesto', 'SECCIONAL').eq('seccion', selectedSeccion).eq('status', 'ACTIVO').maybeSingle().abortSignal(controller.signal),
         supabaseAdmin.from('ciudadania').select('id, nombre, a_paterno, a_materno, seccion, ubt, usuario, status, telefono_1, latitud, longitud, url_foto_perfil')
-          .eq('puesto', 'SM').eq('seccion', selectedSeccion).order('ubt', { ascending: true }).abortSignal(controller.signal),
+          .eq('puesto', 'SM').eq('status', 'ACTIVO').eq('seccion', selectedSeccion).order('ubt', { ascending: true }).abortSignal(controller.signal),
         supabase.from('ubt_catalogo').select('fraccion').eq('seccion', selectedSeccion).order('fraccion', { ascending: true }).abortSignal(controller.signal),
         supabase.from('ciudadania').select('id', { count: 'exact', head: true })
           .eq('seccion', selectedSeccion).eq('status', 'ACTIVO').abortSignal(controller.signal),
         supabase.from('ciudadania').select('id, nombre, a_paterno, a_materno, latitud, longitud, puesto, ubt, seccion, url_foto_perfil, telefono_1')
-          .eq('seccion', selectedSeccion).or('status.eq.ACTIVO,puesto.eq.SM').not('latitud', 'is', null).abortSignal(controller.signal),
+          .eq('seccion', selectedSeccion).eq('status', 'ACTIVO').not('latitud', 'is', null).abortSignal(controller.signal),
         supabase.from('fracciones').select('fraccion, seccion, geometry').eq('seccion', selectedSeccion).abortSignal(controller.signal),
       ]);
       if (!active) return;
@@ -2501,7 +2510,7 @@ const TableroBoard = ({ readOnly = false }) => {
             <StatCard label="Lista Nominal" value={fmt(secData?.lista_nominal)} accent />
             <StatCard label="Padrón" value={fmt(padronTotal)} sub="electoral" />
             <StatCard label="Fracciones" value={fracciones.length} />
-            <StatCard label="SMs" value={smRegistry.loaded && !smRegistry.error ? smScopeCounts.total : '—'} sub="registradas" />
+            <StatCard label="SMs" value={smRegistry.loaded && !smRegistry.error ? smScopeCounts.total : '—'} sub="activas" />
           </div>
 
           {/* Cobertura + Afiliación */}
@@ -2689,7 +2698,7 @@ const TableroBoard = ({ readOnly = false }) => {
             <StatCard label="Lista Nominal" value={fmt(listaNominal)} accent wide />
             <StatCard label="Secciones" value={secData.length} sub="en este sector" />
             <StatCard label="Fracciones" value={fraccionesSector || '—'} sub="en este sector" />
-            <StatCard label="SMs" value={smRegistry.loaded && !smRegistry.error ? smScopeCounts.total : '—'} sub="registradas" />
+            <StatCard label="SMs" value={smRegistry.loaded && !smRegistry.error ? smScopeCounts.total : '—'} sub="activas" />
             <StatCard label="Ubicados" value={ciudadanosGeo.length || '—'} sub="con coordenadas" />
           </div>
           <div className="bg-white border border-slate-100 rounded-xl p-3 shadow-sm">
@@ -2721,7 +2730,7 @@ const TableroBoard = ({ readOnly = false }) => {
             <StatCard label="Secciones" value={secData.length} />
             <StatCard label="Sectores" value={sectoresEnDist.length} />
             <StatCard label="Fracciones" value={fraccionesDistrito || '—'} sub="en este distrito" />
-            <StatCard label="SMs" value={smRegistry.loaded && !smRegistry.error ? smScopeCounts.total : '—'} sub="registradas" />
+            <StatCard label="SMs" value={smRegistry.loaded && !smRegistry.error ? smScopeCounts.total : '—'} sub="activas" />
           </div>
           <EmptyGuide>Selecciona un sector para ver sus secciones y coordinadores.</EmptyGuide>
         </div>
@@ -2746,7 +2755,7 @@ const TableroBoard = ({ readOnly = false }) => {
           <StatCard label="Distritos" value={distritos.length} />
           <StatCard label="Sectores" value={totalSectores} />
           <StatCard label="Fracciones" value={totalFracciones || '—'} sub="total municipal" />
-          <StatCard label="SMs" value={smRegistry.loaded && !smRegistry.error ? smScopeCounts.total : '—'} sub="registradas" />
+          <StatCard label="SMs" value={smRegistry.loaded && !smRegistry.error ? smScopeCounts.total : '—'} sub="activas" />
         </div>
         <EmptyGuide>Selecciona un distrito federal para comenzar el análisis territorial.</EmptyGuide>
       </div>
@@ -2826,7 +2835,7 @@ const TableroBoard = ({ readOnly = false }) => {
           {!loadingMap && mapScope === 'tecamac' && (
             <div className="territorial-header-actions flex items-center gap-4 ml-auto flex-shrink-0">
               {isAdmin && (
-                <div className="territorial-header-exports flex items-center">
+                <div className="territorial-header-exports flex items-center gap-2">
                   <button
                     onClick={downloadReporteGeneral}
                     disabled={!reportReady}
@@ -2838,6 +2847,7 @@ const TableroBoard = ({ readOnly = false }) => {
                     </svg>
                     Reporte general
                   </button>
+                  <ActiveSMReportButton onError={setReportError} />
                 </div>
               )}
               <div className="territorial-header-metrics hidden md:flex items-center gap-4">
@@ -2922,6 +2932,14 @@ const TableroBoard = ({ readOnly = false }) => {
                 <FiAlertCircle aria-hidden="true" />
                 <span>{afiliacionOffline && 'Afiliación: usando respaldo local. '}
                 {comprobadasOffline && 'Comprobadas: no se pudo actualizar el conteo.'}</span>
+                <button type="button" className="font-semibold underline whitespace-nowrap"
+                  disabled={!credentialLoads.affiliation || !credentialLoads.checked}
+                  onClick={() => {
+                    setCredentialLoads({ affiliation: false, checked: false });
+                    setCredentialRefresh(value => value + 1);
+                  }}>
+                  {!credentialLoads.affiliation || !credentialLoads.checked ? 'Actualizando…' : 'Reintentar conexión'}
+                </button>
               </p>
             )}
             <div className="territorial-filter-group">
