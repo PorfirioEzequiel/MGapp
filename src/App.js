@@ -42,6 +42,8 @@ import SubirEvidenciaActividad from './pages/SubirEvidenciaActividad';
 import ControlMGS from './admin/ControlMGS';
 import RecuperarApoyos from './admin/RecuperarApoyos';
 import TerritorialMapEntry from './componentes/TerritorialMapEntry';
+import Brigadeo from './admin/Brigadeo';
+import VisorBrigada from './pages/VisorBrigada';
 
 // Componente para proteger rutas privadas
 const PrivateRoute = ({ children }) => {
@@ -73,6 +75,9 @@ function App() {
 
         {/* Visor territorial — cargo consultor, solo lectura */}
         <Route path="/visor" element={<PrivateRoute><VisorConsultor /></PrivateRoute>} />
+
+        {/* Visor público de brigada: sin login a propósito */}
+        <Route path="/brigada/:slug" element={<VisorBrigada />} />
 
         {/* Registro público de evidencias de actividades: sin login a propósito */}
         <Route path="/evidencia-actividad/:actividadId" element={<SubirEvidenciaActividad />} />
@@ -108,6 +113,7 @@ function App() {
         <Route path="/captura" element={<PrivateRoute><MoviladoresGestion /></PrivateRoute>} />
         <Route path="/admin/control-mgs" element={<PrivateRoute><ControlMGS /></PrivateRoute>} />
         <Route path="/admin/recuperar-apoyos" element={<PrivateRoute><RecuperarApoyos /></PrivateRoute>} />
+        <Route path="/admin/brigadeo" element={<PrivateRoute><Brigadeo /></PrivateRoute>} />
         <Route path="/apoyos/:usuario" element={<PrivateRoute><Apoyos /></PrivateRoute>} />
         <Route path="/menu/:usuario" element={<PrivateRoute><MeniAdmin /></PrivateRoute>} />
         <Route path="/perfil/:usuario" element={<PrivateRoute><Perfil /></PrivateRoute>} />
