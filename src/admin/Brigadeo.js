@@ -75,11 +75,14 @@ const Brigadeo = () => {
   };
 
   const generateSlug = async (sec) => {
-    const { count } = await supabase
+    const { data } = await supabase
       .from('brigadas')
-      .select('id', { count: 'exact', head: true })
-      .eq('sector', sec);
-    return `equipo_s${sec}_${(count ?? 0) + 1}`;
+      .select('slug')
+      .like('slug', `equipo_s${sec}_%`);
+    const usados = new Set((data ?? []).map(b => b.slug));
+    let n = 1;
+    while (usados.has(`equipo_s${sec}_${n}`)) n++;
+    return `equipo_s${sec}_${n}`;
   };
 
   const handleGuardar = async (e) => {
