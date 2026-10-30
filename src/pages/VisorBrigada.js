@@ -1,8 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useParams } from 'react-router-dom';
-import { GoogleMap, useJsApiLoader, Polygon, OverlayView } from '@react-google-maps/api';
+import { GoogleMap, useJsApiLoader, Polygon, OverlayView, getMapRuntime } from '../map/territorialMapProvider';
 import supabase from '../supabase/client';
-import { GOOGLE_MAPS_API_KEY, GOOGLE_MAPS_LIBRARIES } from '../utils/googleMapsConfig';
 
 const MAP_CONTAINER = { width: '100%', height: '100%' };
 const DEFAULT_CENTER = { lat: 19.70, lng: -98.97 };
@@ -42,20 +41,17 @@ const getCentroid = (pathGroups) => {
 const VisorBrigada = () => {
   const { slug } = useParams();
 
-  const [brigada, setBrigada]       = useState(null);
-  const [seccionesGeo, setSecGeo]   = useState([]);
-  const [cargando, setCargando]     = useState(true);
+  const [brigada, setBrigada]         = useState(null);
+  const [seccionesGeo, setSecGeo]     = useState([]);
+  const [cargando, setCargando]       = useState(true);
   const [mapInstance, setMapInstance] = useState(null);
-  const [panelOpen, setPanelOpen]   = useState(false);
-  const [secActiva, setSecActiva]   = useState(null);
+  const [panelOpen, setPanelOpen]     = useState(false);
+  const [secActiva, setSecActiva]     = useState(null);
 
-  const { isLoaded } = useJsApiLoader({
-    googleMapsApiKey: GOOGLE_MAPS_API_KEY,
-    libraries: GOOGLE_MAPS_LIBRARIES,
-  });
+  const { isLoaded } = useJsApiLoader({});
 
   useEffect(() => {
-    const fetch = async () => {
+    const fetchData = async () => {
       const { data: brig } = await supabase
         .from('brigadas')
         .select('*')
@@ -74,19 +70,21 @@ const VisorBrigada = () => {
       }
       setCargando(false);
     };
-    fetch();
+    fetchData();
   }, [slug]);
 
-  const onMapLoad = useCallback((map) => setMapInstance(map), []);
+  const onMapLoad = useCallback((facade) => setMapInstance(facade), []);
 
-  // Auto-fit bounds once map + geometries are ready
+  // Auto-fit bounds cuando el mapa y las geometrías estén listos
   useEffect(() => {
     if (!mapInstance || !isLoaded || seccionesGeo.length === 0) return;
-    const bounds = new window.google.maps.LatLngBounds();
+    const runtime = getMapRuntime();
+    if (!runtime) return;
+    const bounds = new (runtime.maps.LatLngBounds)();
     seccionesGeo.forEach(sec => {
       parseWKT(sec.geometry).flat().forEach(p => bounds.extend(p));
     });
-    if (!bounds.isEmpty()) mapInstance.fitBounds(bounds, 48);
+    mapInstance.fitBounds(bounds, 48);
   }, [mapInstance, seccionesGeo, isLoaded]);
 
   if (cargando) return (
@@ -117,7 +115,7 @@ const VisorBrigada = () => {
   return (
     <div className="h-screen flex flex-col overflow-hidden">
 
-      {/* ── Header ── */}
+      {/* Header */}
       <div className="flex-shrink-0 px-4 py-3 flex items-center gap-3" style={{ backgroundColor: '#0F172A' }}>
         <div
           className="w-4 h-4 rounded-full flex-shrink-0 shadow-lg ring-2 ring-white/20"
@@ -141,7 +139,7 @@ const VisorBrigada = () => {
         </button>
       </div>
 
-      {/* ── Panel de secciones ── */}
+      {/* Panel de secciones */}
       {panelOpen && (
         <div className="flex-shrink-0 px-4 py-3 border-b border-slate-800" style={{ backgroundColor: '#1E293B' }}>
           <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500 mb-2">
@@ -171,23 +169,16 @@ const VisorBrigada = () => {
         </div>
       )}
 
-      {/* ── Mapa ── */}
-      <div className="flex-1 relative">
+      {/* Mapa */}
+      <div className="flex-1 relative min-h-0">
         {isLoaded ? (
           <GoogleMap
             mapContainerStyle={MAP_CONTAINER}
             center={DEFAULT_CENTER}
             zoom={12}
+            baseStyle="satelite"
             onLoad={onMapLoad}
-            options={{
-              mapTypeId: 'satellite',
-              disableDefaultUI: false,
-              mapTypeControl: false,
-              streetViewControl: false,
-              fullscreenControl: true,
-              zoomControl: true,
-              gestureHandling: 'greedy',
-            }}
+            options={{ gestureHandling: 'greedy' }}
           >
             {parsed.map(sec => (
               <React.Fragment key={sec.seccion}>
@@ -199,7 +190,7 @@ const VisorBrigada = () => {
                       strokeColor: brigColor,
                       strokeWeight: secActiva === sec.seccion ? 3 : 1.5,
                       fillColor: brigColor,
-                      fillOpacity: secActiva === sec.seccion ? 0.55 : 0.35,
+                      fillOpacity: secActiva === sec.seccion ? 0.6 : 0.35,
                       clickable: true,
                     }}
                     onClick={() => setSecActiva(s => s === sec.seccion ? null : sec.seccion)}
@@ -208,7 +199,7 @@ const VisorBrigada = () => {
                 {sec.centroid && (
                   <OverlayView
                     position={sec.centroid}
-                    mapPaneName="overlayMouseTarget"
+                    mapPaneName="overlayLayer"
                   >
                     <div
                       style={{
@@ -222,7 +213,6 @@ const VisorBrigada = () => {
                         whiteSpace: 'nowrap',
                         pointerEvents: 'none',
                         userSelect: 'none',
-                        letterSpacing: '0.02em',
                       }}
                     >
                       {sec.seccion}
@@ -238,9 +228,8 @@ const VisorBrigada = () => {
           </div>
         )}
 
-        {/* Tooltip de sección activa */}
         {secActiva !== null && (
-          <div className="absolute bottom-6 left-1/2 -translate-x-1/2 bg-black/80 text-white text-sm font-bold px-4 py-2 rounded-xl shadow-lg backdrop-blur-sm pointer-events-none">
+          <div className="absolute bottom-6 left-1/2 -translate-x-1/2 bg-black/80 text-white text-sm font-bold px-4 py-2 rounded-xl shadow-lg pointer-events-none">
             Sección {secActiva}
           </div>
         )}

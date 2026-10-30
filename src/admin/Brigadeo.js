@@ -47,7 +47,7 @@ const Brigadeo = () => {
     const { data } = await supabase
       .from('secciones')
       .select('seccion')
-      .eq('sector', sec)
+      .eq('pologono', sec)
       .order('seccion');
     setSecciones((data ?? []).map(s => Number(s.seccion)));
   }, []);
