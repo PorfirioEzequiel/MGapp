@@ -5,11 +5,15 @@ import supabase, { supabaseStorage } from '../supabase/client';
 const nombreCompleto = (r) =>
   `${r.nombre ?? ''} ${r.a_paterno ?? ''} ${r.a_materno ?? ''}`.trim();
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 const decodeToken = (token) => {
+  if (UUID_RE.test(token)) return token;
   try {
     const padded = token.replace(/-/g, '+').replace(/_/g, '/');
     const pad = padded.length % 4;
-    return atob(pad ? padded + '='.repeat(4 - pad) : padded);
+    const decoded = atob(pad ? padded + '='.repeat(4 - pad) : padded);
+    return UUID_RE.test(decoded) ? decoded : token;
   } catch {
     return token;
   }
