@@ -5,6 +5,16 @@ import supabase, { supabaseStorage } from '../supabase/client';
 const nombreCompleto = (r) =>
   `${r.nombre ?? ''} ${r.a_paterno ?? ''} ${r.a_materno ?? ''}`.trim();
 
+const decodeToken = (token) => {
+  try {
+    const padded = token.replace(/-/g, '+').replace(/_/g, '/');
+    const pad = padded.length % 4;
+    return atob(pad ? padded + '='.repeat(4 - pad) : padded);
+  } catch {
+    return token;
+  }
+};
+
 // ── Autocomplete de SM ─────────────────────────────────────────────────────────
 const AutocompleteSM = ({ sms, valor, onChange, smSel, onSelect, onLimpiar }) => {
   const [abierto, setAbierto] = useState(false);
@@ -95,16 +105,74 @@ const AutocompleteSM = ({ sms, valor, onChange, smSel, onSelect, onLimpiar }) =>
   );
 };
 
+// ── Slot de foto individual ────────────────────────────────────────────────────
+const FotoSlot = ({ label, foto, preview, onChange, onLimpiar }) => (
+  <div>
+    <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-2">{label}</p>
+    {preview ? (
+      <div>
+        <div className="relative">
+          <img
+            src={preview}
+            alt="vista previa"
+            className="w-full rounded-xl object-cover max-h-60 border border-slate-100"
+          />
+          <button
+            type="button"
+            onClick={onLimpiar}
+            className="absolute top-2 right-2 bg-white/95 backdrop-blur-sm rounded-full w-8 h-8 flex items-center justify-center text-slate-600 hover:text-red-500 shadow-md border border-slate-100 font-bold text-sm"
+          >
+            ✕
+          </button>
+        </div>
+        {foto?.name && (
+          <p className="text-[11px] text-slate-400 mt-1.5 text-center truncate px-1">{foto.name}</p>
+        )}
+        <label className="block cursor-pointer mt-2.5">
+          <div className="flex items-center justify-center gap-2 py-2 rounded-xl border border-blue-200 bg-blue-50 hover:bg-blue-100 active:scale-[0.98] transition-all">
+            <svg className="w-4 h-4 text-blue-600" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M6.827 6.175A2.31 2.31 0 015.186 7.23c-.38.054-.757.112-1.134.175C2.999 7.58 2.25 8.507 2.25 9.574V18a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9.574c0-1.067-.75-1.994-1.802-2.169a47.865 47.865 0 00-1.134-.175 2.31 2.31 0 01-1.64-1.055l-.822-1.316a2.192 2.192 0 00-1.736-1.039 48.774 48.774 0 00-5.232 0 2.192 2.192 0 00-1.736 1.039l-.821 1.316z" />
+              <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 12.75a4.5 4.5 0 11-9 0 4.5 4.5 0 019 0z" />
+            </svg>
+            <span className="text-xs font-bold text-blue-700">Cambiar foto</span>
+          </div>
+          <input type="file" accept="image/*" className="hidden" onChange={onChange} />
+        </label>
+      </div>
+    ) : (
+      <label className="block cursor-pointer" style={{ WebkitTapHighlightColor: 'transparent' }}>
+        <div className="flex items-center gap-4 p-4 rounded-xl border-2 border-dashed border-blue-200 bg-blue-50 hover:border-blue-400 hover:bg-blue-100 active:scale-[0.98] transition-all select-none">
+          <div className="w-12 h-12 bg-blue-600 rounded-xl flex items-center justify-center flex-shrink-0 shadow-sm">
+            <svg className="w-6 h-6 text-white" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M6.827 6.175A2.31 2.31 0 015.186 7.23c-.38.054-.757.112-1.134.175C2.999 7.58 2.25 8.507 2.25 9.574V18a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9.574c0-1.067-.75-1.994-1.802-2.169a47.865 47.865 0 00-1.134-.175 2.31 2.31 0 01-1.64-1.055l-.822-1.316a2.192 2.192 0 00-1.736-1.039 48.774 48.774 0 00-5.232 0 2.192 2.192 0 00-1.736 1.039l-.821 1.316z" />
+              <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 12.75a4.5 4.5 0 11-9 0 4.5 4.5 0 019 0zM18.75 10.5h.008v.008h-.008V10.5z" />
+            </svg>
+          </div>
+          <div>
+            <p className="text-sm font-bold text-blue-900">Agregar foto</p>
+            <p className="text-xs text-blue-600 mt-0.5">Tomar foto o elegir de galería</p>
+          </div>
+        </div>
+        <input type="file" accept="image/*" className="hidden" onChange={onChange} />
+      </label>
+    )}
+  </div>
+);
+
 // ── Componente principal ───────────────────────────────────────────────────────
 const SubirEvidenciaActividad = () => {
-  const { actividadId } = useParams();
+  const { actividadId: tokenParam } = useParams();
+  const actividadId = decodeToken(tokenParam);
+
   const [actividad, setActividad] = useState(null);
   const [cargando, setCargando] = useState(true);
   const [sms, setSms] = useState([]);
   const [smQuery, setSmQuery] = useState('');
   const [smSel, setSmSel] = useState(null);
-  const [foto, setFoto] = useState(null);
-  const [fotoPreview, setFotoPreview] = useState(null);
+  const [foto1, setFoto1] = useState(null);
+  const [preview1, setPreview1] = useState(null);
+  const [foto2, setFoto2] = useState(null);
+  const [preview2, setPreview2] = useState(null);
   const [enviando, setEnviando] = useState(false);
   const [exito, setExito] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
@@ -132,35 +200,45 @@ const SubirEvidenciaActividad = () => {
     fetchData();
   }, [actividadId]);
 
-  const handleFoto = (e) => {
+  const handleFoto1 = (e) => {
     const file = e.target.files[0];
     if (!file) return;
-    setFoto(file);
-    setFotoPreview(URL.createObjectURL(file));
+    setFoto1(file);
+    setPreview1(URL.createObjectURL(file));
+  };
+
+  const handleFoto2 = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    setFoto2(file);
+    setPreview2(URL.createObjectURL(file));
   };
 
   const handleEnviar = async (e) => {
     e.preventDefault();
     if (!smSel) { setErrorMsg('Por favor selecciona tu nombre de la lista.'); return; }
-    if (!foto) { setErrorMsg('Por favor selecciona una foto de evidencia.'); return; }
+    if (!foto1) { setErrorMsg('Por favor selecciona la Foto 1.'); return; }
+    if (!foto2) { setErrorMsg('Por favor selecciona la Foto 2.'); return; }
     setErrorMsg('');
     setEnviando(true);
 
-    const filePath = `evidencias/${actividadId}/${smSel.id}-${Date.now()}`;
+    const ts = Date.now();
+    const path1 = `evidencias/${actividadId}/${smSel.id}-${ts}-1`;
+    const path2 = `evidencias/${actividadId}/${smSel.id}-${ts}-2`;
 
-    const { error: uploadError } = await supabaseStorage.storage
-      .from('evidencias_actividades')
-      .upload(filePath, foto, { upsert: false });
+    const [upload1, upload2] = await Promise.all([
+      supabaseStorage.storage.from('evidencias_actividades').upload(path1, foto1, { upsert: false }),
+      supabaseStorage.storage.from('evidencias_actividades').upload(path2, foto2, { upsert: false }),
+    ]);
 
-    if (uploadError) {
-      setErrorMsg('Error al subir imagen. Intenta de nuevo.');
+    if (upload1.error || upload2.error) {
+      setErrorMsg('Error al subir imágenes. Intenta de nuevo.');
       setEnviando(false);
       return;
     }
 
-    const { data: urlData } = supabaseStorage.storage
-      .from('evidencias_actividades')
-      .getPublicUrl(filePath);
+    const { data: url1Data } = supabaseStorage.storage.from('evidencias_actividades').getPublicUrl(path1);
+    const { data: url2Data } = supabaseStorage.storage.from('evidencias_actividades').getPublicUrl(path2);
 
     const vencida = actividad.fecha_limite && new Date() > new Date(actividad.fecha_limite);
 
@@ -173,7 +251,8 @@ const SubirEvidenciaActividad = () => {
         poligono: smSel.poligono ?? null,
         seccion: smSel.seccion ?? null,
         ubt: smSel.ubt ?? null,
-        url_evidencia: urlData.publicUrl,
+        url_evidencia: url1Data.publicUrl,
+        url_evidencia_2: url2Data.publicUrl,
         status: vencida ? 'FUERA_DE_TIEMPO' : 'COMPROBADO',
       });
 
@@ -207,7 +286,7 @@ const SubirEvidenciaActividad = () => {
             <span className="text-3xl">✓</span>
           </div>
           <h2 className="text-xl font-bold text-slate-800 mb-2">Evidencia enviada</h2>
-          <p className="text-slate-500 text-sm">Tu evidencia fotográfica fue registrada correctamente para:</p>
+          <p className="text-slate-500 text-sm">Tus 2 fotos fueron registradas correctamente para:</p>
           <p className="text-slate-700 font-semibold text-sm mt-1">{actividad.nombre}</p>
           {fueraDeT && (
             <p className="mt-3 text-amber-600 text-xs font-semibold bg-amber-50 px-3 py-2 rounded-lg">
@@ -259,64 +338,34 @@ const SubirEvidenciaActividad = () => {
             />
           </div>
 
-          {/* Foto */}
-          <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-5">
-            <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-3">
-              Foto de evidencia
-            </p>
+          {/* Fotos */}
+          <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-5 space-y-5">
+            <div className="flex items-center gap-2 mb-1">
+              <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
+                Fotos de evidencia
+              </p>
+              <span className="text-[10px] bg-blue-100 text-blue-600 font-bold px-2 py-0.5 rounded-full">
+                2 requeridas
+              </span>
+            </div>
 
-            {fotoPreview ? (
-              <div>
-                <div className="relative">
-                  <img
-                    src={fotoPreview}
-                    alt="vista previa"
-                    className="w-full rounded-xl object-cover max-h-72 border border-slate-100"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => { setFoto(null); setFotoPreview(null); }}
-                    className="absolute top-2 right-2 bg-white/95 backdrop-blur-sm rounded-full w-8 h-8 flex items-center justify-center text-slate-600 hover:text-red-500 shadow-md border border-slate-100 font-bold text-sm"
-                  >
-                    ✕
-                  </button>
-                </div>
-                {foto?.name && (
-                  <p className="text-[11px] text-slate-400 mt-2 text-center truncate px-1">{foto.name}</p>
-                )}
-                <label className="block cursor-pointer mt-3">
-                  <div className="flex items-center justify-center gap-2 py-2.5 rounded-xl border border-blue-200 bg-blue-50 hover:bg-blue-100 active:scale-[0.98] transition-all">
-                    <svg className="w-4 h-4 text-blue-600" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M6.827 6.175A2.31 2.31 0 015.186 7.23c-.38.054-.757.112-1.134.175C2.999 7.58 2.25 8.507 2.25 9.574V18a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9.574c0-1.067-.75-1.994-1.802-2.169a47.865 47.865 0 00-1.134-.175 2.31 2.31 0 01-1.64-1.055l-.822-1.316a2.192 2.192 0 00-1.736-1.039 48.774 48.774 0 00-5.232 0 2.192 2.192 0 00-1.736 1.039l-.821 1.316z" />
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 12.75a4.5 4.5 0 11-9 0 4.5 4.5 0 019 0z" />
-                    </svg>
-                    <span className="text-xs font-bold text-blue-700">Cambiar foto</span>
-                  </div>
-                  <input type="file" accept="image/*" className="hidden" onChange={handleFoto} />
-                </label>
-              </div>
-            ) : (
-              <label className="block cursor-pointer" style={{ WebkitTapHighlightColor: 'transparent' }}>
-                <div className="flex items-center gap-4 p-5 rounded-xl border-2 border-dashed border-blue-200 bg-blue-50 hover:border-blue-400 hover:bg-blue-100 active:scale-[0.98] transition-all select-none">
-                  <div className="w-14 h-14 bg-blue-600 rounded-xl flex items-center justify-center flex-shrink-0 shadow-sm">
-                    <svg className="w-7 h-7 text-white" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M6.827 6.175A2.31 2.31 0 015.186 7.23c-.38.054-.757.112-1.134.175C2.999 7.58 2.25 8.507 2.25 9.574V18a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9.574c0-1.067-.75-1.994-1.802-2.169a47.865 47.865 0 00-1.134-.175 2.31 2.31 0 01-1.64-1.055l-.822-1.316a2.192 2.192 0 00-1.736-1.039 48.774 48.774 0 00-5.232 0 2.192 2.192 0 00-1.736 1.039l-.821 1.316z" />
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 12.75a4.5 4.5 0 11-9 0 4.5 4.5 0 019 0zM18.75 10.5h.008v.008h-.008V10.5z" />
-                    </svg>
-                  </div>
-                  <div>
-                    <p className="text-sm font-bold text-blue-900">Agregar foto</p>
-                    <p className="text-xs text-blue-600 mt-0.5">Tomar foto o elegir de galería</p>
-                  </div>
-                </div>
-                <input
-                  type="file"
-                  accept="image/*"
-                  className="hidden"
-                  onChange={handleFoto}
-                />
-              </label>
-            )}
+            <FotoSlot
+              label="Foto 1"
+              foto={foto1}
+              preview={preview1}
+              onChange={handleFoto1}
+              onLimpiar={() => { setFoto1(null); setPreview1(null); }}
+            />
+
+            <div className="border-t border-slate-50" />
+
+            <FotoSlot
+              label="Foto 2"
+              foto={foto2}
+              preview={preview2}
+              onChange={handleFoto2}
+              onLimpiar={() => { setFoto2(null); setPreview2(null); }}
+            />
           </div>
 
           {errorMsg && (
@@ -325,7 +374,7 @@ const SubirEvidenciaActividad = () => {
 
           <button
             type="submit"
-            disabled={enviando || !foto || !smSel}
+            disabled={enviando || !foto1 || !foto2 || !smSel}
             className="w-full bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-bold text-base py-3.5 rounded-xl transition-colors shadow-sm"
           >
             {enviando ? (

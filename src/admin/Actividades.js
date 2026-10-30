@@ -3,6 +3,9 @@ import supabase from '../supabase/client';
 
 const PUESTOS = ['SM', 'SECCIONAL', 'SP', 'ENLACE'];
 
+const encodeToken = (id) =>
+  btoa(id).replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
+
 const STATUS_BADGE = {
   COMPROBADO: 'bg-emerald-100 text-emerald-700',
   FUERA_DE_TIEMPO: 'bg-amber-100 text-amber-700',
@@ -77,7 +80,7 @@ const Actividades = () => {
   };
 
   const handleCopiarLink = (id) => {
-    const url = `${window.location.origin}/evidencia-actividad/${id}`;
+    const url = `${window.location.origin}/evidencia-actividad/${encodeToken(id)}`;
     navigator.clipboard.writeText(url);
     setCopiadoId(id);
     setTimeout(() => setCopiadoId(null), 2000);
@@ -336,9 +339,14 @@ const Actividades = () => {
                     const act = actividades.find(a => a.id === ev.actividad_id);
                     return (
                       <div key={ev.id} className="p-4 flex items-start gap-4 hover:bg-slate-50/60 transition-colors">
-                        {ev.url_evidencia && (
-                          <img src={ev.url_evidencia} alt="evidencia" className="w-16 h-16 object-cover rounded-xl border border-slate-100 flex-shrink-0" />
-                        )}
+                        <div className="flex gap-1.5 flex-shrink-0">
+                          {ev.url_evidencia && (
+                            <img src={ev.url_evidencia} alt="evidencia 1" className="w-16 h-16 object-cover rounded-xl border border-slate-100" />
+                          )}
+                          {ev.url_evidencia_2 && (
+                            <img src={ev.url_evidencia_2} alt="evidencia 2" className="w-16 h-16 object-cover rounded-xl border border-slate-100" />
+                          )}
+                        </div>
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2 mb-1">
                             <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${STATUS_BADGE[ev.status] || 'bg-slate-100 text-slate-500'}`}>
